@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：设计评审中（[DESIGN.md](docs/DESIGN.md) v0.4 待拍板 13 个问题）
+**状态**：实测探针已跑通（[PROBE.md](docs/PROBE.md)），校正了 DESIGN v0.4 的 9 处规格偏差；待拍板 13 个问题（其中 4 个已被实测回答）
 
 ---
 
@@ -55,10 +55,12 @@ usage-ledger/
 ├── docs/
 │   ├── DESIGN.md       实现方案（v0.4，含 DDL / CLI / 计价 / 里程碑 / 风险）
 │   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
+│   ├── PROBE.md        实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
 │   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
+├── scripts/
+│   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/                待实现（collectors / store / report / pricing）
-├── tests/fixtures/     待补（各源脱敏 fixture）
-└── scripts/
+└── tests/fixtures/     待补（各源脱敏 fixture）
 ```
 
 ---
@@ -71,7 +73,11 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `zoneinf
 
 ## 下一步
 
-1. 评审 [DESIGN.md](docs/DESIGN.md) v0.4（重点 §4.3 存储层、§7.3 归档判定、§10 采集模型）
-2. 拍板 [DISCUSSION.md](docs/DISCUSSION.md) 的 Q1–Q13
-3. 进入 M0：骨架 + CLI + schema + `doctor`
-4. 尽早安装并 `usage backfill --since 2026-06-01`
+1. 读 [PROBE.md](docs/PROBE.md)：真实 token 台账 + 9 处规格偏差 + Q1–Q13 的实测答案
+2. 拍板剩余问题（Q1/Q4/Q6/Q9/Q10/Q12 直接采纳 DESIGN 建议；Q2/Q8/Q13 已由实测给出答案）
+3. **M1'**：按 PROBE §2.1 的采集规则实现 4 个 collector + 单测（不先搭框架）
+4. **M2'**：SQLite 落库 + `sync` + `backfill --since 2026-06-01` —— **优先于报表**，防上游删日志
+5. **M3'**：`report` / `doctor` + launchd 每小时增量
+6. **M4'**：21 行模型别名表 + 计价（可选）
+
+> 完整快照随时可复现：`python3 scripts/probe.py`
