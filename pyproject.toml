@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "usage-ledger"
-version = "0.1.0"
+version = "0.2.0"
 description = "本地 AI 编码工具 token 用量台账（只读源、本地 SQLite、零第三方依赖）"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -7,12 +7,15 @@ import os
 import re
 import sys
 import time
+import webbrowser
 from collections import Counter
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from . import __version__, scheduler
 from .aggregation import DIMENSIONS, aggregate, match, merge_records, missing_days
 from .collectors import collect_all
+from .html_report import build_payload, render_html
 from .models import FIELDS, SourceResult
 from .pricing import cost_for_record, normalize_model
 from .store import SqliteStore
@@ -237,6 +240,8 @@ def _effective_range(args) -> tuple[str | None, str | None]:
         since = parse_day(args.since)
     if getattr(args, "until", None):
         until = parse_day(args.until)
+    if since and until and since > until:
+        raise ValueError("起始日期 %s 晚于结束日期 %s" % (since, until))
     return since, until
 
 
@@ -348,6 +353,38 @@ def cmd_report(args):
 def cmd_export(args):
     args.format = "csv"
     return cmd_report(args)
+
+
+def cmd_html(args):
+    since, until = _effective_range(args)
+    filters = parse_filters(args.filter)
+    if getattr(args, "project", None):
+        filters["project"] = args.project
+    if getattr(args, "source", None):
+        filters["source"] = args.source
+    if getattr(args, "model", None):
+        filters["model"] = args.model
+    records = _load_records(args, since, until, filters)
+    dims = ("day", "source", "model", "project")
+    rows = aggregate(records, dims)
+    display_since = since or min((rec.day for rec in records), default=None)
+    display_until = until or max((rec.day for rec in records), default=None)
+    payload = build_payload(rows, dims, display_since, display_until,
+                            [COST_NOTICE, NO_TOKEN_NOTICE])
+    output = os.path.abspath(os.path.expanduser(args.output or "usage-report.html"))
+    parent = os.path.dirname(output)
+    if parent and not os.path.isdir(parent):
+        raise ValueError("输出目录不存在：%s" % parent)
+    with open(output, "w", encoding="utf-8") as fh:
+        fh.write(render_html(payload))
+    total = sum(row["total"] for row in rows)
+    span = "%s..%s" % (display_since, display_until) if display_since and display_until else "empty"
+    print("wrote %s" % output)
+    print("rows=%d records=%d tokens=%s range=%s" %
+          (len(rows), len(records), _fmt_int(total), span))
+    if args.open:
+        webbrowser.open(Path(output).as_uri())
+    return 0
 
 
 def cmd_top(args):
@@ -542,6 +579,19 @@ def build_parser():
     export = sub.add_parser("export")
     add_report_args(export)
     export.set_defaults(func=cmd_export)
+
+    html = sub.add_parser("html")
+    html.add_argument("--range")
+    html.add_argument("--since")
+    html.add_argument("--until")
+    html.add_argument("--source", choices=SOURCES)
+    html.add_argument("--model")
+    html.add_argument("--project")
+    html.add_argument("--filter")
+    html.add_argument("--live", action="store_true")
+    html.add_argument("--output", default="usage-report.html")
+    html.add_argument("--open", action="store_true")
+    html.set_defaults(func=cmd_html)
 
     top = sub.add_parser("top")
     top.add_argument("kind", choices=["models", "sources", "projects", "sessions"])
