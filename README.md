@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：实测探针已跑通（[PROBE.md](docs/PROBE.md)），校正了 DESIGN v0.4 的 9 处规格偏差；待拍板 13 个问题（其中 4 个已被实测回答）
+**状态**：v1 已实现并通过验收——4 个 collector、SQLite 归档、`sync/backfill/report/top/doctor/live/prune/export`、`--stateless` 一致性、launchd 调度管理。18 个单测覆盖 PROBE 校正后的采集规则。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -59,9 +59,31 @@ usage-ledger/
 │   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
-├── src/                待实现（collectors / store / report / pricing）
-└── tests/fixtures/     待补（各源脱敏 fixture）
+├── src/usage_ledger/
+│   ├── collectors.py   4 源采集（Claude/Codex/OpenCode/Kilo）
+│   ├── store.py        SQLite 归档、去重、prune、usage_daily 汇总
+│   ├── aggregation.py  报表聚合与过滤
+│   ├── scheduler.py    launchd 任务生成/安装/查询
+│   ├── cli.py          命令行入口
+│   └── pricing.py      模型别名与价格表（价格表当前为空）
+└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode）
 ```
+
+## 快速开始
+
+```bash
+cd usage-ledger
+PYTHONPATH=src python3 -m usage_ledger backfill          # 首次导入历史（幂等）
+PYTHONPATH=src python3 -m usage_ledger report --since 7d  # 日报：天 × 源 × 模型
+PYTHONPATH=src python3 -m usage_ledger top models          # 模型排行
+PYTHONPATH=src python3 -m usage_ledger live                # 直读源的实时视图
+PYTHONPATH=src python3 -m usage_ledger doctor              # 源健康 + 归档自检
+PYTHONPATH=src python3 -m usage_ledger schedule install    # 每小时增量 + 每日全量 + prune
+```
+
+常用变体：`report --weekly|--monthly|--range 2026-06-01..2026-10-29`、
+`--group-by source,model`、`--filter source=codex`、`--format json|csv`、
+`report --live`（源 ∪ 库）、`--stateless report`（不读库不落库）。
 
 ---
 
@@ -73,11 +95,10 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `zoneinf
 
 ## 下一步
 
-1. 读 [PROBE.md](docs/PROBE.md)：真实 token 台账 + 9 处规格偏差 + Q1–Q13 的实测答案
-2. 拍板剩余问题（Q1/Q4/Q6/Q9/Q10/Q12 直接采纳 DESIGN 建议；Q2/Q8/Q13 已由实测给出答案）
-3. **M1'**：按 PROBE §2.1 的采集规则实现 4 个 collector + 单测（不先搭框架）
-4. **M2'**：SQLite 落库 + `sync` + `backfill --since 2026-06-01` —— **优先于报表**，防上游删日志
-5. **M3'**：`report` / `doctor` + launchd 每小时增量
-6. **M4'**：21 行模型别名表 + 计价（可选）
+1. 安装 launchd：`usage schedule install`（hourly sync / 00:15 full rescan / 00:20 prune）
+2. 计价（可选）：价格表目前为空，`cost_equiv_usd` 恒为 `unknown`——PROBE 证明本机 18/21 个模型是 free/别名，成本列价值低
+3. WorkBuddy collector（需先安装 WorkBuddy 采集样本）
+4. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon、额度轴
 
 > 完整快照随时可复现：`python3 scripts/probe.py`
+> 验收命令：`python3 -m unittest discover -s tests -t .`

@@ -1,0 +1,1 @@
+{"type":"assistant","uuid":"u2","sessionId":"s1","timestamp":"2026-10-01T10:01:00Z","cwd":"/tmp/proj-a","isSidechain":true,"message":{"id":"m2","model":"claude-sonnet-4","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":2,"cache_creation_input_tokens":1,"iterations":[{"input_tokens":10,"output_tokens":5}]}}}

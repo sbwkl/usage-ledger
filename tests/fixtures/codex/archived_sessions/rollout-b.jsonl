@@ -1,0 +1,2 @@
+{"timestamp":"2026-10-01T11:00:00Z","type":"session_meta","payload":{"id":"sess1","cwd":"/tmp/proj-b","base_instructions":{"provenance":{"model":"gpt-5.5"}}}}
+{"timestamp":"2026-10-01T11:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":500,"cached_input_tokens":200,"output_tokens":150,"reasoning_output_tokens":30,"total_tokens":650},"last_token_usage":{"input_tokens":20,"cached_input_tokens":10,"output_tokens":5,"reasoning_output_tokens":1,"total_tokens":25}}}}
