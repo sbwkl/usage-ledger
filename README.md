@@ -90,10 +90,10 @@ usage doctor                    # 源健康 + 归档自检
 usage schedule install          # 每小时增量 + 每日全量 + prune
 ```
 
-升级 / 卸载：
+修改源码后重装 / 卸载（uv 会缓存本地构建，重装需 `--no-cache`）：
 
 ```bash
-uv tool upgrade usage-ledger
+uv tool install --force --no-cache .
 uv tool uninstall usage-ledger
 ```
 
