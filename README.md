@@ -52,6 +52,7 @@
 
 ```
 usage-ledger/
+├── pyproject.toml     Python 包定义与 usage / usage-ledger 两个 CLI 入口
 ├── docs/
 │   ├── DESIGN.md       实现方案（v0.4，含 DDL / CLI / 计价 / 里程碑 / 风险）
 │   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
@@ -69,16 +70,37 @@ usage-ledger/
 └── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode）
 ```
 
-## 快速开始
+## 安装
 
 ```bash
-cd usage-ledger
-PYTHONPATH=src python3 -m usage_ledger backfill          # 首次导入历史（幂等）
-PYTHONPATH=src python3 -m usage_ledger report --since 7d  # 日报：天 × 源 × 模型
-PYTHONPATH=src python3 -m usage_ledger top models          # 模型排行
-PYTHONPATH=src python3 -m usage_ledger live                # 直读源的实时视图
-PYTHONPATH=src python3 -m usage_ledger doctor              # 源健康 + 归档自检
-PYTHONPATH=src python3 -m usage_ledger schedule install    # 每小时增量 + 每日全量 + prune
+cd /Users/wayne/workspace/playground/usage-ledger
+uv tool install .          # 推荐：隔离环境，usage 命令落在 ~/.local/bin
+# 或：pipx install .
+```
+
+安装后 `usage` 与 `usage-ledger` 两个命令等价：
+
+```bash
+usage --version
+usage backfill                  # 首次导入历史（幂等，可重复跑）
+usage report --since 7d         # 日报：天 × 源 × 模型
+usage top models                # 模型排行
+usage live                      # 直读源的实时视图
+usage doctor                    # 源健康 + 归档自检
+usage schedule install          # 每小时增量 + 每日全量 + prune
+```
+
+升级 / 卸载：
+
+```bash
+uv tool upgrade usage-ledger
+uv tool uninstall usage-ledger
+```
+
+开发时也可以不安装，直接运行：
+
+```bash
+PYTHONPATH=src python3 -m usage_ledger report --since 7d
 ```
 
 常用变体：`report --weekly|--monthly|--range 2026-06-01..2026-10-29`、
@@ -89,7 +111,7 @@ PYTHONPATH=src python3 -m usage_ledger schedule install    # 每小时增量 + �
 
 ## 技术选型
 
-Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `zoneinfo`），零第三方包，单文件可执行；SQLite（WAL）存储；launchd 调度；`osascript` 通知。
+Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistlib`），零第三方包；通过 `pyproject.toml` 安装为 `usage` CLI；SQLite（WAL）存储；launchd 调度。
 
 ---
 

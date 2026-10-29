@@ -10,8 +10,8 @@ class SchedulerTest(unittest.TestCase):
         sync = scheduler.build_plist("sync")
         self.assertEqual(sync["Label"], "local.usage-ledger.sync")
         self.assertEqual(sync["StartCalendarInterval"], {"Minute": 7})
-        self.assertIn("PYTHONPATH", sync["EnvironmentVariables"])
-        self.assertEqual(sync["ProgramArguments"][1:], ["-m", "usage_ledger", "sync"])
+        self.assertEqual(sync["ProgramArguments"][-1], "sync")
+        self.assertTrue(sync["ProgramArguments"])
 
         full = scheduler.build_plist("full")
         self.assertEqual(full["StartCalendarInterval"], {"Hour": 0, "Minute": 15})

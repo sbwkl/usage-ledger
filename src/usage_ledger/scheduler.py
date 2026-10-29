@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 import plistlib
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
+SOURCE_TREE = (ROOT / "src" / "usage_ledger").is_dir()
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 STATE_DIR = Path.home() / ".local" / "state" / "usage-ledger"
 
@@ -23,24 +24,33 @@ def plist_path(name: str, launch_agents: Path | None = None) -> Path:
     return (launch_agents or LAUNCH_AGENTS) / (JOBS[name][0] + ".plist")
 
 
+def _launch_command(args: list[str]) -> tuple[list[str], dict[str, str]]:
+    script = shutil.which("usage")
+    if script:
+        return [script, *args], {}
+    extra = {"PYTHONPATH": str(ROOT / "src")} if SOURCE_TREE else {}
+    return [sys.executable, "-m", "usage_ledger", *args], extra
+
+
 def build_plist(name: str, launch_agents: Path | None = None) -> dict:
     label, args, calendar = JOBS[name]
     state_dir = STATE_DIR
     log = state_dir / (name + ".log")
     err = state_dir / (name + ".err")
+    program_args, extra_env = _launch_command(args)
     environment = {
-        "PYTHONPATH": str(SRC),
         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         "USAGE_LEDGER_HOME": os.environ.get(
             "USAGE_LEDGER_HOME", str(Path.home() / ".local" / "share" / "usage-ledger")),
         "USAGE_LEDGER_SOURCE_HOME": os.environ.get("USAGE_LEDGER_SOURCE_HOME", str(Path.home())),
     }
+    environment.update(extra_env)
     if os.environ.get("USAGE_LEDGER_DB"):
         environment["USAGE_LEDGER_DB"] = os.environ["USAGE_LEDGER_DB"]
     return {
         "Label": label,
-        "ProgramArguments": [sys.executable, "-m", "usage_ledger", *args],
-        "WorkingDirectory": str(ROOT),
+        "ProgramArguments": program_args,
+        "WorkingDirectory": str(ROOT if SOURCE_TREE else Path.home()),
         "EnvironmentVariables": environment,
         "StartCalendarInterval": calendar,
         "RunAtLoad": False,

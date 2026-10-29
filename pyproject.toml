@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usage-ledger"
+version = "0.1.0"
+description = "本地 AI 编码工具 token 用量台账（只读源、本地 SQLite、零第三方依赖）"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+usage = "usage_ledger.cli:main"
+usage-ledger = "usage_ledger.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

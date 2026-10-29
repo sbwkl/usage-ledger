@@ -10,7 +10,7 @@ import time
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-from . import scheduler
+from . import __version__, scheduler
 from .aggregation import DIMENSIONS, aggregate, match, merge_records, missing_days
 from .collectors import collect_all
 from .models import FIELDS, SourceResult
@@ -496,6 +496,8 @@ def cmd_schedule(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="usage")
+    parser.add_argument("--version", action="version",
+                        version="usage-ledger %s" % __version__)
     parser.add_argument("--stateless", action="store_true",
                         help="不读库、不落库，直接读源")
     sub = parser.add_subparsers(dest="cmd", required=True)
