@@ -5,7 +5,8 @@ import sqlite3
 import tempfile
 import unittest
 
-from src.usage_ledger.collectors import scan_claude, scan_codex, scan_sqlite_agent
+from src.usage_ledger.collectors import (scan_claude, scan_codex, scan_sqlite_agent,
+                                       source_signatures)
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -82,6 +83,23 @@ class CodexTest(unittest.TestCase):
             result = scan_codex(sessions, archived)
             self.assertEqual(len(result.records), 2)
             self.assertEqual(sum(rec.counts.total() for rec in result.records), 400)
+
+
+class SignatureTest(unittest.TestCase):
+    def test_latest_mtime_and_missing_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".claude", "projects", "proj", "s.jsonl")
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("{}\n")
+            signatures = source_signatures(tmp, ["claude", "kilo"])
+            self.assertIsNotNone(signatures["claude"])
+            self.assertIsNone(signatures["kilo"])
+
+            first = signatures["claude"]
+            bumped = (first + 1_000_000) * 1_000
+            os.utime(path, ns=(bumped, bumped))
+            self.assertGreater(source_signatures(tmp, ["claude"])["claude"], first)
 
 
 class SqliteAgentTest(unittest.TestCase):

@@ -133,17 +133,20 @@ class SqliteStore:
 
     def update_source_state(self, source: str, files: int, records: int,
                             status: str = "ok", error: str | None = None,
-                            last_ts: float | None = None):
+                            last_ts: float | None = None,
+                            last_mtime: int | None = None):
         self.conn.execute(
             """INSERT INTO source_state
-            (source,parser_version,last_sync_at,last_event_ts,files_seen,records_total,status,last_error)
-            VALUES (?,?,?,?,?,?,?,?)
+            (source,parser_version,last_sync_at,last_event_ts,last_file_mtime,
+             files_seen,records_total,status,last_error)
+            VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source) DO UPDATE SET
              last_sync_at=excluded.last_sync_at, last_event_ts=excluded.last_event_ts,
+             last_file_mtime=excluded.last_file_mtime,
              files_seen=excluded.files_seen, records_total=excluded.records_total,
              status=excluded.status, last_error=excluded.last_error""",
-            (source, 1, datetime.now(timezone.utc).isoformat(), last_ts, files, records,
-             status, error),
+            (source, 1, datetime.now(timezone.utc).isoformat(), last_ts, last_mtime,
+             files, records, status, error),
         )
         self.conn.commit()
 
@@ -271,6 +274,14 @@ class SqliteStore:
             """SELECT source,status,files_seen,records_total,last_sync_at,last_error
             FROM source_state ORDER BY source"""
         ).fetchall()
+
+    def source_mtimes(self) -> dict[str, int]:
+        return {
+            row[0]: row[1]
+            for row in self.conn.execute(
+                "SELECT source, last_file_mtime FROM source_state WHERE last_file_mtime IS NOT NULL"
+            )
+        }
 
     def source_totals(self) -> dict[str, int]:
         return {

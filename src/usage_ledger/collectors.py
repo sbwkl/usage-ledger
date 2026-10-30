@@ -255,6 +255,50 @@ def scan_sqlite_agent(db_path: str, source_name: str, result: SourceResult | Non
     return result
 
 
+def _latest_mtime_us(paths: list[str]) -> int | None:
+    # 微秒级：纳秒时间戳超出 SQLite REAL 的精确整数范围（2^53），会在回写后失真
+    latest = None
+    for path in paths:
+        try:
+            mtime = os.stat(path).st_mtime_ns // 1_000
+        except OSError:
+            continue
+        if latest is None or mtime > latest:
+            latest = mtime
+    return latest
+
+
+def source_signatures(home: str | None = None,
+                      sources: list[str] | None = None) -> dict[str, int | None]:
+    home = home or os.path.expanduser("~")
+    wanted = list(sources or ("claude", "codex", "opencode", "kilo"))
+    signatures = {}
+    for source in wanted:
+        if source == "claude":
+            root = os.path.join(home, ".claude", "projects")
+            paths = (glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True)
+                     if os.path.isdir(root) else [])
+            signatures[source] = _latest_mtime_us(paths)
+        elif source == "codex":
+            paths = []
+            for sub in ("sessions", "archived_sessions"):
+                root = os.path.join(home, ".codex", sub)
+                if os.path.isdir(root):
+                    paths.extend(glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True))
+            signatures[source] = _latest_mtime_us(paths)
+        elif source == "opencode":
+            share = os.path.join(home, ".local", "share", "opencode")
+            paths = []
+            for name in ("opencode.db", "opencode-stable.db"):
+                base = os.path.join(share, name)
+                paths.extend([base, base + "-wal"])
+            signatures[source] = _latest_mtime_us(paths)
+        elif source == "kilo":
+            base = os.path.join(home, ".local", "share", "kilo", "kilo.db")
+            signatures[source] = _latest_mtime_us([base, base + "-wal"])
+    return signatures
+
+
 def collect_all(home: str | None = None, sources: list[str] | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
     wanted = set(sources or ["claude", "codex", "opencode", "kilo"])

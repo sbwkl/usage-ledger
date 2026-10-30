@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：v0.2 已实现并通过验收——4 个 collector、SQLite 归档、`sync/backfill/report/top/doctor/live/prune/export/html`、`--stateless` 一致性、launchd 调度管理。24 个单测覆盖 PROBE 校正后的采集规则与 HTML 报表。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.3 已实现并通过验收——4 个 collector、SQLite 归档、`sync/backfill/report/top/doctor/live/prune/export/html`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。27 个单测覆盖 PROBE 校正后的采集规则、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -41,7 +41,8 @@
   - `NullStore`（零 DB、零定时任务）/ `SqliteStore`（归档 + 索引，默认）
   - `usage report`（读库）与 `usage --stateless report`（读源）输出必须完全一致
 - **拉取式采集**，不需要常驻进程：数据由 agent 自己落盘，任何时刻读盘都拿得到已落盘的全部数据
-- **实时性三档**：`usage live`（直读源，<0.3s）→ `--live` 合并 → 读库（≤1h）
+- **实时性三档**：`usage live`（直读源，<0.3s）→ `--live` 合并 → 读库（自动检测新数据）
+- **查看即最新**：`report/export/top/html` 先比对源文件 mtime，发现新数据自动增量 sync，再出结果（见下文）
 - **丢失窗口 ≤ 1h**：每小时增量 + 每日全量重扫，路径显式覆盖 `archived_sessions/` `.zst` `storage/` `subagents/`
 - **历史可回填**：`usage backfill` 一次性导入既有日志
 - **只读、隐私**：不写源目录，不存 prompt/正文，项目路径可哈希
@@ -108,6 +109,28 @@ PYTHONPATH=src python3 -m usage_ledger report --since 7d
 常用变体：`report --weekly|--monthly|--range 2026-06-01..2026-10-29`、
 `--group-by source,model`、`--filter source=codex`、`--format json|csv`、
 `report --live`（源 ∪ 库）、`--stateless report`（不读库不落库）。
+
+---
+
+## 数据新鲜度：查看即最新
+
+`report` / `export` / `top` / `html` 在出结果前会先做一次**新鲜度检查**：
+
+1. 取各源最新文件的 mtime（Claude/Codex 看 `*.jsonl`，OpenCode/Kilo 看 `*.db` 与 `-wal`），
+   与库中 `source_state.last_file_mtime` 比对；
+2. 只有 mtime 变新的源才触发增量 `sync`（写法与手动 `usage sync` 完全一致，幂等）；
+3. 同步提示走 **stderr**，因此 `--format json|csv` 的 stdout 始终是干净的数据。
+
+```bash
+usage report --since 7d        # stderr: auto-sync: 检测到 claude 有新数据，正在刷新…
+usage report --source claude    # 显式限定来源时只检查 claude，其他源不触发
+usage --stateless report        # 绕过数据库与自动刷新，直读源
+```
+
+- 检查成本是一次目录遍历 + stat，不解析日志；无新数据时零额外开销。
+- 如果指定了 `--source` 或 `--filter source=...`，只检查/刷新该源。
+- 数据库不存在时仍按原逻辑降级为直读源，不会自动建库。
+- 升级到本版本后首次运行会把所有源标记为"有新数据"并刷新一次，之后转入增量。
 
 ---
 

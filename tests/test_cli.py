@@ -107,6 +107,52 @@ class CliConsistencyTest(unittest.TestCase):
         self.assertTrue(rows)
         self.assertTrue(all(row["source"] == "codex" for row in rows))
 
+    def test_report_auto_syncs_when_source_has_new_data(self):
+        self.run_cli(["backfill"])
+        path = os.path.join(self.home, ".claude", "projects", "proj-a", "session-1.jsonl")
+        record = {
+            "type": "assistant", "uuid": "u9", "sessionId": "s1",
+            "timestamp": "2026-10-02T10:00:00Z", "cwd": "/tmp/proj-a",
+            "message": {"id": "m9", "model": "claude-opus-4",
+                        "usage": {"input_tokens": 7, "output_tokens": 3,
+                                  "cache_read_input_tokens": 0,
+                                  "cache_creation_input_tokens": 0,
+                                  "iterations": [{"input_tokens": 7, "output_tokens": 3}]}},
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        stat = os.stat(path)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+
+        code, out, err = self.run_cli(["report", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertIn("auto-sync", err)
+        rows = json.loads(out)
+        self.assertEqual(sum(row["input"] for row in rows), 338)
+        self.assertEqual(sum(row["output"] for row in rows), 114)
+
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 7)
+        store.close()
+
+        code, out, err = self.run_cli(["report", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("auto-sync", err)
+
+    def test_auto_sync_only_checks_requested_source(self):
+        self.run_cli(["backfill"])
+        path = os.path.join(self.home, ".codex", "sessions", "rollout-a.jsonl")
+        stat = os.stat(path)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+
+        code, _, err = self.run_cli(["report", "--source", "claude", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("auto-sync", err)
+
+        code, _, err = self.run_cli(["report", "--source", "codex", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertIn("auto-sync", err)
+
     def test_doctor_reports_gaps(self):
         self.run_cli(["backfill"])
         code, out, err = self.run_cli(["doctor"])

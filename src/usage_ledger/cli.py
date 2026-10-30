@@ -5,6 +5,7 @@ import csv
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 import webbrowser
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from . import __version__, scheduler
 from .aggregation import DIMENSIONS, aggregate, match, merge_records, missing_days
-from .collectors import collect_all
+from .collectors import collect_all, source_signatures
 from .html_report import build_payload, render_html
 from .models import FIELDS, SourceResult
 from .pricing import cost_for_record, normalize_model
@@ -136,26 +137,12 @@ def _ago(ts: float) -> str:
     return "%dd ago" % (seconds // 86400)
 
 
-def cmd_sync(args):
-    if args.stateless:
-        print("sync 需要写入数据库，不能与 --stateless 同时使用", file=sys.stderr)
-        return 2
-    since = parse_day(args.since) if args.since else None
-    results = _source_results(args.source)
-    if args.dry_run:
-        for result in results:
-            records = [rec for rec in result.records if not since or rec.day >= since]
-            tokens = sum(rec.counts.total() for rec in records)
-            print("%s: %d records, %s tokens, files=%d, status=%s" %
-                  (result.name, len(records), _fmt_int(tokens), result.files, _status(result)))
-        return 0
-
-    store = SqliteStore(db_path())
+def _sync_into(store, sources=None, full=False, since=None, quiet=False) -> dict:
+    signatures = source_signatures(source_home(), sources)
+    results = _source_results(sources)
     total = 0
     archived_total = 0
     for result in results:
-        if args.source and result.name not in args.source:
-            continue
         records = [rec for rec in result.records if not since or rec.day >= since]
         if records:
             store.upsert_records(records, cost_fn=cost_for_record)
@@ -164,27 +151,70 @@ def cmd_sync(args):
         store.update_source_state(
             result.name, result.files, len(result.records), status, error,
             max((rec.ts for rec in result.records), default=None),
+            last_mtime=signatures.get(result.name),
         )
         archived = restored = 0
-        if args.full and result.healthy and not since:
+        if full and result.healthy and not since:
             archived, restored = store.mark_archived(
                 result.name, {rec.key for rec in result.records})
             store.set_meta("full_scan_at:" + result.name, _now_iso())
             archived_total += archived
         total += len(records)
+        if quiet:
+            continue
         tokens = sum(rec.counts.total() for rec in records)
         extra = ""
-        if args.full and result.healthy and not since:
+        if full and result.healthy and not since:
             extra = ", archived=%d restored=%d" % (archived, restored)
         print("%s: %d records, %s tokens, files=%d, errors=%d, status=%s%s" %
               (result.name, len(records), _fmt_int(tokens), result.files,
                len(result.errors), status, extra))
         for note in result.notes:
             print("  note:", note)
-    store.close()
-    print("synced %d records -> %s" % (total, db_path()))
-    if archived_total:
-        print("newly archived %d records (source no longer contains them)" % archived_total)
+    return {"total": total, "archived": archived_total,
+            "sources": [result.name for result in results]}
+
+
+def _refresh_if_stale(store, source=None) -> bool:
+    sources = [source] if source else None
+    current = source_signatures(source_home(), sources)
+    stored = store.source_mtimes()
+    stale = [name for name, signature in current.items()
+             if signature is not None
+             and (stored.get(name) is None or signature > stored[name])]
+    if not stale:
+        return False
+    print("auto-sync: 检测到 %s 有新数据，正在刷新…" % "、".join(stale), file=sys.stderr)
+    try:
+        stats = _sync_into(store, sources=stale, quiet=True)
+    except (sqlite3.Error, OSError) as exc:
+        print("auto-sync: 刷新失败（%s），继续使用库中现有数据" % exc, file=sys.stderr)
+        return False
+    print("auto-sync: 已更新 %d 条记录" % stats["total"], file=sys.stderr)
+    return True
+
+
+def cmd_sync(args):
+    if args.stateless:
+        print("sync 需要写入数据库，不能与 --stateless 同时使用", file=sys.stderr)
+        return 2
+    since = parse_day(args.since) if args.since else None
+    if args.dry_run:
+        for result in _source_results(args.source):
+            records = [rec for rec in result.records if not since or rec.day >= since]
+            tokens = sum(rec.counts.total() for rec in records)
+            print("%s: %d records, %s tokens, files=%d, status=%s" %
+                  (result.name, len(records), _fmt_int(tokens), result.files, _status(result)))
+        return 0
+
+    store = SqliteStore(db_path())
+    try:
+        stats = _sync_into(store, sources=args.source, full=args.full, since=since)
+    finally:
+        store.close()
+    print("synced %d records -> %s" % (stats["total"], db_path()))
+    if stats["archived"]:
+        print("newly archived %d records (source no longer contains them)" % stats["archived"])
     return 0
 
 
@@ -256,10 +286,13 @@ def _load_records(args, since, until, filters) -> list:
             records = [rec for result in results for rec in result.records]
         else:
             store = SqliteStore(db_path())
-            records = store.fetch_records(
-                since=since, until=until, source=filters.get("source"),
-                model=filters.get("model"), project=filters.get("project"))
-            store.close()
+            try:
+                _refresh_if_stale(store, filters.get("source"))
+                records = store.fetch_records(
+                    since=since, until=until, source=filters.get("source"),
+                    model=filters.get("model"), project=filters.get("project"))
+            finally:
+                store.close()
             if getattr(args, "live", False):
                 results = _source_results([filters["source"]] if "source" in filters else None)
                 records = merge_records(records, [rec for result in results
