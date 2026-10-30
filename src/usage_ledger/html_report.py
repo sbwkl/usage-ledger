@@ -332,6 +332,8 @@ try {
   var DATA_SINCE = RANGE.since || bounds[0] || "";
   var DATA_UNTIL = RANGE.until || bounds[1] || "";
   var DATA_DAYS = new Set(ROWS.map(function (row) { return row.day; }));
+  var TODAY = localToday();
+  var PICK_MAX = DATA_UNTIL > TODAY ? DATA_UNTIL : TODAY;
 
   var state = {
     start: DATA_SINCE,
@@ -394,6 +396,13 @@ try {
   function parseDay(day) { return new Date(day + "T00:00:00Z"); }
 
   function dayString(date) { return date.toISOString().slice(0, 10); }
+
+  function pad2(value) { return (value < 10 ? "0" : "") + value; }
+
+  function localToday() {
+    var now = new Date();
+    return now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate());
+  }
 
   function addDays(day, offset) {
     var date = parseDay(day);
@@ -505,21 +514,24 @@ try {
     });
 
     el.start.min = DATA_SINCE || "";
-    el.start.max = DATA_UNTIL || "";
+    el.start.max = PICK_MAX;
     el.end.min = DATA_SINCE || "";
-    el.end.max = DATA_UNTIL || "";
+    el.end.max = PICK_MAX;
     el.start.value = state.start;
     el.end.value = state.end;
 
-    [{ label: "全部", days: null }, { label: "近 7 天", days: 7 },
+    [{ label: "今日", kind: "today" }, { label: "全部", kind: "all" },
+     { label: "近 7 天", days: 7 },
      { label: "近 30 天", days: 30 }, { label: "近 90 天", days: 90 }].forEach(function (preset) {
       var button = document.createElement("button");
       button.type = "button";
       button.className = "btn ghost small";
       button.textContent = preset.label;
       button.addEventListener("click", function () {
-        var end = DATA_UNTIL;
-        var start = preset.days === null ? DATA_SINCE : addDays(end, -(preset.days - 1));
+        var end = preset.kind === "all" ? DATA_UNTIL : TODAY;
+        var start = preset.kind === "today" ? TODAY
+                  : preset.kind === "all" ? DATA_SINCE
+                  : addDays(end, -(preset.days - 1));
         state.start = start < DATA_SINCE ? DATA_SINCE : start;
         state.end = end;
         el.start.value = state.start;
