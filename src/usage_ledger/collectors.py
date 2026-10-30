@@ -207,18 +207,39 @@ def scan_sqlite_agent(db_path: str, source_name: str, result: SourceResult | Non
         result.errors.append((db_path, str(exc)))
         return result
     try:
-        rows = conn.execute("SELECT id, session_id, time_created, time_updated, data FROM message").fetchall()
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        rows = []
+        # OpenCode 新版本把消息迁到 session_message（旧 message 表不再写入）
+        if "session_message" in tables:
+            if "session_v2" in tables:
+                rows.extend(conn.execute(
+                    """SELECT sm.id, sm.session_id, sm.time_created, sm.time_updated,
+                              sm.data, sv.directory, 0
+                       FROM session_message sm
+                       LEFT JOIN session_v2 sv ON sv.id = sm.session_id
+                       WHERE sm.type = 'assistant'""").fetchall())
+            else:
+                rows.extend(row + (None, 0) for row in conn.execute(
+                    """SELECT id, session_id, time_created, time_updated, data
+                       FROM session_message WHERE type = 'assistant'""").fetchall())
+        if "message" in tables:
+            legacy_sql = "SELECT id, session_id, time_created, time_updated, data FROM message"
+            if "session_message" in tables:
+                legacy_sql += (" WHERE NOT EXISTS "
+                               "(SELECT 1 FROM session_message sm WHERE sm.id = message.id)")
+            rows.extend(row + (None, 1) for row in conn.execute(legacy_sql).fetchall())
     except Exception as exc:
         result.errors.append((db_path, "查询失败：%s" % exc))
         conn.close()
         return result
-    for mid, sid, t_created, t_updated, data in rows:
+    for mid, sid, t_created, t_updated, data, directory, legacy in rows:
         try:
             obj = json.loads(data) if isinstance(data, str) else (data or {})
         except Exception:
             result.errors.append((db_path, "message %s: data JSON 解析失败" % mid))
             continue
-        if obj.get("role") != "assistant":
+        if legacy and obj.get("role") != "assistant":
             continue
         tokens = obj.get("tokens") or {}
         if not tokens:
@@ -237,19 +258,28 @@ def scan_sqlite_agent(db_path: str, source_name: str, result: SourceResult | Non
         ts = (t_created or t_updated or 0) / 1000.0
         if ts <= 0:
             continue
+        model_info = obj.get("model")
+        if isinstance(model_info, dict):
+            model = model_info.get("id") or "unknown"
+            provider = obj.get("providerID") or model_info.get("providerID")
+        else:
+            model = obj.get("modelID") or (model_info if isinstance(model_info, str) else None) or "unknown"
+            provider = obj.get("providerID")
         path = obj.get("path") or {}
+        project_dir = path.get("cwd") or directory
+        project = os.path.basename(project_dir.rstrip("/")) if project_dir else None
         result.key_kinds["message.id"] += 1
         result.add(Record(
             source=source_name,
             day=local_day(ts),
-            model=obj.get("modelID") or "unknown",
-            project=os.path.basename(path.get("cwd") or "") or None,
+            model=model,
+            project=project or None,
             session=sid,
             key="%s:%s" % (source_name, mid),
             counts=counts,
             ts=ts,
-            provider=obj.get("providerID"),
-            model_raw=obj.get("modelID"),
+            provider=provider,
+            model_raw=model,
         ))
     conn.close()
     return result

@@ -133,6 +133,52 @@ class SqliteAgentTest(unittest.TestCase):
                          (1, 2, 3, 4, 5))
         self.assertEqual(rec.key, "opencode:m1")
 
+    def test_scan_new_session_message_schema(self):
+        d = tempfile.mkdtemp()
+        db = os.path.join(d, "x.db")
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, "
+                     "time_updated INTEGER, data TEXT)")
+        conn.execute("CREATE TABLE session_v2 (id TEXT PRIMARY KEY, directory TEXT)")
+        conn.execute("CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, "
+                     "type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, "
+                     "data TEXT)")
+        conn.execute("INSERT INTO session_v2 VALUES ('s1', '/tmp/proj-new/')")
+        new = {"model": {"id": "deepseek-v4.1-flash-free", "providerID": "opencode"},
+               "tokens": {"input": 7, "output": 3, "reasoning": 1,
+                          "cache": {"read": 5, "write": 2}}}
+        conn.execute("INSERT INTO session_message VALUES (?,?,?,?,?,?,?)",
+                     ("m1", "s1", "assistant", 1, 1700000000000, None, json.dumps(new)))
+        conn.execute("INSERT INTO session_message VALUES (?,?,?,?,?,?,?)",
+                     ("m2", "s1", "user", 2, 1700000000000, None,
+                      json.dumps({"role": "user"})))
+        legacy_same = {"role": "assistant", "modelID": "legacy-model",
+                       "tokens": {"input": 1}}
+        conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                     ("m1", "s1", 1700000000000, None, json.dumps(legacy_same)))
+        legacy_only = {"role": "assistant", "modelID": "old-model",
+                       "path": {"cwd": "/tmp/proj-old"},
+                       "tokens": {"input": 2, "output": 1}}
+        conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                     ("m0", "s0", 1700000000000, None, json.dumps(legacy_only)))
+        conn.commit()
+        conn.close()
+
+        result = scan_sqlite_agent(db, "opencode")
+        self.assertTrue(result.healthy)
+        by_key = {rec.key: rec for rec in result.records}
+        self.assertEqual(set(by_key), {"opencode:m1", "opencode:m0"})
+        self.assertEqual(by_key["opencode:m1"].model, "deepseek-v4.1-flash-free")
+        self.assertEqual(by_key["opencode:m1"].provider, "opencode")
+        self.assertEqual(by_key["opencode:m1"].project, "proj-new")
+        self.assertEqual((by_key["opencode:m1"].counts.input,
+                          by_key["opencode:m1"].counts.output,
+                          by_key["opencode:m1"].counts.reasoning,
+                          by_key["opencode:m1"].counts.cache_read,
+                          by_key["opencode:m1"].counts.cache_write), (7, 3, 1, 5, 2))
+        self.assertEqual(by_key["opencode:m0"].model, "old-model")
+        self.assertEqual(by_key["opencode:m0"].project, "proj-old")
+
     def test_missing_db_is_unavailable(self):
         result = scan_sqlite_agent("/nonexistent/x.db", "kilo")
         self.assertFalse(result.available)

@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：v0.3 已实现并通过验收——4 个 collector、SQLite 归档、`sync/backfill/report/top/doctor/live/prune/export/html`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。27 个单测覆盖 PROBE 校正后的采集规则、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.3 已实现并通过验收——4 个 collector、SQLite 归档、`sync/backfill/report/top/doctor/live/prune/export/html`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。28 个单测覆盖 PROBE 校正后的采集规则、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -23,7 +23,7 @@
 | 平台 | token 统计 | 说明 |
 |---|---|---|
 | Claude Code | ✅ | 含 cache read/write |
-| OpenCode（CLI + 桌面） | ✅ | 与 Kilo 同构，一个 adapter |
+| OpenCode（CLI + 桌面） | ✅ | 兼容新版 `session_message` 表（旧 `message` 表仍回读未迁移记录），与 Kilo 一个 adapter |
 | Kilo（CLI + 桌面） | ✅ | |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | WorkBuddy | ✅ | P1，需先安装核实样本 |
