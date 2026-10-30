@@ -98,6 +98,7 @@ class HtmlCommandTest(unittest.TestCase):
         self.assertTrue(any("Qoder" in notice for notice in payload["notices"]))
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
         self.assertIn("Content-Security-Policy", html)
+        self.assertIn("单击只看", html)
 
     def test_html_empty_source_generates_page(self):
         empty = tempfile.TemporaryDirectory()

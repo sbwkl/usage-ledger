@@ -107,6 +107,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .chip:hover{border-color:var(--accent)}
 .chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
 .chip small{opacity:.62;font-variant-numeric:tabular-nums}
+.chip-tip{font-size:11.5px;color:var(--muted);align-self:center;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);min-width:0}
@@ -458,7 +459,7 @@ try {
       button.type = "button";
       button.className = "chip";
       button.dataset.source = source;
-      button.title = "点击切换 " + source;
+      button.title = "单击只看 " + source + "，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
       var dot = document.createElement("span");
       dot.className = "dot";
       dot.style.background = COLORS[source];
@@ -469,12 +470,19 @@ try {
       button.appendChild(dot);
       button.appendChild(name);
       button.appendChild(total);
-      button.addEventListener("click", function () {
-        if (state.sources.has(source)) {
-          if (state.sources.size === 1) return;
-          state.sources.delete(source);
+      button.addEventListener("click", function (event) {
+        var additive = event.metaKey || event.ctrlKey || event.shiftKey;
+        if (additive) {
+          if (state.sources.has(source)) {
+            if (state.sources.size === 1) return;
+            state.sources.delete(source);
+          } else {
+            state.sources.add(source);
+          }
+        } else if (state.sources.size === 1 && state.sources.has(source)) {
+          state.sources = new Set(SOURCES);
         } else {
-          state.sources.add(source);
+          state.sources = new Set([source]);
         }
         state.page = 0;
         syncChips();
@@ -482,11 +490,18 @@ try {
       });
       el.sources.appendChild(button);
     });
+    if (SOURCES.length > 1) {
+      var tip = document.createElement("span");
+      tip.className = "chip-tip";
+      tip.textContent = navigator.platform.indexOf("Mac") >= 0
+        ? "单击只看 · ⌘+单击多选" : "单击只看 · Ctrl+单击多选";
+      el.sources.appendChild(tip);
+    }
     syncChips();
   }
 
   function syncChips() {
-    Array.prototype.forEach.call(el.sources.children, function (button) {
+    Array.prototype.forEach.call(el.sources.querySelectorAll(".chip"), function (button) {
       var active = state.sources.has(button.dataset.source);
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
