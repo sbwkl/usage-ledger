@@ -4,7 +4,7 @@ import os
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
-from .models import Counts, Record
+from .models import Activity, Counts, Record
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -54,11 +54,67 @@ CREATE TABLE IF NOT EXISTS usage_daily (
   cost_source TEXT, turn_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, source, model, project, session_id)
 );
+CREATE TABLE IF NOT EXISTS usage_activity (
+  source TEXT NOT NULL,
+  day TEXT NOT NULL,
+  project TEXT NOT NULL DEFAULT '',
+  sessions INTEGER NOT NULL DEFAULT 0,
+  prompts INTEGER NOT NULL DEFAULT 0,
+  assistant_calls INTEGER NOT NULL DEFAULT 0,
+  assistant_with_metrics INTEGER NOT NULL DEFAULT 0,
+  turns INTEGER NOT NULL DEFAULT 0,
+  tool_calls INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  updated_at REAL NOT NULL,
+  PRIMARY KEY (source, day, project)
+);
+CREATE INDEX IF NOT EXISTS idx_activity_day_source ON usage_activity(day, source);
 CREATE TABLE IF NOT EXISTS price_override (
   model_pattern TEXT PRIMARY KEY, input REAL, output REAL,
   cache_read REAL, cache_write REAL, reasoning REAL, currency TEXT DEFAULT 'USD',
   note TEXT, updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS usage_credit (
+  request_id TEXT PRIMARY KEY,
+  ts REAL NOT NULL,
+  day TEXT NOT NULL,
+  project TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL,
+  session_id TEXT,
+  credits REAL NOT NULL DEFAULT 0,
+  billable INTEGER NOT NULL DEFAULT 0,
+  updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_credit_day ON usage_credit(day);
+CREATE TABLE IF NOT EXISTS usage_quota (
+  request_id TEXT NOT NULL,
+  quota_kind TEXT NOT NULL,
+  ts REAL NOT NULL,
+  day TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  used INTEGER NOT NULL,
+  remaining INTEGER NOT NULL,
+  unit TEXT NOT NULL,
+  raw_pct REAL,
+  expires_at INTEGER,
+  PRIMARY KEY (request_id, quota_kind)
+);
+CREATE INDEX IF NOT EXISTS idx_quota_day ON usage_quota(day, quota_kind);
+CREATE TABLE IF NOT EXISTS usage_est (
+  request_id TEXT PRIMARY KEY,
+  ts REAL NOT NULL,
+  day TEXT NOT NULL,
+  project TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL,
+  session_id TEXT,
+  est_input INTEGER NOT NULL DEFAULT 0,
+  est_output INTEGER NOT NULL DEFAULT 0,
+  chars_in INTEGER NOT NULL DEFAULT 0,
+  chars_out INTEGER NOT NULL DEFAULT 0,
+  ratio REAL,
+  updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_est_day ON usage_est(day);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
@@ -219,6 +275,270 @@ class SqliteStore:
                     turns=row[12] or 1,
                 ))
         return records
+
+    def replace_activity_days(self, source: str, days, activities: list[Activity]) -> int:
+        targets = set(days) | {act.day for act in activities}
+        if not targets:
+            return 0
+        now = datetime.now(timezone.utc).timestamp()
+        self.conn.execute("BEGIN")
+        for day in sorted(targets):
+            self.conn.execute(
+                "DELETE FROM usage_activity WHERE source=? AND day=?", (source, day))
+        n = 0
+        for act in activities:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO usage_activity
+                (source,day,project,sessions,prompts,assistant_calls,assistant_with_metrics,
+                 turns,tool_calls,duration_ms,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (source, act.day, act.project, act.sessions, act.prompts,
+                 act.assistant_calls, act.assistant_with_metrics, act.turns,
+                 act.tool_calls, act.duration_ms, now),
+            )
+            n += 1
+        self.conn.commit()
+        return n
+
+    def fetch_activity(self, since: str | None = None, until: str | None = None,
+                       source: str | None = None,
+                       project: str | None = None) -> list[Activity]:
+        clauses, params = [], []
+        if since:
+            clauses.append("day >= ?")
+            params.append(since)
+        if until:
+            clauses.append("day <= ?")
+            params.append(until)
+        if source:
+            clauses.append("source = ?")
+            params.append(source)
+        if project is not None:
+            clauses.append("project = ?")
+            params.append(project)
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+        return [
+            Activity(
+                source=row[0], day=row[1], project=row[2], sessions=row[3],
+                prompts=row[4], assistant_calls=row[5], assistant_with_metrics=row[6],
+                turns=row[7], tool_calls=row[8], duration_ms=row[9])
+            for row in self.conn.execute(
+                f"""SELECT source,day,project,sessions,prompts,assistant_calls,
+                    assistant_with_metrics,turns,tool_calls,duration_ms
+                    FROM usage_activity WHERE {where_sql} ORDER BY day, project""",
+                params)
+        ]
+
+    def source_bounds(self, source: str) -> tuple[str | None, str | None]:
+        row = self.conn.execute(
+            "SELECT MIN(day), MAX(day) FROM usage_turn WHERE source=?", (source,)
+        ).fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
+    def activity_bounds(self, source: str) -> tuple[str | None, str | None]:
+        row = self.conn.execute(
+            "SELECT MIN(day), MAX(day) FROM usage_activity WHERE source=?", (source,)
+        ).fetchone()
+        return (row[0], row[1]) if row else (None, None)
+
+    def activity_summary(self, source: str) -> dict:
+        row = self.conn.execute(
+            """SELECT COUNT(DISTINCT day), COALESCE(SUM(sessions),0), COALESCE(SUM(prompts),0),
+               COALESCE(SUM(assistant_calls),0), COALESCE(SUM(assistant_with_metrics),0),
+               COALESCE(SUM(turns),0), COALESCE(SUM(tool_calls),0),
+               COALESCE(SUM(duration_ms),0)
+               FROM usage_activity WHERE source=?""", (source,)
+        ).fetchone()
+        return dict(zip(("days", "sessions", "prompts", "assistant_calls",
+                         "assistant_with_metrics", "turns", "tool_calls",
+                         "duration_ms"), row))
+
+    def activity_count(self, source: str | None = None) -> int:
+        if source:
+            return self.conn.execute(
+                "SELECT COUNT(*) FROM usage_activity WHERE source=?", (source,)
+            ).fetchone()[0]
+        return self.conn.execute("SELECT COUNT(*) FROM usage_activity").fetchone()[0]
+
+    def upsert_credits(self, credits, quota) -> tuple[int, int]:
+        now = datetime.now(timezone.utc).timestamp()
+        for row in credits:
+            self.conn.execute(
+                """INSERT INTO usage_credit
+                (request_id,ts,day,project,model,session_id,credits,billable,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(request_id) DO UPDATE SET
+                 ts=excluded.ts, day=excluded.day, project=excluded.project,
+                 model=excluded.model, session_id=excluded.session_id,
+                 credits=excluded.credits, billable=excluded.billable,
+                 updated_at=excluded.updated_at""",
+                (row.request_id, row.ts, row.day, row.project, row.model,
+                 row.session, row.credits, 1 if row.billable else 0, now))
+        for row in quota:
+            self.conn.execute(
+                """INSERT INTO usage_quota
+                (request_id,quota_kind,ts,day,total,used,remaining,unit,raw_pct,expires_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(request_id,quota_kind) DO UPDATE SET
+                 ts=excluded.ts, day=excluded.day, total=excluded.total,
+                 used=excluded.used, remaining=excluded.remaining,
+                 unit=excluded.unit, raw_pct=excluded.raw_pct,
+                 expires_at=excluded.expires_at""",
+                (row.request_id, row.quota_kind, row.ts, row.day, row.total,
+                 row.used, row.remaining, row.unit, row.raw_pct, row.expires_at))
+        self.conn.commit()
+        return len(credits), len(quota)
+
+    def upsert_estimates(self, estimates) -> int:
+        now = datetime.now(timezone.utc).timestamp()
+        for row in estimates:
+            self.conn.execute(
+                """INSERT INTO usage_est
+                (request_id,ts,day,project,model,session_id,est_input,est_output,
+                 chars_in,chars_out,ratio,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(request_id) DO UPDATE SET
+                 ts=excluded.ts, day=excluded.day, project=excluded.project,
+                 model=excluded.model, session_id=excluded.session_id,
+                 est_input=excluded.est_input, est_output=excluded.est_output,
+                 chars_in=excluded.chars_in, chars_out=excluded.chars_out,
+                 ratio=excluded.ratio, updated_at=excluded.updated_at""",
+                (row.request_id, row.ts, row.day, row.project, row.model,
+                 row.session, row.est_input, row.est_output, row.chars_in,
+                 row.chars_out, row.ratio, now))
+        self.conn.commit()
+        return len(estimates)
+
+    def credit_daily(self, since: str | None = None,
+                     until: str | None = None) -> list[dict]:
+        clauses, params = [], []
+        if since:
+            clauses.append("day >= ?")
+            params.append(since)
+        if until:
+            clauses.append("day <= ?")
+            params.append(until)
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+        snapshots = {
+            row[0]: row[1] for row in self.conn.execute(
+                "SELECT day, COUNT(DISTINCT request_id) FROM usage_quota "
+                "WHERE %s GROUP BY day" % where_sql, params)
+        }
+        rows = []
+        for day, credits, requests, free_credits in self.conn.execute(
+                """SELECT day,
+                   COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=1 THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0)
+                   FROM usage_credit WHERE %s GROUP BY day ORDER BY day""" % where_sql,
+                params):
+            rows.append({"day": day, "credits": round(credits, 6),
+                         "requests": requests,
+                         "free_credits": round(free_credits, 6),
+                         "snapshots": snapshots.get(day, 0)})
+        return rows
+
+    def credits_totals(self, since: str | None = None,
+                       until: str | None = None) -> dict:
+        clauses, params = [], []
+        if since:
+            clauses.append("day >= ?")
+            params.append(since)
+        if until:
+            clauses.append("day <= ?")
+            params.append(until)
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+        row = self.conn.execute(
+            """SELECT COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
+               COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0),
+               COUNT(*), COUNT(DISTINCT day), COUNT(DISTINCT model)
+               FROM usage_credit WHERE %s""" % where_sql, params).fetchone()
+        return {"credits": row[0], "free_credits": row[1], "requests": row[2],
+                "days": row[3], "models": row[4]}
+
+    def latest_quota(self) -> dict:
+        result = {}
+        for kind in ("user", "add_on"):
+            row = self.conn.execute(
+                """SELECT request_id,ts,day,total,used,remaining,unit,raw_pct,expires_at
+                FROM usage_quota WHERE quota_kind=? ORDER BY ts DESC LIMIT 1""",
+                (kind,)).fetchone()
+            if row:
+                result[kind] = {"ts": row[1], "day": row[2], "total": row[3],
+                                "used": row[4], "remaining": row[5],
+                                "unit": row[6], "pct": row[7], "expires_at": row[8]}
+        return result
+
+    def quota_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM usage_quota").fetchone()[0]
+
+    def credit_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM usage_credit").fetchone()[0]
+
+    def credit_bounds(self) -> tuple[str | None, str | None]:
+        row = self.conn.execute(
+            "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_credit").fetchone()
+        return (row[0], row[1], row[2]) if row else (None, None, None)
+
+    def est_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM usage_est").fetchone()[0]
+
+    def est_bounds(self) -> tuple[str | None, str | None, float | None]:
+        row = self.conn.execute(
+            "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_est").fetchone()
+        return (row[0], row[1], row[2]) if row else (None, None, None)
+
+    def est_missing_ratio(self) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM usage_est WHERE ratio IS NULL").fetchone()[0]
+
+    def est_rows(self, since: str | None = None, until: str | None = None,
+                 dims: tuple[str, ...] = ("day", "model")) -> list[dict]:
+        allowed = {"day", "project", "model", "session"}
+        dims = tuple(dim for dim in dims if dim in allowed) or ("day",)
+        clauses, params = [], []
+        if since:
+            clauses.append("day >= ?")
+            params.append(since)
+        if until:
+            clauses.append("day <= ?")
+            params.append(until)
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+        cols = ", ".join(dims)
+        rows = []
+        for row in self.conn.execute(
+                """SELECT %s, SUM(est_input), SUM(est_output), COUNT(*),
+                   SUM(chars_in), SUM(chars_out),
+                   SUM(CASE WHEN ratio IS NULL THEN 1 ELSE 0 END)
+                   FROM usage_est WHERE %s GROUP BY %s
+                   ORDER BY %s""" % (cols, where_sql, cols, cols), params):
+            item = {dim: row[i] for i, dim in enumerate(dims)}
+            item.update({"est_input": row[len(dims)],
+                         "est_output": row[len(dims) + 1],
+                         "requests": row[len(dims) + 2],
+                         "chars_in": row[len(dims) + 3],
+                         "chars_out": row[len(dims) + 4],
+                         "missing_ratio": row[len(dims) + 5]})
+            rows.append(item)
+        return rows
+
+    def est_totals(self, since: str | None = None,
+                   until: str | None = None) -> dict:
+        clauses, params = [], []
+        if since:
+            clauses.append("day >= ?")
+            params.append(since)
+        if until:
+            clauses.append("day <= ?")
+            params.append(until)
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+        row = self.conn.execute(
+            """SELECT COALESCE(SUM(est_input),0), COALESCE(SUM(est_output),0),
+               COUNT(*), COUNT(DISTINCT day), COUNT(DISTINCT model),
+               COALESCE(SUM(CASE WHEN ratio IS NULL THEN 1 ELSE 0 END),0)
+               FROM usage_est WHERE %s""" % where_sql, params).fetchone()
+        return {"est_input": row[0], "est_output": row[1], "requests": row[2],
+                "days": row[3], "models": row[4], "missing_ratio": row[5]}
 
     def prune(self, keep_days: int = 90, dry_run: bool = False) -> dict:
         cutoff = (date.today() - timedelta(days=keep_days)).isoformat()

@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：v0.3 已实现并通过验收——4 个 collector、SQLite 归档、`sync/backfill/report/top/doctor/live/prune/export/html`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。28 个单测覆盖 PROBE 校正后的采集规则、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.5 已实现并通过验收——5 个 collector（含 Qoder 四轨）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。49 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -14,7 +14,7 @@
 
 现有工具都不合适：ccusage 极简但只覆盖 18 个源；tokscale 覆盖 60 个但带 TUI 和排行榜；TokenTracker / Token Monitor 带桌面宠物和多设备同步。
 
-**本项目的立场**：采集层用成熟做法，报表层自己做；不估算、不爬私有 API、无任何网络行为。
+**本项目的立场**：采集层用成熟做法，报表层自己做；不为缺失数据编造 token，不爬私有 API，无任何网络行为。Qoder 新客户端断供 token 后，额度走服务端每请求计费真值，token 另设**显式标注的估算轨**（`est`），永不与真值相加。
 
 ---
 
@@ -26,12 +26,12 @@
 | OpenCode（CLI + 桌面） | ✅ | 兼容新版 `session_message` 表（旧 `message` 表仍回读未迁移记录），与 Kilo 一个 adapter |
 | Kilo（CLI + 桌面） | ✅ | |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
+| Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（服务端每请求计费）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
 | WorkBuddy | ✅ | P1，需先安装核实样本 |
-| Qoder | ❌ | **订阅套餐本地 token 恒为 0**（实测 6898 条），只有 credits |
 | Trae CN | ❌ | 本地只有额度键，无 token 字段 |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
-> 缺口是**厂商不下发**，不是解析器写不出来。任何工具都无法凭空造出这三个平台的 token 数。工具会在 `doctor` 与报告页脚显式说明，避免"看起来没花"与"没采到"混淆。
+> 缺口是**厂商不下发**，不是解析器写不出来。任何工具都无法凭空造出这些平台的 token 数。工具会在 `doctor` 与报告页脚显式说明，避免"看起来没花"与"没采到"混淆。Qoder 新版本客户端已不再写 token，只保留活动元数据；活动指标用于观察 agent 使用强度，不参与 token 与成本统计。
 
 ---
 
@@ -56,20 +56,22 @@ usage-ledger/
 ├── pyproject.toml     Python 包定义与 usage / usage-ledger 两个 CLI 入口
 ├── docs/
 │   ├── DESIGN.md       实现方案（v0.4，含 DDL / CLI / 计价 / 里程碑 / 风险）
+│   ├── QODER-DESIGN.md Qoder 双轨设计（token + 活动指标）
+│   ├── QODER-CREDITS-DESIGN.md Qoder 额度 + 估算 token 设计
 │   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
 │   ├── PROBE.md        实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
 │   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   4 源采集（Claude/Codex/OpenCode/Kilo）
-│   ├── store.py        SQLite 归档、去重、prune、usage_daily 汇总
+│   ├── collectors.py   5 源采集（Claude/Codex/OpenCode/Kilo/Qoder 双轨）
+│   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
 │   ├── aggregation.py  报表聚合与过滤
 │   ├── html_report.py  离线单文件交互报表（内联 CSS/JS/SVG）
 │   ├── scheduler.py    launchd 任务生成/安装/查询
 │   ├── cli.py          命令行入口
 │   └── pricing.py      模型别名与价格表（价格表当前为空）
-└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode）
+└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder）
 ```
 
 ## 安装
@@ -86,6 +88,9 @@ uv tool install .          # 推荐：隔离环境，usage 命令落在 ~/.local
 usage --version
 usage backfill                  # 首次导入历史（幂等，可重复跑）
 usage report --since 7d         # 日报：天 × 源 × 模型
+usage activity --since 30d      # Qoder 活动指标：会话/提示/工具调用/时长（非 token）
+usage credits --since 7d        # Qoder 配额消耗：每请求 billable credits（服务端真值）
+usage est --group-by day,model  # Qoder 估算 token（est，±30~40%，不可与真值相加）
 usage top models                # 模型排行
 usage html --open               # 生成 usage-report.html 并在浏览器打开
 usage live                      # 直读源的实时视图
@@ -134,6 +139,24 @@ usage --stateless report        # 绕过数据库与自动刷新，直读源
 
 ---
 
+## Qoder 额度（credits）与估算 token（est）
+
+Qoder 新版客户端不再写 token，但转录 JSONL 保留了每请求的服务端计费字段与上下文比例：
+
+```bash
+usage credits                       # 每天 billable credits / 请求数 / 免费 credits / 快照数
+usage credits --since 7d --format json
+usage est --group-by day,model      # 估算输入/输出 token 与覆盖请求数
+usage est --stateless --group-by model   # 绕过数据库直读转录
+```
+
+- **credits 是服务端真值**：`billable=true` 的 `usage.credits` 逐请求累计，已与 main.log 配额快照增量核对（+18.16 vs +20、+31.62 vs +32 等）；免费请求单独列出，不计配额。
+- **余额来自日志快照**：`main.log` 的 `用量响应摘要` 仅保留约一周、`used` 非单调，因此只用于展示当前余额/总量，不用来推导日消耗。
+- **est 是估算值**：`est_input = context_usage_ratio × 200K`，`est_output = 字符数 ÷ 模型系数`（gfmodel 3.85 / dfmodel 4.58 / 其他 3.8）。旧版无 `ratio` 的转录跳过，避免与历史 token 真值重复。
+- 四轨（token 真值 / 活动 / 额度 / 估算）分表、分示，任何两轨都不相加；`doctor` 会显示 credits、快照数、估算覆盖与交叉校验。
+
+---
+
 ## 交互式 HTML 报表
 
 ```bash
@@ -149,6 +172,10 @@ usage --stateless html --output /tmp/usage.html   # 不读库，直接读源
 
 - KPI：总 token、输入/输出/缓存读/缓存写/推理、缓存占比、轮次
 - 可切换指标的每日堆叠柱状图（按来源），悬停查看当天明细；区间超过 200 天自动按周聚合
+- **Agent 活动（非 token）区块**：筛选包含 Qoder 且区间内有活动时显示；卡片（活跃会话/提示/assistant 调用/工具调用/运行时长）、可切换指标的每日活动柱状图、按天 × 项目的活动明细表
+- **Qoder 额度区块**：区间/今日/本月 billable credits、免费 credits、最新余额；每日 billable + 免费堆叠柱状图；按天明细表（credits/请求/免费/快照）。credits 为服务端真值，非 token
+- **Qoder 估算 token 区块**：est 总/输入/输出、覆盖请求；按天 × 模型明细表，固定标注 `est` 与误差范围
+- 顶部覆盖提示：Qoder token、活动、额度、估算各自的时间范围，并注明"不可相加"
 - 模型 Top 8 / 项目 Top 8，点击筛选、再点取消（列表不会被自身筛选折叠）
 - 快捷区间：今日 / 全部 / 近 7·30·90 天；日期选择上界为打开页面的当天（数据未产生也能选"今日"）
 - 来源 chip：单击只看该来源、再点恢复全部；⌘/Ctrl/Shift+单击多选
@@ -171,7 +198,7 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 1. 安装 launchd：`usage schedule install`（hourly sync / 00:15 full rescan / 00:20 prune）
 2. 计价（可选）：价格表目前为空，`cost_equiv_usd` 恒为 `unknown`——PROBE 证明本机 18/21 个模型是 free/别名，成本列价值低
 3. WorkBuddy collector（需先安装 WorkBuddy 采集样本）
-4. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon、额度轴
+4. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon；Qoder 估算系数用新样本定期校准
 
 > 完整快照随时可复现：`python3 scripts/probe.py`
 > 验收命令：`python3 -m unittest discover -s tests -t .`

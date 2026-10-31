@@ -71,7 +71,7 @@
 | Kilo（CLI+桌面） | `~/.local/share/kilo/kilo.db` | SQLite `message` 表，**与 OpenCode 同构** | ✅ | 低 | **P0**（复用同一 adapter） |
 | WorkBuddy | `~/.workbuddy/projects/**/*.jsonl`（5.5+ 在 `~/.workbuddy-ai/`） | JSONL（推测同 Claude，**待安装后核实**） | ✅ | 低（推测） | **P1** |
 | Cline | `~/.cline/data/sessions/**` | JSONL transcript | ✅ | 中 | P2（可选） |
-| **Qoder** | `~/.qoder/projects/**/*.jsonl` | 字段存在但 **6898 条实测全为 0**；`main.sqlite` 的 `chat_sessions` 只有 `model` 无 token 列 | ❌ 订阅套餐无真值 | — | **不采集**（见 §3.3） |
+| **Qoder** | IDE：`~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db`；桌面端：`~/Library/Application Support/com.qoder.app.stable/main.sqlite` | IDE `chat_message.token_info` 有真实历史 token（19,963 行，截至 2026-09-16）；桌面端 `chat_session_messages` 提供活动元数据 | ✅ 历史 token + ✅ 活动指标（不可相加） | 低 | **P0**（见 §3.3） |
 | **Trae CN** | `~/Library/Application Support/Trae CN/User/globalStorage/state.vscdb` | 仅 `credits.monthlyGranted` / `cn.fast_request.lock_map` 等额度键 | ❌ 无 token 字段 | — | **不采集 token**（额度见 §3.4） |
 | **ChatGPT 桌面 App** | 无 `com.openai.chat` 本地目录；`~/Library/Application Support/OpenAI` 下仅 Codex | — | ❌ | — | **不采集** |
 
@@ -86,11 +86,14 @@
 
 本方案 **v1 只做 A**。B 属于"另一个维度"（百分比不是 token），单独一张表、单独命令，不与 A 混排。
 
-### 3.3 关于 Qoder：明确不采集，但要在 `doctor` 里解释
+### 3.3 关于 Qoder：v0.4 起双轨采集（token + 活动）
 
-Qoder 的本地日志**有** `input_tokens/output_tokens/cache_read_input_tokens/cache_creation_input_tokens` 字段，但订阅套餐下**全部为 0**（实测 6898 行）。采集它只会得到一张全 0 的表，污染统计口径。
-→ 决策：不写入 token 台账；`usage doctor` 中显式标注 `qoder: tokens-not-reported (subscription)`，并在报告页脚提示"Qoder/Trae CN/ChatGPT 桌面端的消耗无法从本地获取，勿用本工具的总和推断你的总开销"。
-→ 例外：Qoder 的 **BYOK/自定义模型**会写真实 token，adapter 保留该判定逻辑（`tokens.total > 0` 才入库），未来若套餐放开也无需改代码。
+早期探针只看了 `~/.qoder/projects/**/*.jsonl`（订阅套餐全 0），因此 v1 决定不采集。v0.4 复核发现真实数据在别处：
+
+- **token 轴**：IDE 的 `local.db` → `chat_message.token_info` 有完整 `prompt_tokens/completion_tokens/cached_tokens`，共 19,963 行、2,700,982,026 tokens，覆盖 2026-06-01 ~ 2026-09-16；新版客户端已不再写入，属于**历史真值**。
+- **活动轴**：桌面端 `main.sqlite` → `chat_session_messages` 持续更新，可提取会话数、提示数、assistant 调用、`turnMetrics`（turns/时长）与工具调用数；**没有 token**。
+
+→ 决策：两条轴独立入库、独立命令展示，**不可相加、活动不参与成本**；`usage report` 在区间内无 Qoder token 但存在活动时显式提示。完整设计、DDL、增量游标与测试见 [QODER-DESIGN.md](QODER-DESIGN.md)。
 
 ### 3.4 关于 B 轴（额度）—— 作为 v2 备选，v1 不做
 
@@ -504,7 +507,7 @@ today: 41,204 tokens  (kilo 18,402 · opencode 22,802)  ≈ $0.061
 - **直读源、不落库**（不写 `usage_turn`），所以可以随时执行、零副作用
 - `--watch [secs]`：前台循环刷新（默认 2s，Ctrl-C 退出），仍不落库
 - 活跃判定：各源"最近一条记录的时间"在 N 分钟内（N 默认 10）→ 视为活跃 session
-- 只显示有 token 的源；Qoder/Trae CN/ChatGPT 不会出现在这里（无数据），并在页脚注明原因
+- 只显示有 token 的源；Qoder 仅在 token 覆盖区间内出现，Trae CN/ChatGPT 不会出现在这里（无数据），页脚注明原因与 Qoder 活动入口
 
 ---
 
@@ -693,9 +696,10 @@ usage report --daily --format json > /tmp/mine.json
 
 ### 12.3 端到端验收
 
-- 首次 `sync` 在本机跑通，DB 中 4 个源（Claude/Codex/OpenCode/Kilo）均有非零 token
+- 首次 `sync` 在本机跑通，DB 中 5 个源（Claude/Codex/OpenCode/Kilo/Qoder）均有非零 token；Qoder 为 IDE 历史库（截至 2026-09-16）
 - `report` 输出的总量与 `ccusage` 同日数值一致（±2%）
-- `doctor` 正确标出 Qoder/Trae CN/ChatGPT 为"无 token 数据"并说明原因
+- `doctor` 正确标出 Trae CN/ChatGPT 为"无 token 数据"，并同时输出 Qoder token 截止日与活动覆盖范围
+- `usage activity` 输出 Qoder 活动指标，与 token 报表分开展示且注明不可相加
 - launchd 任务触发后 1 分钟内 DB 更新
 - 重跑 `sync` 两次，DB 行数与总量不变（幂等）
 - **`backfill --since 2026-06-01` 能导入 Claude Code 的历史记录**（本机最早 2026-06-11），且连续跑两次结果不变
@@ -739,7 +743,7 @@ usage report --daily --format json > /tmp/mine.json
 | R4 | 桌面版与 CLI 双写导致重复计数 | 低 | 高 | 实测二者共用同一 DB（天然去重），验收时专项验证；若将来分库则加 `instance` 维度 |
 | R5 | 缓存 token 未单独计价导致成本高估 3–10 倍 | 中 | 高 | 计价器强制 cache_read/cache_write 独立价格；`pricing explain` 可解释 |
 | R6 | 订阅制下"等价成本"被误读为账单 | 高 | 中 | 字段命名为 `cost_equiv_usd`；报告页脚固定免责声明；预算告警文案措辞审慎 |
-| R7 | 用户期待"全平台"但 Qoder/Trae CN/ChatGPT 无数据 | **确定发生** | 中 | 需求阶段即已明示（§3.3）；`doctor` 与报告页脚持续提示；不产生"数据缺失"的误解 |
+| R7 | 用户期待"全平台"但 Trae CN/ChatGPT 无数据、Qoder 新版无 token | **确定发生** | 中 | 需求阶段即已明示（§3.3）；Qoder 提供历史 token + 活动双轨；`doctor` 与报告页脚持续提示，不产生"数据缺失"的误解 |
 | R8 | 定价表过期导致成本偏差 | 中 | 低 | 快照带版本日期；`usage pricing <model>` 显示匹配来源与价格生效时间；支持手动覆盖 |
 | R9 | 隐私顾虑（项目路径、session id） | 中 | 中 | `paths.mode` 可配置为 hash；不存正文；文档明示字段清单 |
 | R10 | DB 膨胀 | 低 | 低 | 90 天明细压缩；预计 < 30MB/年；提供 `prune` 与容量报告 |

@@ -34,7 +34,7 @@
 - Claude Code 的 `subagents/` transcript：**89 个文件**（分布在 2 个 subagents 目录），占 Claude 记录的一半量级 —— 必须递归扫。
 - Codex：50 个 `sessions/` + 18 个 `archived_sessions/`；`.jsonl.zst` **0 个**（v1 不必实现 zstd）。
 - OpenCode：`storage/message/` **不存在**（只有 `migration/`、`session_diff/`）→ 双存储去重当前不成立。
-- Qoder：6,898 条记录，4 个 token 字段**全部为 0**（复核通过）→ 仍不采集。
+- Qoder：`~/.qoder/projects/` 的 6,898 条记录 token 字段仍全为 0；但 v0.4 复核发现 IDE 的 `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db` 有真实历史 token（19,963 行、2,700,982,026 tokens，覆盖 2026-06-01 ~ 2026-09-16），桌面端 `main.sqlite` 提供持续更新的活动元数据 → 改为 token + 活动双轨采集，详见 [QODER-DESIGN.md](QODER-DESIGN.md)。
 - Cursor 生态清理作业仍在：`~/.cursor/projects/.agent-data-cleanup-2026-10-20`、`-2026-10-21`。
 
 ### 1.2 模型清单（source × model）

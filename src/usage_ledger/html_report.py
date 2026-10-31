@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from .models import FIELDS
+from .models import ACTIVITY_FIELDS, FIELDS
 
 PLACEHOLDER = "__USAGE_LEDGER_PAYLOAD__"
 
 
-def build_payload(rows, dims, since, until, notices, generated_at=None) -> dict:
+def build_payload(rows, dims, since, until, notices, generated_at=None,
+                  activity=None, coverage=None, credits=None, quota=None,
+                  est_rows=None, est_totals=None, factor_version=None) -> dict:
     payload_rows = []
     for row in rows:
         item = dict(zip(dims, row["dims"]))
@@ -19,10 +21,27 @@ def build_payload(rows, dims, since, until, notices, generated_at=None) -> dict:
         item["cost_equiv_usd"] = row["cost_equiv_usd"]
         item["cost_source"] = row["cost_source"]
         payload_rows.append(item)
+    activity_rows = []
+    for act in activity or []:
+        item = {"day": act.day, "source": "qoder", "project": act.project or "-"}
+        for field in ACTIVITY_FIELDS:
+            item[field] = getattr(act, field)
+        activity_rows.append(item)
+    credit_data = credits or {}
+    est_data = {"rows": list(est_rows or []), "totals": est_totals or {},
+                "factor_version": factor_version or ""}
     return {
         "generated_at": generated_at or datetime.now().astimezone().isoformat(timespec="seconds"),
         "range": {"since": since, "until": until},
         "rows": payload_rows,
+        "activity": activity_rows,
+        "credits": {
+            "days": list(credit_data.get("days") or []),
+            "totals": credit_data.get("totals") or {},
+            "quota": quota or {},
+        },
+        "est": est_data,
+        "coverage": coverage or {},
         "notices": list(notices),
     }
 
@@ -70,6 +89,7 @@ TEMPLATE = r"""<!doctype html>
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;padding:0}
 body{
   background:var(--bg);
@@ -115,6 +135,9 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .kpi-label{font-size:12px;color:var(--muted)}
 .kpi-value{font-size:clamp(20px,2.1vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coverage{margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
+.activity-kpis .kpi,.credit-kpis .kpi,.est-kpis .kpi{border-style:dashed}
+.section-tag{font-size:11px;font-weight:600;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:8px;vertical-align:2px}
 .grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.85fr);gap:16px}
 .chart-card{grid-column:1/-1}
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
@@ -126,12 +149,12 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .legend-dot{width:9px;height:9px;border-radius:3px;display:inline-block}
 .chart-wrap{position:relative;width:100%}
 #chart{width:100%;min-height:300px}
-#chart svg{display:block;width:100%;height:auto}
-#chart text{fill:var(--muted);font-size:11px;font-family:inherit}
-#chart .grid-line{stroke:var(--border);stroke-width:1;shape-rendering:crispEdges}
-#chart .seg{stroke:var(--surface);stroke-width:.6}
-#chart .hit{fill:transparent;cursor:crosshair}
-#chart .hover-line{stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:.45;pointer-events:none}
+.chart-wrap svg{display:block;width:100%;height:auto}
+.chart-wrap svg text{fill:var(--muted);font-size:11px;font-family:inherit}
+.chart-wrap .grid-line{stroke:var(--border);stroke-width:1;shape-rendering:crispEdges}
+.chart-wrap .seg{stroke:var(--surface);stroke-width:.6}
+.chart-wrap .hit{fill:transparent;cursor:crosshair}
+.chart-wrap .hover-line{stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:.45;pointer-events:none}
 .empty{display:grid;place-items:center;min-height:200px;color:var(--muted);font-size:13px}
 .tooltip{position:absolute;z-index:5;top:8px;left:0;transform:translateX(-50%);min-width:190px;max-width:280px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:9px 11px;pointer-events:none;display:none}
 .tt-head{font-size:12px;font-weight:650;margin-bottom:2px}
@@ -223,7 +246,88 @@ try {
     </div>
   </section>
 
+  <p id="coverage" class="coverage" hidden></p>
+
   <section class="kpis" id="kpis" aria-label="汇总指标"></section>
+
+  <section class="kpis activity-kpis" id="activity-kpis" aria-label="Qoder 活动指标" hidden></section>
+
+  <section class="card chart-card" id="activity-chart-card" hidden>
+    <div class="card-head">
+      <h2>Agent 活动（非 token）<span class="section-tag">Qoder</span></h2>
+      <label class="field">指标
+        <select id="activity-metric">
+          <option value="tool_calls">工具调用</option>
+          <option value="sessions">活跃会话</option>
+          <option value="prompts">提示数</option>
+          <option value="assistant_calls">assistant 调用</option>
+        </select>
+      </label>
+    </div>
+    <div class="legend" id="activity-legend"></div>
+    <div class="chart-wrap">
+      <div id="activity-chart"></div>
+      <div id="activity-tooltip" class="tooltip"></div>
+    </div>
+    <p class="muted" id="activity-hint" style="margin:8px 0 0"></p>
+  </section>
+
+  <section class="card table-card" id="activity-table-card" hidden>
+    <div class="card-head">
+      <h2>活动明细</h2>
+      <span class="muted" id="activity-rowinfo"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="activity-thead"></thead>
+        <tbody id="activity-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="kpis credit-kpis" id="credit-kpis" aria-label="Qoder 额度指标" hidden></section>
+
+  <section class="card chart-card" id="credit-chart-card" hidden>
+    <div class="card-head">
+      <h2>Qoder 配额消耗（credits，非 token）<span class="section-tag">Qoder</span></h2>
+      <span class="muted" id="credit-range"></span>
+    </div>
+    <div class="legend" id="credit-legend"></div>
+    <div class="chart-wrap">
+      <div id="credit-chart"></div>
+      <div id="credit-tooltip" class="tooltip"></div>
+    </div>
+    <p class="muted" id="credit-hint" style="margin:8px 0 0"></p>
+  </section>
+
+  <section class="card table-card" id="credit-table-card" hidden>
+    <div class="card-head">
+      <h2>额度明细</h2>
+      <span class="muted" id="credit-rowinfo"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="credit-thead"></thead>
+        <tbody id="credit-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="kpis est-kpis" id="est-kpis" aria-label="Qoder 估算 token" hidden></section>
+
+  <section class="card table-card" id="est-table-card" hidden>
+    <div class="card-head">
+      <h2>Qoder 估算 token（est，非真值）<span class="section-tag">Qoder</span></h2>
+      <span class="muted" id="est-rowinfo"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="est-thead"></thead>
+        <tbody id="est-tbody"></tbody>
+      </table>
+    </div>
+    <p class="muted" id="est-hint" style="margin:8px 0 0"></p>
+  </section>
 
   <section class="grid">
     <div class="card chart-card">
@@ -286,9 +390,15 @@ try {
   var DATA = JSON.parse(document.getElementById("data").textContent || "{}");
   var FIELDS = ["input", "output", "cache_read", "cache_write", "reasoning"];
   var FIELD_LABELS = { input: "输入", output: "输出", cache_read: "缓存读", cache_write: "缓存写", reasoning: "推理" };
-  var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed", kilo: "#10b981" };
+  var ACTIVITY_FIELDS = ["sessions", "prompts", "assistant_calls", "assistant_with_metrics",
+                         "turns", "tool_calls", "duration_ms"];
+  var ACTIVITY_LABELS = { sessions: "活跃会话", prompts: "提示数", assistant_calls: "assistant 调用",
+                          assistant_with_metrics: "带指标", turns: "turns",
+                          tool_calls: "工具调用", duration_ms: "运行时长" };
+  var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed",
+                       kilo: "#10b981", qoder: "#e11d48" };
   var PALETTE = ["#ef4444", "#f59e0b", "#14b8a6", "#6366f1"];
-  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo"];
+  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "qoder"];
   var numberFormat = new Intl.NumberFormat("en-US");
   var $ = function (selector) { return document.querySelector(selector); };
 
@@ -308,10 +418,52 @@ try {
     return copy;
   });
 
+  var ACTIVITY = (Array.isArray(DATA.activity) ? DATA.activity : []).map(function (row) {
+    var copy = {};
+    Object.keys(row).forEach(function (key) { copy[key] = row[key]; });
+    ACTIVITY_FIELDS.forEach(function (field) { copy[field] = number(row[field]); });
+    copy.project = row.project || "-";
+    return copy;
+  });
+
+  var CREDIT_DATA = DATA.credits || {};
+  var CREDITS = (Array.isArray(CREDIT_DATA.days) ? CREDIT_DATA.days : []).map(function (row) {
+    return {
+      day: row.day,
+      credits: number(row.credits),
+      requests: number(row.requests),
+      free_credits: number(row.free_credits),
+      snapshots: number(row.snapshots)
+    };
+  });
+  var CREDIT_TOTALS = CREDIT_DATA.totals || {};
+  var QUOTA = CREDIT_DATA.quota || {};
+
+  var EST_DATA = DATA.est || {};
+  var EST = (Array.isArray(EST_DATA.rows) ? EST_DATA.rows : []).map(function (row) {
+    return {
+      day: row.day,
+      model: row.model || "unknown",
+      est_input: number(row.est_input),
+      est_output: number(row.est_output),
+      requests: number(row.requests),
+      chars_in: number(row.chars_in),
+      chars_out: number(row.chars_out),
+      missing_ratio: number(row.missing_ratio)
+    };
+  });
+  var EST_TOTALS = EST_DATA.totals || {};
+  var EST_FACTOR = EST_DATA.factor_version || "v1";
+  var COVERAGE = DATA.coverage || {};
+
   var PRESENT = [];
   ROWS.forEach(function (row) {
     if (PRESENT.indexOf(row.source) < 0) PRESENT.push(row.source);
   });
+  ACTIVITY.forEach(function (row) {
+    if (PRESENT.indexOf(row.source) < 0) PRESENT.push(row.source);
+  });
+  if ((CREDITS.length || EST.length) && PRESENT.indexOf("qoder") < 0) PRESENT.push("qoder");
   var SOURCES = KNOWN_ORDER.filter(function (name) { return PRESENT.indexOf(name) >= 0; })
     .concat(PRESENT.filter(function (name) { return KNOWN_ORDER.indexOf(name) < 0; }).sort());
   var COLORS = {};
@@ -328,11 +480,32 @@ try {
     return [min, max];
   }
 
-  var bounds = minMaxDay(ROWS);
+  function earliestDay(a, b) {
+    if (!a) return b || "";
+    if (!b) return a;
+    return a < b ? a : b;
+  }
+
+  function latestDay(a, b) {
+    if (!a) return b || "";
+    if (!b) return a;
+    return a > b ? a : b;
+  }
+
+  var tokenBounds = minMaxDay(ROWS);
+  var activityBounds = minMaxDay(ACTIVITY);
+  var creditBounds = minMaxDay(CREDITS);
+  var estBounds = minMaxDay(EST);
   var RANGE = DATA.range || {};
-  var DATA_SINCE = RANGE.since || bounds[0] || "";
-  var DATA_UNTIL = RANGE.until || bounds[1] || "";
+  var DATA_SINCE = RANGE.since || earliestDay(
+    earliestDay(tokenBounds[0], activityBounds[0]),
+    earliestDay(creditBounds[0], estBounds[0]));
+  var DATA_UNTIL = RANGE.until || latestDay(
+    latestDay(tokenBounds[1], activityBounds[1]),
+    latestDay(creditBounds[1], estBounds[1]));
   var DATA_DAYS = new Set(ROWS.map(function (row) { return row.day; }));
+  CREDITS.forEach(function (row) { DATA_DAYS.add(row.day); });
+  EST.forEach(function (row) { DATA_DAYS.add(row.day); });
   var TODAY = localToday();
   var PICK_MAX = DATA_UNTIL > TODAY ? DATA_UNTIL : TODAY;
 
@@ -344,6 +517,7 @@ try {
     project: "",
     q: "",
     metric: "total",
+    activityMetric: "tool_calls",
     sortKey: "day",
     sortDir: "desc",
     page: 0,
@@ -357,6 +531,21 @@ try {
     tooltip: $("#tooltip"), hint: $("#hint"), models: $("#models"), projects: $("#projects"),
     thead: $("#thead"), tbody: $("#tbody"), rowinfo: $("#rowinfo"),
     pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
+    coverage: $("#coverage"), activityKpis: $("#activity-kpis"),
+    activityChart: $("#activity-chart"), activityChartCard: $("#activity-chart-card"),
+    activityLegend: $("#activity-legend"), activityMetric: $("#activity-metric"),
+    activityTooltip: $("#activity-tooltip"), activityHint: $("#activity-hint"),
+    activityTableCard: $("#activity-table-card"), activityThead: $("#activity-thead"),
+    activityTbody: $("#activity-tbody"), activityRowinfo: $("#activity-rowinfo"),
+    creditKpis: $("#credit-kpis"), creditChartCard: $("#credit-chart-card"),
+    creditChart: $("#credit-chart"), creditLegend: $("#credit-legend"),
+    creditTooltip: $("#credit-tooltip"), creditHint: $("#credit-hint"),
+    creditRange: $("#credit-range"), creditTableCard: $("#credit-table-card"),
+    creditThead: $("#credit-thead"), creditTbody: $("#credit-tbody"),
+    creditRowinfo: $("#credit-rowinfo"),
+    estKpis: $("#est-kpis"), estTableCard: $("#est-table-card"),
+    estThead: $("#est-thead"), estTbody: $("#est-tbody"),
+    estRowinfo: $("#est-rowinfo"), estHint: $("#est-hint"),
     generated: $("#generated"), footer: $("#footer"), theme: $("#theme")
   };
 
@@ -385,6 +574,56 @@ try {
   function fmtCost(value) {
     if (value === null || value === undefined) return "—";
     return "$" + number(value).toFixed(4);
+  }
+
+  function fmtDuration(ms) {
+    var seconds = Math.round(number(ms) / 1000);
+    if (seconds >= 3600) {
+      var minutes = Math.round((seconds % 3600) / 60);
+      return Math.floor(seconds / 3600) + "h " + pad2(minutes) + "m";
+    }
+    if (seconds >= 60) return Math.floor(seconds / 60) + "m " + pad2(seconds % 60) + "s";
+    return seconds + "s";
+  }
+
+  function emptyActivityTotals() {
+    var totals = {};
+    ACTIVITY_FIELDS.forEach(function (field) { totals[field] = 0; });
+    return totals;
+  }
+
+  function hasCoverage() {
+    var qoder = COVERAGE && COVERAGE.qoder;
+    return !!((qoder && (qoder.token_since || qoder.activity_since)) ||
+      CREDITS.length || EST.length);
+  }
+
+  function renderCoverage() {
+    var qoder = (COVERAGE && COVERAGE.qoder) || {};
+    if (!hasCoverage()) {
+      el.coverage.hidden = true;
+      return;
+    }
+    var parts = [];
+    if (qoder.token_since) {
+      parts.push("token " + qoder.token_since + " ~ " + qoder.token_until);
+    } else {
+      parts.push("本地无 token 真值");
+    }
+    if (qoder.activity_since) {
+      parts.push("活动 " + qoder.activity_since + " ~ " + qoder.activity_until);
+    }
+    if (creditBounds[0]) {
+      parts.push("额度 " + creditBounds[0] + " ~ " + creditBounds[1]);
+    }
+    if (estBounds[0]) {
+      parts.push("估算 " + estBounds[0] + " ~ " + estBounds[1]);
+    }
+    var text = "Qoder 覆盖：" + parts.join(" · ") +
+      " —— 活动 / 额度 / 估算与 token 口径不同，不可相加";
+    if (qoder.token_until) text += "；" + qoder.token_until + " 之后本地无 token 数据";
+    el.coverage.textContent = text;
+    el.coverage.hidden = false;
   }
 
   function fmtDateTime(iso) {
@@ -585,6 +824,13 @@ try {
       renderChart(filteredRows());
     });
 
+    if (el.activityMetric) {
+      el.activityMetric.addEventListener("change", function () {
+        state.activityMetric = el.activityMetric.value;
+        renderActivity();
+      });
+    }
+
     el.reset.addEventListener("click", resetFilters);
     el.prev.addEventListener("click", function () {
       if (state.page > 0) { state.page -= 1; render(); }
@@ -647,7 +893,47 @@ try {
     });
   }
 
-  function addKpi(label, value, sub, primary) {
+  function filteredActivity() {
+    if (!ACTIVITY.length || !state.sources.has("qoder")) return [];
+    return ACTIVITY.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (state.project && row.project !== state.project) return false;
+      if (state.q) {
+        var haystack = (row.day + " qoder " + row.project).toLowerCase();
+        if (haystack.indexOf(state.q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function filteredCredits() {
+    if (!CREDITS.length || !state.sources.has("qoder")) return [];
+    return CREDITS.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (state.q) {
+        var haystack = (row.day + " qoder credits").toLowerCase();
+        if (haystack.indexOf(state.q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function filteredEstimates() {
+    if (!EST.length || !state.sources.has("qoder")) return [];
+    return EST.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (state.q) {
+        var haystack = (row.day + " " + row.model + " qoder est").toLowerCase();
+        if (haystack.indexOf(state.q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function addKpiTo(host, label, value, sub, primary) {
     var card = document.createElement("div");
     card.className = "kpi" + (primary ? " primary" : "");
     var labelNode = document.createElement("div");
@@ -663,7 +949,11 @@ try {
     card.appendChild(labelNode);
     card.appendChild(valueNode);
     card.appendChild(subNode);
-    el.kpis.appendChild(card);
+    host.appendChild(card);
+  }
+
+  function addKpi(label, value, sub, primary) {
+    addKpiTo(el.kpis, label, value, sub, primary);
   }
 
   function renderKpis(rows) {
@@ -690,6 +980,642 @@ try {
     addKpi("缓存占比", total ? pct(sums.cache_read / total) : "—", "cache_read / 总量");
     addKpi("轮次", fmtCompact(turns), fmtInt(turns));
     if (costKnown) addKpi("等价成本", "$" + cost.toFixed(2), "按 API 价折算，非实付");
+  }
+
+  function renderActivity() {
+    var rows = filteredActivity();
+    var visible = rows.length > 0;
+    el.activityKpis.hidden = !visible;
+    el.activityChartCard.hidden = !visible;
+    el.activityTableCard.hidden = !visible;
+    if (!visible) return;
+
+    var totals = emptyActivityTotals();
+    rows.forEach(function (row) {
+      ACTIVITY_FIELDS.forEach(function (field) { totals[field] += number(row[field]); });
+    });
+    el.activityKpis.textContent = "";
+    addKpiTo(el.activityKpis, "活跃会话", fmtCompact(totals.sessions),
+      "按天去重求和（会话·天）", true);
+    addKpiTo(el.activityKpis, "提示数", fmtCompact(totals.prompts), fmtInt(totals.prompts));
+    addKpiTo(el.activityKpis, "assistant 调用", fmtCompact(totals.assistant_calls),
+      "turnMetrics 覆盖 " + (totals.assistant_calls
+        ? pct(totals.assistant_with_metrics / totals.assistant_calls) : "—"));
+    addKpiTo(el.activityKpis, "工具调用", fmtCompact(totals.tool_calls),
+      fmtInt(totals.tool_calls));
+    addKpiTo(el.activityKpis, "运行时长", fmtDuration(totals.duration_ms),
+      "agent 运行时长（含工具）");
+    renderActivityChart(rows);
+    renderActivityTable(rows);
+  }
+
+  function renderActivityChart(rows) {
+    el.activityChart.textContent = "";
+    el.activityTooltip.style.display = "none";
+    var byDay = new Map();
+    rows.forEach(function (row) {
+      if (!byDay.has(row.day)) byDay.set(row.day, emptyActivityTotals());
+      var bucket = byDay.get(row.day);
+      ACTIVITY_FIELDS.forEach(function (field) { bucket[field] += number(row[field]); });
+    });
+    var days = Array.from(byDay.keys()).sort();
+    el.activityLegend.textContent = "";
+    if (!days.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "所选范围内没有活动数据";
+      el.activityChart.appendChild(empty);
+      return;
+    }
+
+    var metric = state.activityMetric;
+    var width = Math.max(el.activityChart.clientWidth || 900, 320);
+    var height = 240;
+    var margin = { top: 14, right: 14, bottom: 28, left: 62 };
+    var plotW = Math.max(width - margin.left - margin.right, 10);
+    var plotH = height - margin.top - margin.bottom;
+    var maximum = days.reduce(function (acc, day) {
+      return Math.max(acc, byDay.get(day)[metric]);
+    }, 0);
+    var scale = niceScale(maximum, 4);
+    var svg = svgEl("svg", {
+      viewBox: "0 0 " + width + " " + height,
+      role: "img",
+      "aria-label": "Qoder 每日活动（非 token）"
+    });
+
+    scale.ticks.forEach(function (value) {
+      var y = margin.top + plotH - (value / scale.max) * plotH;
+      svg.appendChild(svgEl("line", {
+        x1: margin.left, x2: width - margin.right, y1: y, y2: y, class: "grid-line"
+      }));
+      var text = svgEl("text", {
+        x: margin.left - 8, y: y + 3.5, "text-anchor": "end"
+      });
+      text.textContent = fmtCompact(value);
+      svg.appendChild(text);
+    });
+
+    var band = plotW / days.length;
+    var barW = Math.max(1.5, Math.min(26, band * 0.66));
+    var color = COLORS.qoder || "#e11d48";
+    var hoverLine = svgEl("line", {
+      x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
+    });
+
+    function showTooltip(day, event) {
+      var bucket = byDay.get(day);
+      var tip = el.activityTooltip;
+      tip.textContent = "";
+      var head = document.createElement("div");
+      head.className = "tt-head";
+      head.textContent = day;
+      tip.appendChild(head);
+      var meta = document.createElement("div");
+      meta.className = "tt-meta";
+      meta.textContent = "Qoder 活动（非 token）";
+      tip.appendChild(meta);
+      ACTIVITY_FIELDS.forEach(function (field) {
+        var row = document.createElement("div");
+        row.className = "tt-row";
+        var name = document.createElement("span");
+        name.className = "tt-name";
+        name.textContent = ACTIVITY_LABELS[field];
+        var value = document.createElement("span");
+        value.className = "tt-val";
+        value.textContent = field === "duration_ms"
+          ? fmtDuration(bucket[field]) : fmtInt(bucket[field]);
+        row.appendChild(name);
+        row.appendChild(value);
+        tip.appendChild(row);
+      });
+      tip.style.display = "block";
+      positionTooltip(event);
+    }
+
+    function positionTooltip(event) {
+      var rect = el.activityChart.parentElement.getBoundingClientRect();
+      var x = event.clientX - rect.left;
+      var half = 110;
+      x = Math.max(half, Math.min(x, rect.width - half));
+      el.activityTooltip.style.left = x + "px";
+    }
+
+    days.forEach(function (day, index) {
+      var value = byDay.get(day)[metric];
+      var x = margin.left + band * index + (band - barW) / 2;
+      var slice = (value / scale.max) * plotH;
+      if (slice > 0) {
+        svg.appendChild(svgEl("rect", {
+          x: x, y: margin.top + plotH - slice, width: barW, height: slice,
+          fill: color, class: "seg", rx: barW > 4 ? 1.5 : 0
+        }));
+      }
+      var hit = svgEl("rect", {
+        x: margin.left + band * index, y: margin.top,
+        width: Math.max(band, 1), height: plotH, class: "hit"
+      });
+      hit.addEventListener("mouseenter", function (event) {
+        var center = margin.left + band * index + band / 2;
+        hoverLine.setAttribute("x1", center);
+        hoverLine.setAttribute("x2", center);
+        showTooltip(day, event);
+      });
+      hit.addEventListener("mousemove", positionTooltip);
+      hit.addEventListener("mouseleave", function () {
+        hoverLine.setAttribute("x1", 0);
+        hoverLine.setAttribute("x2", 0);
+        el.activityTooltip.style.display = "none";
+      });
+      svg.appendChild(hit);
+    });
+    svg.appendChild(hoverLine);
+
+    var labelCount = Math.min(days.length, Math.max(2, Math.floor(plotW / 90)));
+    var step = labelCount <= 1 ? 1 : (days.length - 1) / (labelCount - 1);
+    var used = new Set();
+    for (var k = 0; k < labelCount; k += 1) {
+      var index = Math.round(k * step);
+      if (used.has(index)) continue;
+      used.add(index);
+      var label = svgEl("text", {
+        x: margin.left + band * index + band / 2,
+        y: height - 8,
+        "text-anchor": "middle"
+      });
+      label.textContent = days[index].slice(5);
+      svg.appendChild(label);
+    }
+    el.activityChart.appendChild(svg);
+
+    var metricTotal = days.reduce(function (acc, day) {
+      return acc + byDay.get(day)[metric];
+    }, 0);
+    var item = document.createElement("span");
+    item.className = "legend-item";
+    var dot = document.createElement("i");
+    dot.className = "legend-dot";
+    dot.style.background = color;
+    var name = document.createElement("span");
+    name.textContent = "Qoder · " + ACTIVITY_LABELS[metric];
+    var amount = document.createElement("b");
+    amount.textContent = fmtCompact(metricTotal);
+    item.appendChild(dot);
+    item.appendChild(name);
+    item.appendChild(amount);
+    el.activityLegend.appendChild(item);
+
+    var withMetrics = days.reduce(function (acc, day) {
+      return acc + byDay.get(day).assistant_with_metrics;
+    }, 0);
+    var assistant = days.reduce(function (acc, day) {
+      return acc + byDay.get(day).assistant_calls;
+    }, 0);
+    el.activityHint.textContent = "活动指标与 token 不可相加 · turnMetrics 覆盖 " +
+      (assistant ? pct(withMetrics / assistant) : "—") +
+      "；未带 metrics 的 assistant 其 turns/时长为 0，不代表没使用";
+  }
+
+  var ACTIVITY_COLUMNS = [
+    { key: "day", label: "日期", type: "text" },
+    { key: "project", label: "项目", type: "text" },
+    { key: "sessions", label: "会话·天", type: "num" },
+    { key: "prompts", label: "提示", type: "num" },
+    { key: "assistant_calls", label: "assistant", type: "num" },
+    { key: "assistant_with_metrics", label: "带指标", type: "num" },
+    { key: "turns", label: "turns", type: "num" },
+    { key: "tool_calls", label: "工具调用", type: "num" },
+    { key: "duration_ms", label: "运行时长", type: "num" }
+  ];
+
+  function renderActivityTable(rows) {
+    var sorted = rows.slice().sort(function (a, b) {
+      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+      return String(a.project).localeCompare(String(b.project), "zh-CN");
+    });
+    el.activityThead.textContent = "";
+    var headerRow = document.createElement("tr");
+    ACTIVITY_COLUMNS.forEach(function (column) {
+      var th = document.createElement("th");
+      if (column.type === "num") th.className = "num";
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "th-btn";
+      button.appendChild(document.createTextNode(column.label));
+      th.appendChild(button);
+      headerRow.appendChild(th);
+    });
+    el.activityThead.appendChild(headerRow);
+
+    el.activityTbody.textContent = "";
+    var toolTotal = 0;
+    sorted.forEach(function (row) {
+      var tr = document.createElement("tr");
+      toolTotal += row.tool_calls;
+      ACTIVITY_COLUMNS.forEach(function (column) {
+        var td = document.createElement("td");
+        var value = row[column.key];
+        if (column.type === "num") td.className = "num";
+        if (column.key === "project") {
+          td.textContent = value === "-" ? "（未标注）" : value;
+          td.title = value;
+        } else if (column.key === "duration_ms") {
+          td.textContent = fmtDuration(value);
+          if (!number(value)) td.classList.add("zero");
+        } else if (column.type === "num") {
+          td.textContent = fmtInt(value);
+          if (!number(value)) td.classList.add("zero");
+        } else {
+          td.textContent = value;
+        }
+        tr.appendChild(td);
+      });
+      el.activityTbody.appendChild(tr);
+    });
+    el.activityRowinfo.textContent = fmtInt(sorted.length) + " 行 · 工具调用 " +
+      fmtInt(toolTotal) + " · 会话按天去重";
+  }
+
+  function fmtCredits(value) {
+    return number(value).toFixed(2);
+  }
+
+  var CREDIT_BILLABLE_COLOR = "#e11d48";
+  var CREDIT_FREE_COLOR = "#f59e0b";
+
+  function quotaSummary() {
+    var addOn = QUOTA.add_on;
+    if (addOn && (number(addOn.total) > 0 || number(addOn.remaining) > 0)) return addOn;
+    return QUOTA.user || addOn || null;
+  }
+
+  function renderCredits() {
+    var rows = filteredCredits();
+    var visible = rows.length > 0;
+    el.creditKpis.hidden = !visible;
+    el.creditChartCard.hidden = !visible;
+    el.creditTableCard.hidden = !visible;
+    if (!visible) return;
+
+    var billable = 0;
+    var free = 0;
+    var requests = 0;
+    rows.forEach(function (row) {
+      billable += row.credits;
+      free += row.free_credits;
+      requests += row.requests;
+    });
+    var todayRow = null;
+    var monthCredits = 0;
+    var monthPrefix = TODAY.slice(0, 7);
+    rows.forEach(function (row) {
+      if (row.day === TODAY) todayRow = row;
+      if (row.day.slice(0, 7) === monthPrefix) monthCredits += row.credits;
+    });
+    var quota = quotaSummary();
+
+    el.creditKpis.textContent = "";
+    addKpiTo(el.creditKpis, "区间 billable", fmtCredits(billable),
+      fmtInt(requests) + " 请求 · 服务端计费真值", true);
+    addKpiTo(el.creditKpis, "今日", todayRow ? fmtCredits(todayRow.credits) : "—",
+      todayRow ? fmtInt(todayRow.requests) + " 请求" : "今日无记录");
+    addKpiTo(el.creditKpis, "本月", fmtCredits(monthCredits), monthPrefix);
+    addKpiTo(el.creditKpis, "免费 credits", fmtCredits(free), "不计入配额");
+    if (quota) {
+      var pctText = typeof quota.pct === "number" ? pct(quota.pct) : "—";
+      addKpiTo(el.creditKpis, "当前余额", fmtCredits(quota.remaining),
+        "used " + fmtCredits(quota.used) + " / " + fmtCredits(quota.total) +
+        " · " + pctText + " · 快照 " + quota.day);
+    } else {
+      addKpiTo(el.creditKpis, "当前余额", "—", "本地日志无额度快照");
+    }
+    el.creditRange.textContent = "区间合计 " + fmtCredits(billable) + " credits";
+    renderCreditChart(rows);
+    renderCreditTable(rows);
+  }
+
+  function renderCreditChart(rows) {
+    el.creditChart.textContent = "";
+    el.creditTooltip.style.display = "none";
+    el.creditLegend.textContent = "";
+    if (!rows.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "所选范围内没有额度数据";
+      el.creditChart.appendChild(empty);
+      return;
+    }
+
+    var width = Math.max(el.creditChart.clientWidth || 900, 320);
+    var height = 230;
+    var margin = { top: 14, right: 14, bottom: 28, left: 62 };
+    var plotW = Math.max(width - margin.left - margin.right, 10);
+    var plotH = height - margin.top - margin.bottom;
+    var maximum = rows.reduce(function (acc, row) {
+      return Math.max(acc, row.credits + row.free_credits);
+    }, 0);
+    var scale = niceScale(maximum, 4);
+    var svg = svgEl("svg", {
+      viewBox: "0 0 " + width + " " + height,
+      role: "img",
+      "aria-label": "Qoder 每日配额消耗（credits）"
+    });
+
+    scale.ticks.forEach(function (value) {
+      var y = margin.top + plotH - (value / scale.max) * plotH;
+      svg.appendChild(svgEl("line", {
+        x1: margin.left, x2: width - margin.right, y1: y, y2: y, class: "grid-line"
+      }));
+      var text = svgEl("text", {
+        x: margin.left - 8, y: y + 3.5, "text-anchor": "end"
+      });
+      text.textContent = fmtCompact(value);
+      svg.appendChild(text);
+    });
+
+    var band = plotW / rows.length;
+    var barW = Math.max(1.5, Math.min(26, band * 0.66));
+    var hoverLine = svgEl("line", {
+      x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
+    });
+
+    function showTooltip(row, event) {
+      var tip = el.creditTooltip;
+      tip.textContent = "";
+      var head = document.createElement("div");
+      head.className = "tt-head";
+      head.textContent = row.day;
+      tip.appendChild(head);
+      var meta = document.createElement("div");
+      meta.className = "tt-meta";
+      meta.textContent = "Qoder 配额（credits，非 token）";
+      tip.appendChild(meta);
+      [["billable", row.credits], ["免费", row.free_credits]].forEach(function (pair) {
+        var line = document.createElement("div");
+        line.className = "tt-row";
+        var name = document.createElement("span");
+        name.className = "tt-name";
+        var dot = document.createElement("i");
+        dot.style.background = pair[0] === "billable" ? CREDIT_BILLABLE_COLOR : CREDIT_FREE_COLOR;
+        name.appendChild(dot);
+        name.appendChild(document.createTextNode(pair[0]));
+        var value = document.createElement("span");
+        value.className = "tt-val";
+        value.textContent = fmtCredits(pair[1]);
+        line.appendChild(name);
+        line.appendChild(value);
+        tip.appendChild(line);
+      });
+      var total = document.createElement("div");
+      total.className = "tt-row tt-total";
+      var totalName = document.createElement("span");
+      totalName.className = "tt-name";
+      totalName.textContent = "合计";
+      var totalValue = document.createElement("span");
+      totalValue.className = "tt-val";
+      totalValue.textContent = fmtCredits(row.credits + row.free_credits);
+      total.appendChild(totalName);
+      total.appendChild(totalValue);
+      tip.appendChild(total);
+      var meta2 = document.createElement("div");
+      meta2.className = "tt-meta";
+      meta2.style.margin = "5px 0 0";
+      meta2.textContent = fmtInt(row.requests) + " 请求 · " +
+        fmtInt(row.snapshots) + " 次额度快照";
+      tip.appendChild(meta2);
+      tip.style.display = "block";
+      positionTooltip(event);
+    }
+
+    function positionTooltip(event) {
+      var rect = el.creditChart.parentElement.getBoundingClientRect();
+      var x = event.clientX - rect.left;
+      var half = 110;
+      x = Math.max(half, Math.min(x, rect.width - half));
+      el.creditTooltip.style.left = x + "px";
+    }
+
+    rows.forEach(function (row, index) {
+      var x = margin.left + band * index + (band - barW) / 2;
+      var baseY = margin.top + plotH;
+      var freeH = (row.free_credits / scale.max) * plotH;
+      var billableH = (row.credits / scale.max) * plotH;
+      if (freeH > 0) {
+        svg.appendChild(svgEl("rect", {
+          x: x, y: baseY - freeH, width: barW, height: freeH,
+          fill: CREDIT_FREE_COLOR, class: "seg", rx: barW > 4 ? 1.5 : 0
+        }));
+      }
+      if (billableH > 0) {
+        svg.appendChild(svgEl("rect", {
+          x: x, y: baseY - freeH - billableH, width: barW, height: billableH,
+          fill: CREDIT_BILLABLE_COLOR, class: "seg", rx: barW > 4 ? 1.5 : 0
+        }));
+      }
+      var hit = svgEl("rect", {
+        x: margin.left + band * index, y: margin.top,
+        width: Math.max(band, 1), height: plotH, class: "hit"
+      });
+      hit.addEventListener("mouseenter", function (event) {
+        var center = margin.left + band * index + band / 2;
+        hoverLine.setAttribute("x1", center);
+        hoverLine.setAttribute("x2", center);
+        showTooltip(row, event);
+      });
+      hit.addEventListener("mousemove", positionTooltip);
+      hit.addEventListener("mouseleave", function () {
+        hoverLine.setAttribute("x1", 0);
+        hoverLine.setAttribute("x2", 0);
+        el.creditTooltip.style.display = "none";
+      });
+      svg.appendChild(hit);
+    });
+    svg.appendChild(hoverLine);
+
+    var labelCount = Math.min(rows.length, Math.max(2, Math.floor(plotW / 90)));
+    var step = labelCount <= 1 ? 1 : (rows.length - 1) / (labelCount - 1);
+    var used = new Set();
+    for (var k = 0; k < labelCount; k += 1) {
+      var index = Math.round(k * step);
+      if (used.has(index)) continue;
+      used.add(index);
+      var label = svgEl("text", {
+        x: margin.left + band * index + band / 2,
+        y: height - 8,
+        "text-anchor": "middle"
+      });
+      label.textContent = rows[index].day.slice(5);
+      svg.appendChild(label);
+    }
+    el.creditChart.appendChild(svg);
+
+    var billableTotal = rows.reduce(function (acc, row) { return acc + row.credits; }, 0);
+    var freeTotal = rows.reduce(function (acc, row) { return acc + row.free_credits; }, 0);
+    [
+      ["billable（计入配额）", billableTotal, CREDIT_BILLABLE_COLOR],
+      ["免费（不计配额）", freeTotal, CREDIT_FREE_COLOR]
+    ].forEach(function (pair) {
+      var item = document.createElement("span");
+      item.className = "legend-item";
+      var dot = document.createElement("i");
+      dot.className = "legend-dot";
+      dot.style.background = pair[2];
+      var name = document.createElement("span");
+      name.textContent = pair[0];
+      var amount = document.createElement("b");
+      amount.textContent = fmtCredits(pair[1]);
+      item.appendChild(dot);
+      item.appendChild(name);
+      item.appendChild(amount);
+      el.creditLegend.appendChild(item);
+    });
+
+    el.creditHint.textContent = "credits 为服务端每请求计费真值（billable）；余额来自本地日志快照；" +
+      "非 token、不可与 token 或估算相加。额度按天汇总，不受模型/项目筛选影响。";
+  }
+
+  var CREDIT_COLUMNS = [
+    { key: "day", label: "日期", type: "text" },
+    { key: "credits", label: "billable", type: "num" },
+    { key: "requests", label: "请求", type: "num" },
+    { key: "free_credits", label: "免费", type: "num" },
+    { key: "snapshots", label: "快照", type: "num" }
+  ];
+
+  function renderCreditTable(rows) {
+    var sorted = rows.slice().sort(function (a, b) {
+      return a.day < b.day ? 1 : a.day > b.day ? -1 : 0;
+    });
+    el.creditThead.textContent = "";
+    var headerRow = document.createElement("tr");
+    CREDIT_COLUMNS.forEach(function (column) {
+      var th = document.createElement("th");
+      if (column.type === "num") th.className = "num";
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "th-btn";
+      button.appendChild(document.createTextNode(column.label));
+      th.appendChild(button);
+      headerRow.appendChild(th);
+    });
+    el.creditThead.appendChild(headerRow);
+
+    el.creditTbody.textContent = "";
+    var billable = 0;
+    var free = 0;
+    var requests = 0;
+    sorted.forEach(function (row) {
+      billable += row.credits;
+      free += row.free_credits;
+      requests += row.requests;
+      var tr = document.createElement("tr");
+      CREDIT_COLUMNS.forEach(function (column) {
+        var td = document.createElement("td");
+        if (column.type === "num") td.className = "num";
+        if (column.type === "num") {
+          td.textContent = fmtCredits(row[column.key]);
+          if (column.key === "requests" || column.key === "snapshots") {
+            td.textContent = fmtInt(row[column.key]);
+          }
+          if (!number(row[column.key])) td.classList.add("zero");
+        } else {
+          td.textContent = row[column.key];
+        }
+        tr.appendChild(td);
+      });
+      el.creditTbody.appendChild(tr);
+    });
+    el.creditRowinfo.textContent = fmtInt(sorted.length) + " 天 · billable " +
+      fmtCredits(billable) + " · 免费 " + fmtCredits(free) + " · " + fmtInt(requests) + " 请求";
+  }
+
+  function renderEstimates() {
+    var rows = filteredEstimates();
+    var visible = rows.length > 0;
+    el.estKpis.hidden = !visible;
+    el.estTableCard.hidden = !visible;
+    if (!visible) return;
+
+    var input = 0;
+    var output = 0;
+    var requests = 0;
+    var missing = 0;
+    var models = new Set();
+    rows.forEach(function (row) {
+      input += row.est_input;
+      output += row.est_output;
+      requests += row.requests;
+      missing += row.missing_ratio;
+      models.add(row.model);
+    });
+
+    el.estKpis.textContent = "";
+    addKpiTo(el.estKpis, "est 总 Token", fmtCompact(input + output),
+      fmtInt(input + output), true);
+    addKpiTo(el.estKpis, "est 输入", fmtCompact(input), "context_usage_ratio × 200K");
+    addKpiTo(el.estKpis, "est 输出", fmtCompact(output), "字符数 ÷ 模型系数");
+    addKpiTo(el.estKpis, "覆盖请求", fmtCompact(requests),
+      "ratio 缺失 " + fmtInt(missing) + " · 模型 " + fmtInt(models.size));
+    renderEstTable(rows);
+  }
+
+  var EST_COLUMNS = [
+    { key: "day", label: "日期", type: "text" },
+    { key: "model", label: "模型", type: "text" },
+    { key: "est_input", label: "est 输入", type: "num" },
+    { key: "est_output", label: "est 输出", type: "num" },
+    { key: "requests", label: "请求", type: "num" },
+    { key: "missing_ratio", label: "ratio 缺失", type: "num" }
+  ];
+
+  function renderEstTable(rows) {
+    var sorted = rows.slice().sort(function (a, b) {
+      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+      return String(a.model).localeCompare(String(b.model), "zh-CN");
+    });
+    el.estThead.textContent = "";
+    var headerRow = document.createElement("tr");
+    EST_COLUMNS.forEach(function (column) {
+      var th = document.createElement("th");
+      if (column.type === "num") th.className = "num";
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "th-btn";
+      button.appendChild(document.createTextNode(column.label));
+      th.appendChild(button);
+      headerRow.appendChild(th);
+    });
+    el.estThead.appendChild(headerRow);
+
+    el.estTbody.textContent = "";
+    var input = 0;
+    var output = 0;
+    var requests = 0;
+    sorted.forEach(function (row) {
+      input += row.est_input;
+      output += row.est_output;
+      requests += row.requests;
+      var tr = document.createElement("tr");
+      EST_COLUMNS.forEach(function (column) {
+        var td = document.createElement("td");
+        if (column.type === "num") td.className = "num";
+        if (column.type === "num") {
+          td.textContent = fmtInt(row[column.key]);
+          if (!number(row[column.key])) td.classList.add("zero");
+        } else if (column.key === "model") {
+          td.textContent = row.model;
+          td.title = row.model;
+        } else {
+          td.textContent = row[column.key];
+        }
+        tr.appendChild(td);
+      });
+      el.estTbody.appendChild(tr);
+    });
+    el.estRowinfo.textContent = fmtInt(sorted.length) + " 行 · est 总 Token " +
+      fmtInt(input + output) + " · " + fmtInt(requests) + " 请求";
+    el.estHint.textContent = "由转录文本 + context_usage_ratio × 200K 估算（系数 " + EST_FACTOR +
+      "）；±30~40% 误差，仅覆盖新客户端转录；不可与 token 真值或额度相加。";
   }
 
   function metricOf(values) {
@@ -1175,9 +2101,30 @@ try {
       line.textContent = notice;
       el.footer.appendChild(line);
     });
+    if (ACTIVITY.length) {
+      var note = document.createElement("p");
+      note.textContent = "Qoder Agent 活动指标与 token 口径不同，不可相加；活动数据不参与等价成本计算。";
+      el.footer.appendChild(note);
+    }
+    if (CREDITS.length) {
+      var creditNote = document.createElement("p");
+      creditNote.textContent = "Qoder credits 为服务端每请求计费真值；免费 credits 不计配额；" +
+        "余额来自本地日志快照；非 token、不可与 token 相加。";
+      el.footer.appendChild(creditNote);
+    }
+    if (EST.length) {
+      var estNote = document.createElement("p");
+      estNote.textContent = "Qoder 估算 token 由转录文本与上下文比例推算（" + EST_FACTOR +
+        "，±30~40% 误差），不可与 token 真值或额度相加。";
+      el.footer.appendChild(estNote);
+    }
     var scope = document.createElement("p");
     scope.textContent = "数据范围 " + (DATA_SINCE || "—") + " ~ " + (DATA_UNTIL || "—") +
-      " · " + fmtInt(ROWS.length) + " 行日/来源/模型/项目聚合 · 页面不发起任何网络请求";
+      " · " + fmtInt(ROWS.length) + " 行日/来源/模型/项目聚合" +
+      (ACTIVITY.length ? " · " + fmtInt(ACTIVITY.length) + " 行活动聚合" : "") +
+      (CREDITS.length ? " · " + fmtInt(CREDITS.length) + " 天额度" : "") +
+      (EST.length ? " · " + fmtInt(EST.length) + " 行估算聚合" : "") +
+      " · 页面不发起任何网络请求";
     el.footer.appendChild(scope);
     var generated = document.createElement("p");
     generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
@@ -1198,12 +2145,20 @@ try {
   var resizeTimer;
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function () { renderChart(filteredRows()); }, 150);
+    resizeTimer = setTimeout(function () {
+      renderChart(filteredRows());
+      if (!el.activityChartCard.hidden) renderActivityChart(filteredActivity());
+      if (!el.creditChartCard.hidden) renderCreditChart(filteredCredits());
+    }, 150);
   });
 
   function render() {
     var rows = filteredRows();
     renderKpis(rows);
+    renderCoverage();
+    renderActivity();
+    renderCredits();
+    renderEstimates();
     renderChart(rows);
     renderBars(filteredRows("model"), filteredRows("project"));
     renderTable(rows);
@@ -1213,6 +2168,7 @@ try {
   buildChips();
   buildControls();
   applyTheme(document.documentElement.dataset.theme || "light");
+  if (el.activityMetric) el.activityMetric.value = state.activityMetric;
   el.generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
   renderFooter();
   render();

@@ -43,6 +43,65 @@ class Record:
 
 
 @dataclass
+class Activity:
+    day: str
+    project: str = ""
+    sessions: int = 0
+    prompts: int = 0
+    assistant_calls: int = 0
+    assistant_with_metrics: int = 0
+    turns: int = 0
+    tool_calls: int = 0
+    duration_ms: int = 0
+    source: str = "qoder.activity"
+
+
+@dataclass
+class Credit:
+    request_id: str
+    ts: float
+    day: str
+    project: str
+    model: str
+    session: str
+    credits: float
+    billable: bool
+
+
+@dataclass
+class QuotaSnapshot:
+    request_id: str
+    ts: float
+    day: str
+    quota_kind: str
+    total: int
+    used: int
+    remaining: int
+    unit: str
+    raw_pct: float | None
+    expires_at: int | None
+
+
+@dataclass
+class Estimate:
+    request_id: str
+    ts: float
+    day: str
+    project: str
+    model: str
+    session: str
+    est_input: int
+    est_output: int
+    chars_in: int
+    chars_out: int
+    ratio: float | None
+
+
+ACTIVITY_FIELDS = ("sessions", "prompts", "assistant_calls",
+                   "assistant_with_metrics", "turns", "tool_calls", "duration_ms")
+
+
+@dataclass
 class SourceResult:
     name: str
     files: int = 0
@@ -50,6 +109,13 @@ class SourceResult:
     available: bool = True
     complete: bool = True
     records: list[Record] = field(default_factory=list)
+    activities: list[Activity] = field(default_factory=list)
+    credits: list[Credit] = field(default_factory=list)
+    quota: list[QuotaSnapshot] = field(default_factory=list)
+    estimates: list[Estimate] = field(default_factory=list)
+    transcript_state: dict | None = None
+    affected_days: set[str] = field(default_factory=set)
+    cursor_ms: int | None = None
     errors: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     seen_keys: set[str] = field(default_factory=set)

@@ -42,7 +42,7 @@
 | 文件大小 | 1,775,779,840 B（约 1.65 GiB） |
 | 最后写入 | 主库 mtime 2026-09-16 09:13；`-wal` 0 字节 |
 | 表 `chat_message` | 48,432 行；assistant 21,654 行 |
-| 有效 token 行 | **19,963 行**（`token_info` 含完整四字段）；966 行为 `{}`；725 行为空 |
+| 有效 token 行 | **19,963 行**（`token_info` 含完整四字段）；其中 **7 行全 0** 被采集器跳过，实际入库 **19,956 行**；966 行为 `{}`；725 行为空 |
 | token 总量 | prompt **2,690,591,243**；completion **10,390,783**；cached **2,522,926,395** |
 | 覆盖日期 | 2026-06-01 ~ 2026-09-16（本地时区） |
 | 会话/项目 | 271 个 session；8 个项目 |
@@ -312,9 +312,9 @@ WHERE m.updated_at >= ?          -- cursor - 120000（2 分钟重叠）
 ```
 
 3. 由命中行得到**受影响的天**，再加上今天与昨天（防止跨天写入/晚到 metrics）。
-4. 对每个受影响天**整天重算**（`created_at` 落在该天 00:00~24:00 的全部消息），按 `(day, project)` 聚合 §3.3 的指标。
-5. 事务内 `DELETE FROM usage_activity WHERE source='qoder' AND day IN (...)` → `INSERT` 新聚合 → 更新游标，保证幂等。
-6. 首次全量：游标 0，一次扫 4,001 行；预估 1~2s。
+4. 对受影响天**整天重算**：用一次查询覆盖 `[min(day), max(day)+1)` 区间（单次解析 `payload_json`），Python 按本地日期分桶后按 `(day, project)` 聚合 §3.3 的指标；空白日也纳入删除范围，避免旧行残留。
+5. 事务内 `DELETE FROM usage_activity WHERE source='qoder.activity' AND day IN (...)` → `INSERT` 新聚合 → 更新游标，保证幂等。
+6. 首次全量：游标 0，一次扫 4,001 行；实测 0.46s（预算 ≤2s），增量 0.13~0.17s（预算 ≤0.5s）。
 7. 若 `updated_at` 没有推进但主库 mtime 变了（例如只写了 WAL 元数据），做一次轻量探测：`SELECT MAX(updated_at)`，无变化则不重算。
 8. `payload_json` 不保证全部合法：所有 JSON 表达式先用 `json_valid()` 判定；非法行按 `role=unknown / turns=0 / duration=0 / tool_calls=0` 处理，不中断整轮。启动时用 `SELECT json_valid('{}')` 检查 JSON1 是否可用，不可用则活动源标记为 unavailable。
 
@@ -373,7 +373,7 @@ usage activity [--range <a>..<b>] [--since <date>] [--until <date>]
 新增输出示例：
 
 ```
-qoder: files=1 records=19963 tokens=2,700,982,026 recent7d=0 status=ok
+qoder: files=1 records=19956 tokens=2,700,982,026 recent7d=0 status=ok
   note: token 覆盖 2026-06-01..2026-09-16（IDE 旧库，只读）
   note: 活动覆盖 2026-06-01..2026-10-30（桌面端，仅活动指标）
 qoder.activity: files=1 days=... sessions=... prompts=... tool_calls=... status=ok
@@ -434,7 +434,7 @@ qoder.activity: files=1 days=... sessions=... prompts=... tool_calls=... status=
 
 ### 8.2 实测验收（真实库）
 
-- `usage sync --source qoder` → token 行数 **19,963**；`SUM(input)+SUM(output)+SUM(cache_read)` = **2,700,982,026**（与独立 SQL 校验一致）。
+- `usage sync --source qoder` → 候选 **19,963** 条，其中 7 条全 0 跳过，入库 **19,956** 条；`SUM(input)+SUM(output)+SUM(cache_read)` = **2,700,982,026**（与独立 SQL 校验一致）。
 - `usage activity --since 30d` → 与独立 SQL 的按天聚合逐日一致。
 - `usage html` 打开后：Qoder chip 可见；活动区数据与命令输出一致；无 console 错误。
 - 连续 sync 两次 → 0 条新增（幂等）。
