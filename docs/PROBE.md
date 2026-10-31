@@ -205,3 +205,56 @@ python3 scripts/probe.py --source codex     # 只扫某个源
 python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
 ```
 脚本严格只读（SQLite 用 `mode=ro` URI），不写任何源目录，标准库 only。
+
+---
+
+## 6. Trae CN Phase 0 实测（2026-10-30）
+
+> 授权范围：一次性读取 Keychain 密钥、安装 `sqlcipher`、复制加密库做只读解密。
+> 约束：密钥不打印 / 不落盘；只读本地数据；不调用私有 API；不读 JWT；不读会话正文。
+> **结论：Phase 0 不通过 → 按 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md) §4.3 走方案 D（维持不采集），未写任何采集代码。**
+
+### 6.1 库形态
+
+| 项 | 实测 |
+|---|---|
+| 路径 | `/Users/wayne/Library/Application Support/Trae CN/ModularData/ai-agent/database.db` |
+| 大小 | 11,153,408 B = 4096 × 2723（与 SQLCipher 默认 `page_size=4096` 一致；也整除 1024，仅凭大小不能定页大小） |
+| 头部 | 前 16 B 全随机；page 1 不含 `SQLite format 3`；256 种字节值 → 非明文 SQLite |
+| 持有进程 | PID 61272（`Trae CN Helper --utility-sub-type=basil.mojom.NativeExtensionService`，加载 `…/modules/ai-agent/libharness.dylib`），持有 DB + WAL 的多个 pooled FD |
+| WAL | `database.db-wal` 4,120,032 B，随应用活动增长 |
+
+### 6.2 密钥探测（全部失败）
+
+- 工具：`sqlcipher` CLI 3.54.1（SQLCipher 4.20.0）。成功判定 = `SELECT count(*) FROM sqlite_master` 无错误。
+- 本机 Keychain 仅 3 项与 Trae 相关（元数据）：
+  - `Trae CN Safe Storage` / `Trae CN Key`，24 B base64（Chromium OSCrypt 形态）
+  - `Trae CN Safe Storage` / `Trae CN`，24 B base64
+  - `Trae Safe Storage` / `Trae`（旧版 Trae；读取未返回，触发系统授权流程后终止，本次未取值）
+- 对前两项的尝试（secret 只经 stdin 传给 `sqlcipher`，不打印、不进 argv、不落盘）：
+  - 原样字符串作为 passphrase：SQLCipher 4 默认参数 / `PRAGMA cipher_compatibility = 3`
+  - base64 解码后的 16 / 24 / 32 B 作为 raw key（`x'…'`）
+  - PBKDF2-HMAC-SHA256 / SHA512（二进制内硬编码 salt、100000 轮、32 B）→ raw key
+  - SHA-256(secret) → raw key
+  - 结果：**全部返回 `file is not a database`**
+- 其他明文侧负结果：进程 env（无密钥变量）、`~/.trae-cn`、`User/globalStorage/storage.json`、`state.vscdb`、`User/settings.json`、`product.json` 的 `bootConfig`（无 persistence / db / encrypt / key 字段）、`aha/TinyStorage`（仅 device_id / access_policy）、`aha/Remote_State`（feature flags）、logs。
+- `Local Storage/config.db`（动态配置缓存）为固定派生密钥的 AES-256-CBC（前 16 B 为 IV），已只读解密核对：顶层仅 `iCubeApp` / `mf` / `is2b`，**无 `db_persistence`、无数据库密钥**；`iCubeApp` 下与库相关的只有 `aiAgentDbStoragePath` / `dbWritePoolMaxConnections` / `enableDbRwSplit` 等开关。
+
+### 6.3 密钥来源定位（关键）
+
+- harness 的 DB 层在配置结构 `+0x658` 处读取 `db_persistence` 节；缺失时报 `is required for DB persistence`（libharness `0x9048`，调用点 `0x23570`）。
+- `db_persistence` 只在 `libharness.dylib` 中出现；全部应用 JS、`product.json`、用户数据目录、日志与缓存中**均无该字符串**。
+- harness 的 boot config 通过 AHA IPC 实时获取：主进程日志有 `event:BootService.onBootConfigChanged` 广播，harness 侧有 `[AhaIPCSource] start_boot_config_stream` / `onDidBootConfigChanged deserialize`；`BOOT_CONFIG_FILE` 未设置，本机也不存在 boot config 文件。
+- 结论：DB 密钥来自**运行时下发的 `db_persistence` 配置**（服务端下发或原生层注入），本地没有明文落盘；`PRAGMA key` 由 DB 层从该配置格式化得到（libharness `0x65b66bc`），harness 自带的 PBKDF2 辅助函数不被该路径调用。
+- 本地获取只剩「IPC 抓包 / 进程内存扫描 / 注入」三条路，均被 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md) §1.3 明确排除，也超出本次授权。
+
+### 6.4 只读性与清理
+
+- 所有解密尝试只打开 `/tmp/trae-phase0/database.db` 副本；源库 size 保持 11,153,408 B，mtime 未变（15:47:51）；源目录无新增 `-journal`。`-wal` mtime 由运行中的 Trae 更新（18:48），与探针无关。
+- 临时目录 `/tmp/trae-phase0`（约 1.7 GB：库副本、反汇编 / strings dump、测试脚本）已删除。
+
+### 6.5 处置（方案 D，待评审确认）
+
+- 不新增 `trae-cn` 采集器，不写实现代码。
+- `usage doctor` 的 Trae CN 说明改为：「加密库存在，但密钥由 Trae 运行时下发，本地不可读 → 不采集」。
+- 若后续 Trae 提供导出 / 公开接口，或用户明确授权 IPC / 内存级取证，再重新评估。
