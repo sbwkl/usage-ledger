@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：v0.5 已实现并通过验收——7 个源采集（含 Qoder 四轨、Trae CN hook 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。83 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、Trae CN hooks/弱估算、Cline 会话 metrics、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.5 已实现并通过验收——7 个源采集（含 Qoder 四轨、Trae CN hook 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。86 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、Qoder 模型显示名映射、Trae CN hooks/弱估算、Cline 会话 metrics、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -71,6 +71,7 @@ usage-ledger/
 │   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
 │   ├── aggregation.py  报表聚合与过滤
+│   ├── qoder_models.py Qoder 模型内部键 → 界面显示名（展示层映射，参考 perch）
 │   ├── html_report.py  离线单文件交互报表（内联 CSS/JS/SVG）
 │   ├── scheduler.py    launchd 任务生成/安装/查询
 │   ├── cli.py          命令行入口
@@ -162,6 +163,9 @@ usage est --stateless --group-by model   # 绕过数据库直读转录
 - **credits 是服务端真值**：`billable=true` 的 `usage.credits` 逐请求累计，已与 main.log 配额快照增量核对（+18.16 vs +20、+31.62 vs +32 等）；免费请求单独列出，不计配额。
 - **余额来自日志快照**：`main.log` 的 `用量响应摘要` 仅保留约一周、`used` 非单调，因此只用于展示当前余额/总量，不用来推导日消耗。
 - **est 是估算值**：`est_input = context_usage_ratio × 200K`，`est_output = 字符数 ÷ 模型系数`（gfmodel 3.85 / dfmodel 4.58 / 其他 3.8）。旧版无 `ratio` 的转录跳过，避免与历史 token 真值重复。
+- **模型显示名**：库里保留 Qoder 内部键（`dfmodel`、`gfmodel` 等），报表 / HTML / `top models` 在展示层映射为界面名
+  （如 `dfmodel` → DeepSeek-Flash、`gfmodel` → GLM-5.3-Flash，键取自 Qoder `dynamic-text/qoder.json`，与 perch 一致）；
+  未收录的历史/未知键原样显示；`--model` 过滤同时接受原始键和显示名。
 - 四轨（token 真值 / 活动 / 额度 / 估算）分表、分示，任何两轨都不相加；`doctor` 会显示 credits、快照数、估算覆盖与交叉校验。
 
 ---

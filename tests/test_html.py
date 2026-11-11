@@ -209,6 +209,7 @@ class QoderHtmlTest(unittest.TestCase):
         _, payload = extract_payload(html)
         self.assertTrue(payload["rows"])
         self.assertTrue(all(row["source"] == "qoder" for row in payload["rows"]))
+        self.assertEqual({row["model"] for row in payload["rows"]}, {"Qwen3.7-Plus"})
         self.assertEqual(len(payload["activity"]), 2)
         self.assertTrue(all(row["source"] == "qoder" for row in payload["activity"]))
         self.assertEqual(payload["coverage"]["qoder"]["token_until"], "2026-10-02")
@@ -247,7 +248,7 @@ class QoderHtmlTest(unittest.TestCase):
         est = payload["est"]["rows"][0]
         self.assertEqual((est["day"], est["model"], est["est_input"],
                           est["est_output"], est["requests"]),
-                         ("2026-10-01", "gfmodel", 50_000, 1, 1))
+                         ("2026-10-01", "GLM-5.3-Flash", 50_000, 1, 1))
         self.assertEqual(payload["est"]["totals"]["requests"], 1)
         self.assertIn("额度消耗（credits）", html)
         self.assertIn("估算 token（est）", html)

@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import date, timedelta
 
 from .models import FIELDS, Record
+from .qoder_models import qoder_model_label
 
 DIMENSIONS = ("day", "week", "month", "source", "model", "project", "session")
 
@@ -27,7 +28,7 @@ def _dim_value(rec: Record, dim: str, period: str) -> str:
     if dim == "source":
         return rec.source
     if dim == "model":
-        return rec.model
+        return qoder_model_label(rec.model) if rec.source == "qoder" else rec.model
     if dim == "project":
         return rec.project or "-"
     if dim == "session":
@@ -80,7 +81,8 @@ def match(rec: Record, filters: dict[str, str] | None = None, project: str | Non
         if key == "source" and rec.source != value:
             return False
         if key == "model" and rec.model != value:
-            return False
+            if not (rec.source == "qoder" and qoder_model_label(rec.model) == value):
+                return False
         if key == "project" and (rec.project or "") != value:
             return False
         if key == "session" and (rec.session or "") != value:

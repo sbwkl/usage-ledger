@@ -83,7 +83,9 @@ gmt_create = 1789520778220   // epoch ms
 | `quest-ultimate` | 5 |
 | `mmodel` | 4 |
 
-> 别名是 Qoder 内部代号；`aicoding.modelConfigs.cache.*` 只有 Auto/Ultimate/Performance 等产品名，无法可靠映射到别名，因此 v1 原样保留别名，`model_raw` 同值。
+> 别名是 Qoder 内部代号，库内原样保留（`model` / `model_raw` 同值，便于诊断）。报表与 HTML 在展示层用
+> `qoder_models.py` 映射为界面显示名（如 `dfmodel` → DeepSeek-Flash、`gfmodel` → GLM-5.3-Flash，
+> 见 `Qoder.app/Contents/Resources/dynamic-text/qoder.json`）；未收录的历史/未知键原样显示。
 
 **关键语义（实测示例）**：同一 `request_id` 下可有 402 条 assistant 消息（agent loop），每条 `prompt_tokens` 从 103,944 递增到 109,848、`cached_tokens` 同步递增。说明**每条 assistant 消息就是一次真实的模型调用**，应按 `message.id` 逐条计，不能按 `request_id` 合并，也不能只取首条/末条。
 
@@ -460,7 +462,7 @@ qoder.activity: files=1 days=... sessions=... prompts=... tool_calls=... status=
 | R2 | `local.db` 被新版清理/迁移 | 失去唯一 token 源 | 首次 sync 立即固化进 `usage_turn`；`archived` 永久保留；doctor 提示 mtime 过旧 |
 | R3 | 活动与 token 被误相加 | 总量虚高、口径失真 | 分表、分命令、页面/页脚显式“不可相加”；活动不参与成本 |
 | R4 | 读取payload 被视为侵犯隐私 | 信任问题 | 只用 SQLite JSON 函数在库内提取元数据，不取正文到 Python、不落库、不写日志；文档写明 |
-| R5 | 模型别名不可读 | 报表模型列难懂 | v1 保留别名 + `unknown` 显式标注；别名映射表作为后续可选项 |
+| R5 | 模型别名不可读 | 报表模型列难懂 | 已实现展示层映射（`qoder_models.py`，键来自 `dynamic-text/qoder.json`）；未收录键原样显示，`unknown` 显式标注 |
 | R6 | `turnMetrics` 缺失 | turns/duration 偏低 | 记录 `assistant_with_metrics` 并展示覆盖率；0 不代表没使用 |
 | R7 | 1.65GB 旧库读取慢 | 首次 sync 慢 | 只 SELECT 必要列、mtime 跳过、无内容读取；首次预算 ≤3s |
 | R8 | 时区/跨天 | 日期归属错误 | 统一 `datetime.fromtimestamp(ms/1000)` 本地时区，与现有源一致 |
@@ -490,7 +492,8 @@ qoder.activity: files=1 days=... sessions=... prompts=... tool_calls=... status=
    - 若不要活动指标：本设计可裁剪掉 `usage_activity` / `activity` 命令 / HTML 活动区，只保留 token 采集。
 2. **活动指标是否作为独立 `usage activity` 命令**（推荐），还是并入 `usage report` 文本输出？
 3. **HTML 活动区**：先做“卡片 + 表格 + 每日柱状图”（推荐），还是只要卡片/表格？
-4. **模型别名**：v1 原样显示 `gfmodel` 等（推荐，无法可靠映射），还是现在补一张手工映射表？
+4. **模型别名**：~~原样显示还是补映射表~~ → 已实现展示层映射（参考 perch 的 `model_label`，键取自 Qoder
+   `dynamic-text/qoder.json`；库内仍保留原始别名）。
 5. **活动采集读取 payload 元数据**：通过 SQLite JSON 函数提取 `role` / `turnMetrics` / `parts.type`，不落正文——是否接受？若要求完全不读 payload，则导入消息的角色和工具调用无法统计，活动指标基本不可用。
 
 > 审核通过后按 §7 的文件清单实施；未通过前不写实现代码。

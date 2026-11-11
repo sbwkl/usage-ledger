@@ -333,7 +333,7 @@ class QoderCliTest(unittest.TestCase):
         rows = json.loads(out)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["day"], "2026-10-01")
-        self.assertEqual(rows[0]["model"], "gfmodel")
+        self.assertEqual(rows[0]["model"], "GLM-5.3-Flash")
         self.assertEqual(rows[0]["est_input"], 150_000)
         self.assertEqual(rows[0]["est_output"], 4)
         self.assertEqual(rows[0]["requests"], 2)
@@ -352,6 +352,20 @@ class QoderCliTest(unittest.TestCase):
         self.assertEqual(store.quota_count(), 2)
         self.assertEqual(store.est_count(), 2)
         store.close()
+
+    def test_model_labels_follow_qoder_display_names(self):
+        self.run_cli(["backfill"])
+        for name in ("Qwen3.7-Plus", "qmodel"):
+            code, out, _ = self.run_cli(
+                ["report", "--source", "qoder", "--format", "json", "--model", name])
+            self.assertEqual(code, 0)
+            rows = json.loads(out)
+            self.assertTrue(rows)
+            self.assertEqual({row["model"] for row in rows}, {"Qwen3.7-Plus"})
+
+        code, out, _ = self.run_cli(["top", "models", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertIn("Qwen3.7-Plus", {row["model"] for row in json.loads(out)})
 
     def test_sync_skips_token_scan_when_mtime_unchanged(self):
         self.run_cli(["backfill"])

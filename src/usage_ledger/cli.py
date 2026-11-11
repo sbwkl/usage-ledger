@@ -23,6 +23,7 @@ from .collectors import (EST_FACTOR_VERSION, TRAE_EST_SOURCE, TRAE_EST_VERSION,
 from .html_report import build_payload, render_html
 from .models import ACTIVITY_FIELDS, FIELDS, Activity, SourceResult
 from .pricing import cost_for_record, normalize_model
+from .qoder_models import qoder_model_label
 from .store import SqliteStore
 
 SOURCES = ("claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn")
@@ -511,7 +512,8 @@ def _print_live(args):
 
     print(f"{'source':8}{'session':20}{'model':34}{'tokens':>14}  {'updated':10}")
     for rec in records[:50]:
-        print(f"{rec.source:8}{(rec.session or '-')[:18]:20}{(rec.model or 'unknown')[:32]:34}"
+        model = qoder_model_label(rec.model) if rec.source == "qoder" else rec.model
+        print(f"{rec.source:8}{(rec.session or '-')[:18]:20}{(model or 'unknown')[:32]:34}"
               f"{_fmt_int(rec.counts.total()):>14}  {_ago(rec.ts):10}")
 
     today = date.today().isoformat()
@@ -567,7 +569,7 @@ def _load_records(args, since, until, filters) -> tuple[list, list[Activity], di
                 _refresh_if_stale(store, filters.get("source"))
                 records = store.fetch_records(
                     since=since, until=until, source=filters.get("source"),
-                    model=filters.get("model"), project=filters.get("project"))
+                    project=filters.get("project"))
                 activities = store.fetch_activity(source=ACTIVITY_SOURCE)
             finally:
                 store.close()
@@ -976,7 +978,8 @@ def _aggregate_estimates(estimates, dims, since, until) -> list[dict]:
             elif dim == "project":
                 key.append(row.project or "-")
             elif dim == "model":
-                key.append(row.model)
+                key.append(qoder_model_label(row.model)
+                           if row.source == "qoder.est" else row.model)
             elif dim == "session":
                 key.append(row.session or "-")
         bucket = buckets.setdefault(tuple(key), {
@@ -995,6 +998,12 @@ def _aggregate_estimates(estimates, dims, since, until) -> list[dict]:
         item.update(buckets[key])
         rows.append(item)
     return rows
+
+
+def _label_est_rows(rows) -> None:
+    for row in rows:
+        if "model" in row:
+            row["model"] = qoder_model_label(row["model"])
 
 
 def _write_est_rows(rows, dims, fmt: str):
@@ -1044,6 +1053,8 @@ def cmd_est(args):
             else:
                 _refresh_credits_if_stale(store)
             rows = store.est_rows(since, until, dims, source=source)
+            if source == "qoder.est":
+                _label_est_rows(rows)
             totals = store.est_totals(since, until, source=source)
             missing = totals["missing_ratio"]
             requests = totals["requests"]
@@ -1096,6 +1107,7 @@ def _load_credit_payload(args, since, until, filters):
             totals = store.credits_totals(since, until)
             quota = store.latest_quota()
             est_rows = store.est_rows(since, until, ("day", "model"))
+            _label_est_rows(est_rows)
             est_totals = store.est_totals(since, until)
         finally:
             store.close()
