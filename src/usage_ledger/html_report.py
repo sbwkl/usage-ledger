@@ -456,9 +456,9 @@ try {
                           assistant_with_metrics: "带指标", turns: "turns",
                           tool_calls: "工具调用", duration_ms: "运行时长" };
   var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed",
-                       kilo: "#10b981", qoder: "#e11d48", "trae-cn": "#0d9488" };
+                       kilo: "#10b981", cline: "#65a30d", qoder: "#e11d48", "trae-cn": "#0d9488" };
   var PALETTE = ["#ef4444", "#f59e0b", "#14b8a6", "#6366f1"];
-  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn"];
+  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn"];
   var numberFormat = new Intl.NumberFormat("en-US");
   var $ = function (selector) { return document.querySelector(selector); };
 

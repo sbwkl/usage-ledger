@@ -2,10 +2,10 @@
 
 | 项 | 内容 |
 |---|---|
-| 文档状态 | **待审核**（v1，2026-11-01） |
-| 代码基线 | `usage-ledger 0.5.0`；commit `ab76d4e` + 工作区未提交改动（`html_report.py`、`test_html.py`、4 份文档） |
-| 文档定位 | 描述**当前实现如何工作**，不是新方案。设计沿革与动机见 [DESIGN.md](DESIGN.md)、[QODER-DESIGN.md](QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md) |
-| 验收基线 | `python3 -m unittest discover -s tests -t .` → **49 tests OK**（0.23s） |
+| 文档状态 | **待审核**（v1.1，2026-11-11 增补 Trae CN hook 估算与 Cline） |
+| 代码基线 | `usage-ledger 0.5.0`；main `a2c9fce`（Trae CN）+ `feat/cline`（Cline） |
+| 文档定位 | 描述**当前实现如何工作**，不是新方案。设计沿革与动机见 [DESIGN.md](DESIGN.md)、[QODER-DESIGN.md](QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md)、[CLINE-DESIGN.md](CLINE-DESIGN.md) |
+| 验收基线 | `python3 -m unittest discover -s tests -t .` → **83 tests OK** |
 | 阅读顺序 | 审核者先看 §0、§10、§11、§12；实现细节按需查 §4–§9 |
 
 ---
@@ -13,14 +13,14 @@
 ## 0. 结论摘要
 
 - 系统是一个**拉取式、离线、单机**的用量台账：只读各 AI 编码工具自己落盘的日志/库，归一成统一记录，归档进本地 SQLite，再聚合成 CLI 表格与单文件 HTML。
-- 对外是 **5 个源**（claude / codex / opencode / kilo / qoder）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits 额度 / 估算 token）。
+- 对外是 **7 个源**（claude / codex / opencode / kilo / cline / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits 额度 / 估算 token），Trae CN 只有 hook 弱估算一条轨道。
 - **源是唯一事实来源**；数据库只承担三件事：抗删除归档、聚合索引、同步状态。`--stateless` 完全绕过数据库。
 - 唯一持久状态：`~/.local/share/usage-ledger/usage.db`（可用环境变量覆盖）。无常驻进程、无网络、零第三方依赖。
 - 当前最需要审核的四个现状问题（详见 §11）：
   1. **P0：`prune` 后再 `sync` 会重放旧记录，下一次 `prune` 把同一段数据重复累加进 `usage_daily`**，已用最小用例复现（100 → 200）。
   2. **P1：`usage live` 实际约 2.3s**（本机实测），与 README 的 `<0.3s` 不符；原因是它顺带全量扫描了 1.65GB Qoder 旧 token 库与全部转录。
   3. **P1：读命令的降级行为不一致**：`report` 在库不存在时降级为读源，`credits` / `est` 会静默新建一个空库。
-  4. **P2：设计文档与实现漂移**：`DESIGN.md` 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy/Cline、zstd 等均未实现。
+  4. **P2：设计文档与实现漂移**：`DESIGN.md` 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy、zstd 等均未实现。
 
 ---
 
@@ -52,8 +52,9 @@
 | Codex CLI | 有（JSONL `token_count`） | — | `codex` 源 |
 | OpenCode | 有（SQLite `message` / `session_message`） | — | `opencode` 源 |
 | Kilo | 有（与 OpenCode 同构） | — | `kilo` 源 |
+| Cline（CLI / Desktop） | 有（`~/.cline/data/sessions/**/*.messages.json` 的 `metrics`） | — | `cline` 源（§6.7） |
 | Qoder | 仅历史（IDE 旧库，止于 2026-09-16） | 活动元数据、每请求 credits、转录文本 | 四轨（§6.4–6.6） |
-| Trae CN | 无（加密库，密钥运行时下发） | 额度键 | 不采集，`doctor` 说明 |
+| Trae CN | 无（加密库，密钥运行时下发） | 官方 hooks 的事件元数据（会话/工具/字符数） | `trae-cn.est` hook 弱估算（§6.8） |
 | ChatGPT 桌面 | 无本地数据 | 无 | 不采集，`doctor` 说明 |
 | WorkBuddy | 推测有（本机未安装） | — | 未实现 |
 
@@ -72,15 +73,16 @@
 
 ```
 ┌────────────────────────────── 数据源（全部只读） ──────────────────────────────┐
-│ Claude Code JSONL      Codex JSONL        OpenCode / Kilo SQLite                │
-│ Qoder IDE local.db     Qoder main.sqlite  Qoder transcripts   Qoder main*.log   │
+│ Claude Code JSONL   Codex JSONL   OpenCode / Kilo SQLite   Cline sessions JSON  │
+│ Qoder IDE local.db  Qoder main.sqlite  Qoder transcripts  Qoder logs  Trae hooks │
 └───────────────────────────────────┬─────────────────────────────────────────────┘
                                     │  collectors.py
                                     │  · glob / sqlite mode=ro / query_only
                                     │  · 逐文件错误隔离、行级去重、mtime/offset 跳过
                                     ▼
-                         SourceResult × 7（统一中间模型）
-        claude │ codex │ opencode │ kilo │ qoder │ qoder.activity │ qoder.credits
+                         SourceResult × 9（统一中间模型）
+   claude │ codex │ opencode │ kilo │ cline │ qoder │ qoder.activity │ qoder.credits
+                                │ trae-cn.est
                                     │
               ┌─────────────────────┼──────────────────────────┐
               │                     │                          │
@@ -123,14 +125,15 @@
 
 | 文件 | 行数 | 关键符号 | 说明 |
 |---|---:|---|---|
-| `src/usage_ledger/models.py` | 140 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
-| `src/usage_ledger/collectors.py` | 973 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_qoder_tokens` `scan_qoder_activity` `scan_qoder_transcripts` `scan_qoder_quota` `source_signatures` `collect_all` | 5 个公开源、7 个 `SourceResult` |
-| `src/usage_ledger/store.py` | 624 | `SqliteStore`、`SCHEMA` | 8 张表 + `meta`；WAL；批量 upsert；按天替换活动 |
+| `src/usage_ledger/models.py` | 141 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
+| `src/usage_ledger/collectors.py` | 1265 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个 `SourceResult` |
+| `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
+| `src/usage_ledger/store.py` | 654 | `SqliteStore`、`SCHEMA` | 8 张表 + `meta`；WAL；批量 upsert；按天替换活动 |
 | `src/usage_ledger/aggregation.py` | 110 | `aggregate` `match` `merge_records` `missing_days` `period_label` | 纯函数，可单测 |
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
-| `src/usage_ledger/cli.py` | 1470 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排 |
-| `src/usage_ledger/html_report.py` | 2304 | `build_payload` `render_html` `TEMPLATE` | 内联 CSS/JS/SVG；payload 占位符替换 |
+| `src/usage_ledger/cli.py` | 1666 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排 |
+| `src/usage_ledger/html_report.py` | 2511 | `build_payload` `render_html` `TEMPLATE` | 内联 CSS/JS/SVG；payload 占位符替换 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
@@ -151,9 +154,9 @@ scripts/probe.py → （独立，不 import 包）
 
 ## 4. 运行时数据流
 
-### 4.1 七个采集结果
+### 4.1 九个采集结果
 
-`collect_all()` 返回 7 个 `SourceResult`，但对外只暴露 5 个源：
+`collect_all()` 返回 9 个 `SourceResult`，但对外只暴露 7 个源：
 
 | `SourceResult.name` | 对外源 | 产出 | 落库目标 |
 |---|---|---|---|
@@ -161,9 +164,11 @@ scripts/probe.py → （独立，不 import 包）
 | `codex` | codex | `Record` | `usage_turn` |
 | `opencode` | opencode | `Record` | `usage_turn` |
 | `kilo` | kilo | `Record` | `usage_turn` |
+| `cline` | cline | `Record` | `usage_turn` |
 | `qoder` | qoder | `Record`（历史 token） | `usage_turn` |
 | `qoder.activity` | qoder | `Activity` | `usage_activity` |
 | `qoder.credits` | qoder | `Credit` + `QuotaSnapshot` + `Estimate` | `usage_credit` / `usage_quota` / `usage_est` |
+| `trae-cn.est` | trae-cn | `Estimate` | `usage_est`（`source='trae-cn.est'`） |
 
 `SourceResult` 同时携带：`available`、`complete`、`errors`、`notes`、`key_kinds`、`affected_days`、`cursor_ms`、`transcript_state`、`seen_keys`、`dup_dropped`。
 
@@ -252,7 +257,7 @@ plist 中显式注入 `PATH`、`USAGE_LEDGER_HOME`、`USAGE_LEDGER_SOURCE_HOME`�
 | `usage_activity` | `(source,day,project)` | Qoder 活动指标（日 × 项目） | `replace_activity_days`（整日重建） | `fetch_activity` | 永久，不 prune |
 | `usage_credit` | `request_id` | Qoder 每请求 credits（真值） | `upsert_credits` | `credit_daily` 等 | 永久，不 prune |
 | `usage_quota` | `(request_id,quota_kind)` | Qoder 配额余额快照 | `upsert_credits` | `latest_quota` | 永久，不 prune |
-| `usage_est` | `request_id` | Qoder 每请求估算 token | `upsert_estimates` | `est_rows` 等 | 永久，不 prune |
+| `usage_est` | `request_id` | 估算 token（`qoder.est` / `trae-cn.est`，按 `source` 区分） | `upsert_estimates` | `est_rows` 等 | 永久，不 prune |
 | `price_override` | `model_pattern` | 手工价格覆盖 | **无** | **无** | 未使用（预留） |
 | `meta` | `key` | 游标与全局状态 | `set_meta` | 各处 | 永久 |
 
@@ -264,6 +269,9 @@ plist 中显式注入 `PATH`、`USAGE_LEDGER_HOME`、`USAGE_LEDGER_SOURCE_HOME`�
 | 活动 | `qoder.activity` | 非 token 指标 | 2026-06-01 ~ 现在 | `activity` / `html` | **不可**与任何 token 相加 |
 | 额度 | `qoder.credits` | 服务端每请求计费真值 | 2026-09-16 ~ 现在 | `credits` / `html` | **不可**与 token 相加 |
 | 估算 token | `qoder.est` | 估算值（±30~40%） | 2026-09-16 ~ 现在 | `est` / `html` | **不可**与真值/额度相加 |
+| Trae CN 估算 | `trae-cn.est` | hook 字符数弱估算（误差更大，无 ratio） | 安装 hook 起 | `est --source trae-cn` / `html` | **不可**与任何 token 相加 |
+
+Cline 是真值 token 源（`cline`），没有附加轨道；其 `inputTokens` 含缓存，采集时已扣除（§6.7）。
 
 ### 5.3 统一记录模型
 
@@ -278,11 +286,13 @@ plist 中显式注入 `PATH`、`USAGE_LEDGER_HOME`、`USAGE_LEDGER_SOURCE_HOME`�
 | claude | `claude:<message.id 或 uuid>` | 同一 `message.id` 的中间态行被 `"iterations" in usage` 过滤掉 |
 | codex | `codex:<文件名 stem>:<累计 total_tokens>` | 累计值在文件内单调；归档副本同 stem 同累计值 → 只计一次 |
 | opencode / kilo | `<source>:<message.id>` | 两个 DB（`opencode.db`、`opencode-stable.db`）共用此键 |
+| cline | `cline:<message.id>`；缺失时 `cline:<session>:<ts>:<index>` | `.compaction.json` 是 `.messages.json` 的子集，不读取，避免重复 |
 | qoder token | `qoder:<chat_message.id>` | 一行 assistant 消息 = 一次模型调用 |
 | qoder activity | `(source='qoder.activity', day, project)` | 整日 DELETE 后重建，天然幂等 |
 | qoder credit | `request_id`（来自转录 `usage.request_id`） | 跨父/子代理转录重复出现只计一次 |
 | qoder est | `<sessionId>:<timestamp>` | 同一响应多行 assistant 合并 |
 | qoder quota | `(requestId, quota_kind)` | 一次响应含 `user` / `add_on` 两类 |
+| trae-cn est | `trae-cn:<uid>`；缺失时 `<session>:<ts>:<event>:<file>:<line>` | 事件按 `(ts,file,line)` 重放，同一 uid 只计一次 |
 
 ### 5.5 `archived` 生命周期
 
@@ -392,6 +402,25 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 余额快照：扫 `~/Library/Application Support/com.qoder.app.stable/logs/*/main*.log*`，匹配 `用量响应摘要`，解析 `userQuota` / `addOnQuota` 的 total/used/remaining 与 `totalUsagePercentage`；键 = `(requestId, quota_kind)`。
 - 实测：284 个转录/日志文件 / 9,815 credit / 9,815 est / 26 快照 / 1,509ms。
 
+### 6.7 Cline（`cline`）
+
+- 路径：`~/.cline/data/sessions/<session>/<session>.messages.json`（消息）+ 同名 `.json`（元数据：`session_id` / `workspace_root` / `cwd` / `provider` / `model`）；`.compaction.json` 是消息子集，忽略。
+- 记录：`role == "assistant"` 且含 `metrics`；`metrics` 缺失跳过并计数；`counts.total()==0` 跳过。
+- 映射：`cache_read←cacheReadTokens`、`cache_write←cacheWriteTokens`、`input = max(inputTokens − cacheReadTokens − cacheWriteTokens, 0)`（Cline 的 `inputTokens` 含缓存，与其成本公式同口径）、`output←outputTokens`（含推理 token，未单列）、`reasoning=0`。
+- 元数据：`model←modelInfo.id`，回退会话元数据 `model`；`provider←modelInfo.provider`，回退元数据 `provider`；`project←basename(workspace_root || cwd)`；`session←sessionId`，回退目录名；`ts←ts`（毫秒；>1e11 才除以 1000）。
+- 去重键：`cline:<message.id>`；缺 id 时 `cline:<session>:<ts>:<index>`。
+- 实测（2026-11-11）：20 会话 / 1,806 assistant / 1,806 记录 / 108ms；range 2026-08-11..2026-11-11；input 11,559,216 / output 1,020,011 / cache_read 131,382,471 / cache_write 0。
+- 详见 [CLINE-DESIGN.md](CLINE-DESIGN.md)。
+
+### 6.8 Trae CN hook 弱估算（`trae-cn.est`）
+
+- 路径：事件文件 `~/.local/share/usage-ledger/trae-cn/*.jsonl`（`USAGE_LEDGER_HOME` 下），由 `usage hooks install trae-cn --scope global` 写入 `~/.trae-cn/hooks.json` 的 hook 产生。
+- 事件只含 `event` / `session` / `project` / `tool` / `chars_in` / `chars_out` / 可选 `model` / `ts`，不落正文。
+- 重放：按 `(ts, file, line)` 排序，维护每会话上下文 `ctx`；`UserPromptSubmit` / `PostToolUse` 累加 `chars_in`，`PreToolUse` / `Stop` 以 `chars_out` 产出一条 `Estimate` 并累加。
+- 估算：`est_input = min(round(ctx / factor) + overhead, window)`、`est_output = round(chars_out / factor)`；默认 `factor=3.8`、`overhead=0`、`window=200000`，可用 `USAGE_LEDGER_TRAE_EST_*` 覆盖；`ratio=None`。
+- 去重键：`trae-cn:<uid>`；缺失时 `<session>:<ts>:<event>:<file>:<line>`。
+- 详见 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md)。
+
 ---
 
 ## 7. 查询与输出契约
@@ -420,7 +449,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | `top <models\|sources\|projects\|sessions>` | 读 + 自动刷新 | 是 | table/json | 按 total 降序，`--limit` |
 | `activity` | 读 + 活动刷新 | 是 | table/json/csv | 仅 `qoder` 有数据 |
 | `credits` | 读 + 额度刷新 | 是 | table/json | 余额走 stderr |
-| `est` | 读 + 额度刷新 | 是 | table/json/csv | 标注 `est` |
+| `est` | 读 + 额度刷新 | 是 | table/json/csv | 标注 `est`；含 `qoder.est` 与 `trae-cn.est` |
 | `html` | 读 + 双刷新 | 是 | 写 HTML 文件 | 单文件、离线 |
 | `doctor [--probe <source>]` | 否 | 是（跳过 DB 段） | 文本 | 源健康 + 归档 + 覆盖 |
 | `pricing [model]` | 否 | 无关 | 文本 | 当前全部 `unknown` |
@@ -514,8 +543,9 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | Qoder token 全表 | 1,724ms | ≤3s |
 | Qoder 活动全量 | 446ms | ≤2s |
 | Qoder credits/est/quota | 1,509ms | — |
-| `collect_all`（全源） | **2.25s** | `live` <0.3s（未达标） |
-| 49 项单测 | 0.23s | — |
+| `collect_all`（全源，2026-11-01 数据量） | **2.25s** | `live` <0.3s（未达标） |
+| cline 采集（1,806 记录 / 20 会话） | 108ms | —（2026-11-11 实测） |
+| 83 项单测 | 0.72s | —（2026-11-11 实测） |
 
 > `live` 慢的根因不是解析算法，而是它调用 `collect_all()`：即使只需要 token 记录，也会扫描 Qoder 旧库（1.7s）和全部转录（1.5s），并计算活动与额度。
 
@@ -528,6 +558,9 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | 源根目录 | `~/.`；`USAGE_LEDGER_SOURCE_HOME`（测试用） |
 | Qoder token 库 | `USAGE_LEDGER_QODER_TOKEN_DB` |
 | Qoder 活动库 | `USAGE_LEDGER_QODER_ACTIVITY_DB` |
+| Cline 会话目录 | `~/.cline/data/sessions`（随 `USAGE_LEDGER_SOURCE_HOME` 变化） |
+| Trae CN hook 配置 | `~/.trae-cn/hooks.json`（`usage hooks install trae-cn --scope global`） |
+| Trae CN 事件文件 | `~/.local/share/usage-ledger/trae-cn/*.jsonl`（`USAGE_LEDGER_HOME` 下） |
 | launchd 日志 | `~/.local/state/usage-ledger/{sync,full,prune}.log/.err` |
 | 安装 | `uv tool install .` → `~/.local/bin/usage` |
 
@@ -537,14 +570,17 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-49 个测试，全部标准库 `unittest`：
+83 个测试，全部标准库 `unittest`：
 
-| 文件 | 数量（约） | 覆盖 |
+| 文件 | 数量 | 覆盖 |
 |---|---:|---|
-| `tests/test_collectors.py` | 14 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、子源签名独立 |
-| `tests/test_store.py` | 6 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state |
-| `tests/test_cli.py` | 11 | backfill 幂等、report 与 stateless 一致、stateless 不写库、分组过滤、自动刷新、单源刷新、doctor 缺口、源不可用时不归档、Qoder 四轨落库、token mtime 跳过、活动单独刷新、doctor 双台账 |
-| `tests/test_html.py` | 7 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder 区块 |
+| `tests/test_collectors.py` | 24 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、Cline metrics 映射/回退/坏文件隔离、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、子源签名独立 |
+| `tests/test_store.py` | 7 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state |
+| `tests/test_cli.py` | 14 | backfill 幂等、report 与 stateless 一致、stateless 不写库、分组过滤、自动刷新、单源刷新、Cline 回填与自动刷新、doctor 缺口、源不可用时不归档、Qoder 四轨落库、token mtime 跳过、活动单独刷新、doctor 双台账 |
+| `tests/test_cli_trae.py` | 6 | Trae CN hook 安装/状态/同步与 est 查询链路 |
+| `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
+| `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |
+| `tests/test_html.py` | 9 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder 区块 |
 | `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
 
 测试手法：临时 HOME + `USAGE_LEDGER_SOURCE_HOME` / `USAGE_LEDGER_DB`；Claude/Codex 用脱敏 JSONL fixture；OpenCode/Qoder 在测试内建最小 SQLite；`tests/qoder_helpers.py` 提供建库与日志构造器。
@@ -561,7 +597,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | 2 | 计价表 + `price_override` + `pricing-recalc`（DESIGN §9） | `PRICES` 仅 `gpt-5.5` 且全为 `None`；`cost_for_record()` 恒返回 `(None,"unknown")`；`price_override` 无读写 | 成本列永远为空，属已知搁置 |
 | 3 | 预算告警、`quota` 命令（DESIGN §8/§10.6） | 未实现 | README 已标为后续 |
 | 4 | `archived=1` 行压成日聚合后永久保留（DESIGN §7.3） | `archived=1` 明细永不压缩/删除 | 长期 DB 增长；与设计语义不同但更安全 |
-| 5 | WorkBuddy / Cline / zstd / L3 daemon | 未实现 | README 已标为 P1/v2 |
+| 5 | WorkBuddy / zstd / L3 daemon | 未实现 | README 已标为 P1/v2 |
 | 6 | `paths.mode = full/basename/hash` | 无配置，固定 `basename` | 隐私选项未实现 |
 | 7 | 退出码 3（源不可用） | 只有 0 / 2 | 脚本判断能力弱 |
 | 8 | `usage_daily` 是长期查询主表 | 仅 `prune` 写入；常规查询同时读 `usage_turn` 与 `usage_daily` | 依赖 prune 是否运行；与 P0 缺陷相关 |
@@ -622,7 +658,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 ### 已明确接受的风险
 
 - 厂商停止写 token（Qoder 新客户端）→ 用额度 + 估算双轨显式替代，不伪造真值。
-- Trae CN 加密库不可读 → 不采集，`doctor` 说明。
+- Trae CN 加密库不可读 → 只读官方 hooks 事件做弱估算（`trae-cn.est`），不伪造 token 真值。
 - 估算误差 ±30~40% → 全链路 `est` 标注，永不与真值相加。
 - 流式生成中的 token 在磁盘上不存在 → `live` 只能看到“上一个已完成 turn”。
 - `.zst` 归档未解压 → `doctor` 报数量，不静默。
@@ -638,7 +674,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 3. **`live` 性能**：是否按 P1-1 让 `live` 默认跳过 Qoder 四轨（只保留 token 源），把完整四轨留给 `doctor` / `report` / `html`？
 4. **读命令建库**：`credits` / `est` 是否改为与 `report` 一致的“库不存在 → 直读 + warning”？
 5. **四轨展示边界**：`report --live` 是否要保证活动/额度也实时（P1-3），还是明确“只有 token 实时”？
-6. **未实现项**：计价、预算告警、WorkBuddy、Cline、zstd、`paths.mode` 是否继续搁置？本次文档是否把它们标为“明确不做 / 待排期”？
+6. **未实现项**：计价、预算告警、WorkBuddy、zstd、`paths.mode` 是否继续搁置？本次文档是否把它们标为“明确不做 / 待排期”？
 
 ---
 
@@ -651,7 +687,7 @@ usage report --since 7d --group-by day,model --format json
   ├─ _load_records
   │    ├─ DB 存在 → SqliteStore
   │    ├─ _refresh_if_stale(store, None)
-  │    │    ├─ source_signatures() 取 8 个签名
+  │    │    ├─ source_signatures() 取 11 个签名
   │    │    ├─ 与 source_state.last_file_mtime 比较
   │    │    └─ 有变化 → _sync_into(public sources, quiet=True)
   │    ├─ fetch_records(since, until, source/model/project filters)

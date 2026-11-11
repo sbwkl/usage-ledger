@@ -400,5 +400,74 @@ class QoderCliTest(unittest.TestCase):
         self.assertIn(">24h", out)
 
 
+class ClineCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        shutil.copytree(os.path.join(FIXTURES, "cline", "sessions"),
+                        os.path.join(self.home, ".cline", "data", "sessions"))
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_backfill_and_report_match_stateless(self):
+        code, _, _ = self.run_cli(["backfill"])
+        self.assertEqual(code, 0)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 3)
+        store.close()
+
+        code, db_json, _ = self.run_cli(
+            ["report", "--source", "cline", "--format", "json"])
+        self.assertEqual(code, 0)
+        code, source_json, _ = self.run_cli(
+            ["--stateless", "report", "--source", "cline", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(db_json), json.loads(source_json))
+
+        rows = json.loads(db_json)
+        self.assertEqual(sum(row["input"] for row in rows), 450)
+        self.assertEqual(sum(row["output"] for row in rows), 240)
+        self.assertEqual(sum(row["cache_read"] for row in rows), 800)
+        self.assertEqual(sum(row["cache_write"] for row in rows), 100)
+
+    def test_report_auto_syncs_new_cline_messages(self):
+        self.run_cli(["backfill"])
+        path = os.path.join(self.home, ".cline", "data", "sessions",
+                            "1787000000000_aaaa",
+                            "1787000000000_aaaa.messages.json")
+        with open(path, "r", encoding="utf-8") as fh:
+            obj = json.load(fh)
+        obj["messages"].append({
+            "id": "msg_a9", "role": "assistant",
+            "ts": max(msg["ts"] for msg in obj["messages"]) + 60000,
+            "modelInfo": {"id": "anthropic/claude-sonnet-4", "provider": "anthropic"},
+            "metrics": {"inputTokens": 70, "outputTokens": 7,
+                        "cacheReadTokens": 0, "cacheWriteTokens": 0}})
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh)
+        os.utime(path, ns=(os.stat(path).st_atime_ns,
+                           os.stat(path).st_mtime_ns + 1_000_000_000))
+
+        code, out, err = self.run_cli(["report", "--source", "cline", "--format", "json"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("auto-sync", err)
+        rows = json.loads(out)
+        self.assertEqual(sum(row["input"] for row in rows), 520)
+
+
 if __name__ == "__main__":
     unittest.main()

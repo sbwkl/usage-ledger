@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：v0.5 已实现并通过验收——6 个源采集（含 Qoder 四轨、Trae CN hook 弱估算）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。77 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、Trae CN hooks/弱估算、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.5 已实现并通过验收——7 个源采集（含 Qoder 四轨、Trae CN hook 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。83 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、Trae CN hooks/弱估算、Cline 会话 metrics、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -25,6 +25,7 @@
 | Claude Code | ✅ | 含 cache read/write |
 | OpenCode（CLI + 桌面） | ✅ | 兼容新版 `session_message` 表（旧 `message` 表仍回读未迁移记录），与 Kilo 一个 adapter |
 | Kilo（CLI + 桌面） | ✅ | |
+| Cline（CLI + Desktop） | ✅ | 读 `~/.cline/data/sessions/**/<id>.messages.json` 中 assistant 的 `metrics`（input/output/cache read/write）；`inputTokens` 已含缓存，采集时扣除 |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（服务端每请求计费）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
 | WorkBuddy | ✅ | P1，需先安装核实样本 |
@@ -59,13 +60,14 @@ usage-ledger/
 │   ├── QODER-DESIGN.md Qoder 双轨设计（token + 活动指标）
 │   ├── QODER-CREDITS-DESIGN.md Qoder 额度 + 估算 token 设计
 │   ├── TRAE-CN-DESIGN.md Trae CN 接入与 hook 弱估算设计
+│   ├── CLINE-DESIGN.md Cline 会话 metrics 采集设计
 │   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
 │   ├── PROBE.md        实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
 │   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   6 源采集（Claude/Codex/OpenCode/Kilo/Qoder 双轨/Trae CN 弱估算）
+│   ├── collectors.py   7 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算）
 │   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
 │   ├── aggregation.py  报表聚合与过滤
@@ -73,7 +75,7 @@ usage-ledger/
 │   ├── scheduler.py    launchd 任务生成/安装/查询
 │   ├── cli.py          命令行入口
 │   └── pricing.py      模型别名与价格表（价格表当前为空）
-└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder/Trae CN）
+└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder/Trae CN/Cline）
 ```
 
 ## 安装
@@ -97,6 +99,7 @@ usage hooks install trae-cn --scope global  # 安装 Trae CN hooks（只记字�
 usage hooks status trae-cn      # hook 配置、事件文件、最近事件
 usage sync --source trae-cn     # 重放 hook 事件并写入 trae-cn.est
 usage est --source trae-cn      # Trae CN 弱估算 token（只覆盖安装 hook 后）
+usage report --source cline     # Cline 会话 token（input/output/cache read/write）
 usage top models                # 模型排行
 usage html --open               # 生成 usage-report.html 并在浏览器打开
 usage live                      # 直读源的实时视图
@@ -127,7 +130,7 @@ PYTHONPATH=src python3 -m usage_ledger report --since 7d
 
 `report` / `export` / `top` / `html` 在出结果前会先做一次**新鲜度检查**：
 
-1. 取各源最新文件的 mtime（Claude/Codex 看 `*.jsonl`，OpenCode/Kilo 看 `*.db` 与 `-wal`），
+1. 取各源最新文件的 mtime（Claude/Codex 看 `*.jsonl`，OpenCode/Kilo 看 `*.db` 与 `-wal`，Cline 看会话 `*.messages.json`），
    与库中 `source_state.last_file_mtime` 比对；
 2. 只有 mtime 变新的源才触发增量 `sync`（写法与手动 `usage sync` 完全一致，幂等）；
 3. 同步提示走 **stderr**，因此 `--format json|csv` 的 stdout 始终是干净的数据。
@@ -160,6 +163,29 @@ usage est --stateless --group-by model   # 绕过数据库直读转录
 - **余额来自日志快照**：`main.log` 的 `用量响应摘要` 仅保留约一周、`used` 非单调，因此只用于展示当前余额/总量，不用来推导日消耗。
 - **est 是估算值**：`est_input = context_usage_ratio × 200K`，`est_output = 字符数 ÷ 模型系数`（gfmodel 3.85 / dfmodel 4.58 / 其他 3.8）。旧版无 `ratio` 的转录跳过，避免与历史 token 真值重复。
 - 四轨（token 真值 / 活动 / 额度 / 估算）分表、分示，任何两轨都不相加；`doctor` 会显示 credits、快照数、估算覆盖与交叉校验。
+
+---
+
+## Cline（CLI / Desktop）
+
+Cline 的会话文件保留了每个 assistant 响应真实返回的 `metrics`，可直接作为 token 真值：
+
+```bash
+usage report --source cline
+usage report --source cline --group-by day,model --format json
+```
+
+- **路径**：`~/.cline/data/sessions/<session>/<session>.messages.json`；只提取 assistant 消息的
+  `metrics`（`inputTokens` / `outputTokens` / `cacheReadTokens` / `cacheWriteTokens`），不落正文。
+- **口径**：Cline 的 `inputTokens` **包含**缓存 token，入库时按
+  `input = inputTokens − cacheRead − cacheWrite` 拆分，与 Claude/Codex 的非重叠口径一致；
+  `outputTokens` 含推理 token，暂不单列。
+- **归属**：`model` 取消息的 `modelInfo.id`，缺失时回退会话元数据的 `model`；`project` 取
+  `workspace_root`/`cwd` 的 basename；去重键 `cline:<message.id>`。
+- **缺失**：没有 `metrics` 的消息（中断/失败）跳过并计数，不伪造 0；Cline 压缩后移出
+  `.messages.json` 的历史会由每日全量 sync 标记 `archived=1` 保留，不会重复计入。
+- **边界**：当前只接入 Cline CLI/Desktop 的会话文件；VS Code 扩展旧版
+  `saoudrizwan.claude-dev/tasks/*/ui_messages.json` 形态尚无本机样本，未接入。
 
 ---
 

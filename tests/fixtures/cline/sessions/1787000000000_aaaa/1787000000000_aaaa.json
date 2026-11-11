@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "session_id": "1787000000000_aaaa",
+  "source": "cli",
+  "pid": 111,
+  "started_at": "2026-08-15T09:00:00Z",
+  "status": "idle",
+  "interactive": true,
+  "provider": "cline",
+  "model": "cline-free/step-5-preview",
+  "cwd": "/tmp/proj-cline",
+  "workspace_root": "/tmp/proj-cline",
+  "team_name": "team-test"
+}

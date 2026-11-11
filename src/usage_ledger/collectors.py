@@ -289,6 +289,124 @@ def scan_sqlite_agent(db_path: str, source_name: str, result: SourceResult | Non
     return result
 
 
+def cline_sessions_root(home: str | None = None) -> str:
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, ".cline", "data", "sessions")
+
+
+def scan_cline(root: str | None = None, home: str | None = None,
+               result: SourceResult | None = None) -> SourceResult:
+    root = root or cline_sessions_root(home)
+    if result is None:
+        result = SourceResult("cline")
+    if not os.path.isdir(root):
+        result.available = False
+        result.notes.append("会话目录不存在：%s" % root)
+        return result
+    session_dirs = sorted(d for d in glob.glob(os.path.join(root, "*"))
+                          if os.path.isdir(d))
+    if not session_dirs:
+        result.notes.append("会话目录为空：%s" % root)
+        return result
+
+    for session_dir in session_dirs:
+        session_name = os.path.basename(session_dir)
+        meta = {}
+        meta_path = os.path.join(session_dir, session_name + ".json")
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8", errors="replace") as fh:
+                    loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    meta = loaded
+            except (OSError, ValueError) as exc:
+                result.errors.append((meta_path, "元数据解析失败：%s" % exc))
+
+        messages_path = os.path.join(session_dir, session_name + ".messages.json")
+        if not os.path.exists(messages_path):
+            found = sorted(glob.glob(os.path.join(session_dir, "*.messages.json")))
+            if not found:
+                result.key_kinds["skipped:no_messages"] += 1
+                continue
+            messages_path = found[0]
+        result.files += 1
+        try:
+            with open(messages_path, "r", encoding="utf-8", errors="replace") as fh:
+                obj = json.load(fh)
+        except OSError as exc:
+            result.errors.append((messages_path, str(exc)))
+            continue
+        except ValueError as exc:
+            result.errors.append((messages_path, "JSON 解析失败：%s" % exc))
+            continue
+        if not isinstance(obj, dict):
+            result.errors.append((messages_path, "顶层不是对象"))
+            continue
+
+        session = obj.get("sessionId") or meta.get("session_id") or session_name
+        project_dir = meta.get("workspace_root") or meta.get("cwd") or ""
+        project = os.path.basename(str(project_dir).rstrip("/")) if project_dir else None
+        default_model = meta.get("model")
+        default_provider = meta.get("provider")
+        messages = obj.get("messages")
+        if not isinstance(messages, list):
+            result.errors.append((messages_path, "缺少 messages 数组"))
+            continue
+
+        for index, msg in enumerate(messages):
+            if not isinstance(msg, dict) or msg.get("role") != "assistant":
+                continue
+            result.key_kinds["assistant"] += 1
+            metrics = msg.get("metrics")
+            if not isinstance(metrics, dict) or not metrics:
+                result.key_kinds["skipped:no_metrics"] += 1
+                continue
+            cached_read = _as_int(metrics.get("cacheReadTokens"))
+            cached_write = _as_int(metrics.get("cacheWriteTokens"))
+            raw_input = _as_int(metrics.get("inputTokens"))
+            counts = Counts(
+                input=max(raw_input - cached_read - cached_write, 0),
+                output=_as_int(metrics.get("outputTokens")),
+                cache_read=cached_read,
+                cache_write=cached_write,
+            )
+            if not counts.total():
+                result.key_kinds["zero-usage"] += 1
+                continue
+            raw_ts = msg.get("ts")
+            if isinstance(raw_ts, bool) or not isinstance(raw_ts, (int, float)) or raw_ts <= 0:
+                result.key_kinds["skipped:ts"] += 1
+                continue
+            ts = raw_ts / 1000.0 if raw_ts > 1e11 else float(raw_ts)
+            mid = msg.get("id")
+            if isinstance(mid, str) and mid:
+                key = "cline:%s" % mid
+            else:
+                result.key_kinds["missing:id"] += 1
+                key = "cline:%s:%d:%d" % (session, int(ts), index)
+            model_info = msg.get("modelInfo") if isinstance(msg.get("modelInfo"), dict) else {}
+            model = model_info.get("id") or default_model or "unknown"
+            provider = model_info.get("provider") or default_provider
+            result.key_kinds["message.id"] += 1
+            result.add(Record(
+                source="cline",
+                day=local_day(ts),
+                model=str(model),
+                model_raw=str(model),
+                project=project,
+                session=session,
+                key=key,
+                counts=counts,
+                ts=ts,
+                provider=provider,
+            ))
+    if result.records:
+        days = [rec.day for rec in result.records]
+        result.notes.append("token 覆盖 %s..%s（Cline CLI/Desktop 会话）" % (min(days), max(days)))
+        result.notes.append("input 已扣除 cache read/write；output 含推理 token，未单列")
+    return result
+
+
 QODER_TOKEN_SQL = """
 SELECT cm.id, cm.session_id, cm.gmt_create, cm.model_info, cm.token_info,
        cs.project_name, cs.project_uri, cs.session_type, cs.preferred_model_info
@@ -1055,7 +1173,7 @@ def scan_qoder_credit_sources(home: str | None = None,
 def source_signatures(home: str | None = None,
                       sources: list[str] | None = None) -> dict[str, int | None]:
     home = home or os.path.expanduser("~")
-    wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn"))
+    wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn", "cline"))
     signatures = {}
     for source in wanted:
         if source == "claude":
@@ -1098,6 +1216,15 @@ def source_signatures(home: str | None = None,
             signature = _latest_mtime_us(trae_event_files(trae_event_dir(home)))
             signatures["trae-cn"] = signature
             signatures["trae-cn.est"] = signature
+        elif source == "cline":
+            root = cline_sessions_root(home)
+            paths = []
+            for session_dir in glob.glob(os.path.join(root, "*")):
+                if os.path.isdir(session_dir):
+                    paths.append(os.path.join(session_dir,
+                                              os.path.basename(session_dir) + ".json"))
+            paths.extend(glob.glob(os.path.join(root, "*", "*.messages.json")))
+            signatures[source] = _latest_mtime_us(paths)
     return signatures
 
 
@@ -1106,7 +1233,8 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
                 activity_cursor_ms: int | None = None,
                 transcript_state: dict | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
-    wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn"])
+    wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
+                             "cline"])
     results = []
     if "claude" in wanted:
         results.append(scan_claude(os.path.join(home, ".claude", "projects")))
@@ -1132,4 +1260,6 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
         results.append(scan_qoder_credit_sources(home, transcript_state))
     if "trae-cn" in wanted:
         results.append(scan_trae_cn_est(home=home))
+    if "cline" in wanted:
+        results.append(scan_cline(home=home))
     return results

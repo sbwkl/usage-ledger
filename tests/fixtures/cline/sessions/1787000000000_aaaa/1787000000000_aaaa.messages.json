@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-15T09:01:00Z",
+  "agent": "lead",
+  "sessionId": "1787000000000_aaaa",
+  "origin": {
+    "source": "cli",
+    "mode": "user",
+    "sessionId": "1787000000000_aaaa",
+    "version": "0.0.49"
+  },
+  "messages": [
+    {
+      "id": "msg_u1",
+      "role": "user",
+      "ts": 1786784400000
+    },
+    {
+      "id": "msg_a1",
+      "role": "assistant",
+      "ts": 1786784410000,
+      "modelInfo": {
+        "id": "anthropic/claude-sonnet-4",
+        "provider": "anthropic"
+      },
+      "metrics": {
+        "inputTokens": 1000,
+        "outputTokens": 200,
+        "cacheReadTokens": 600,
+        "cacheWriteTokens": 100
+      }
+    },
+    {
+      "id": "msg_a2",
+      "role": "assistant",
+      "ts": 1786784420000,
+      "metrics": {
+        "inputTokens": 50,
+        "outputTokens": 10,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0
+      }
+    },
+    {
+      "id": "msg_a3",
+      "role": "assistant",
+      "ts": 1786784430000
+    },
+    {
+      "id": "msg_a4",
+      "role": "assistant",
+      "ts": 1786784440000,
+      "metrics": {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0
+      }
+    }
+  ]
+}

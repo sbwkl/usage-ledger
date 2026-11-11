@@ -25,7 +25,7 @@ from .models import ACTIVITY_FIELDS, FIELDS, Activity, SourceResult
 from .pricing import cost_for_record, normalize_model
 from .store import SqliteStore
 
-SOURCES = ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn")
+SOURCES = ("claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn")
 EST_SOURCES = {"qoder": "qoder.est", "trae-cn": TRAE_EST_SOURCE}
 ACTIVITY_SOURCE = "qoder.activity"
 ACTIVITY_CURSOR_KEY = "activity_cursor:qoder"
