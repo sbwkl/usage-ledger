@@ -1,8 +1,12 @@
-# TRAE-CN-DESIGN.md —— Trae CN 用量统计接入设计（评审稿）
+# TRAE-CN-DESIGN.md —— Trae CN 用量统计接入设计（已实现 Plan H）
 
-> 日期：2026-10-30 ｜ 状态：**Phase 0 已完成：不通过 → 按 §4.3 走方案 D（未写实现代码）** ｜ 基线：usage-ledger v0.4.0（2ec136e）
+> 日期：2026-10-30（初测）/ 2026-10-31（竞品复测）/ 2026-11-01（额度、hooks 与估算方案）/ 2026-11-02（Plan H 实现） ｜ 状态：**Phase 0 不通过 → 加密库路径维持 §4.3 方案 D；Plan H（Hooks 弱估算）H1–H3 已实现并通过 77 个单测，H0 真实捕获待用户验收** ｜ 基线：usage-ledger v0.4.0（2ec136e）
 > Phase 0 实测：加密库无法在本地只读解密（密钥由运行时 `db_persistence` 配置下发，本地无明文落盘；详见 [PROBE.md](PROBE.md) §6）。§5–§10 保留作记录，不实施。
-> 一句话结论：Trae CN 的逐次调用 token 明细**只存在于 SQLCipher 加密的 ai-agent 数据库**中，本地明文侧没有任何 token。接入的前提是先完成一次「经用户授权的密钥读取 + 只读解密」可行性验证（Phase 0）；验证通过才实现采集，否则维持不采集，只把 `doctor` 提示写清楚。
+> 竞品复测（2026-10-31）：竞品的内存扫描取密钥方案已在 macOS 端口端到端自测通过（HMAC + sqlcipher 打开），但对 Trae CN 被 hardened runtime 阻断——全进程 `flags=0x10000` 且无 `com.apple.security.get-task-allow`，`task_for_pid`/lldb/Apple debugserver 均被拒（受控实验证实签名是唯一变量）；备份旁路也关闭且即使开启仍为加密导出。详见 [PROBE.md](PROBE.md) §6.6。
+> 额度复测（2026-11-01）：本地没有额度真值可读——用量接口响应不落盘，日志只有 URL + HTTP 200，`storage.json` / localStorage 仅套餐权益与活动配置，无 used/remaining；维持不做额度轴。详见 [PROBE.md](PROBE.md) §6.7。
+> Hooks 复测（2026-11-01）：Trae CN 提供项目级 `.trae/hooks.json` 与全局 `~/.trae-cn/hooks.json`（六个官方事件），但 hook stdin 只有会话/工具/文本元数据，没有 token、credits、quota 或 transcript 路径；不能用于真值统计（只能做弱估算，见 §12）。详见 [PROBE.md](PROBE.md) §6.8。
+> Plan H（2026-11-01 设计 / 2026-11-02 实现）：按用户决定改用 Hooks 做 **token 估算**，复用 Qoder `est` 轨的呈现方式；只记录字符数与事件元数据，不落正文。因 hook 不可见系统提示/工具定义/上下文比例，该轨是**弱估算/下限**，误差可能数倍（未校准），仅看趋势，永不与真值或额度相加。详见 §12。
+> 一句话结论：加密库路径仍不可行；Trae CN 的 token 只能走 Hooks 可见内容的**弱估算**（Plan H），额度仍不可得。
 
 ---
 
@@ -28,7 +32,8 @@
 
 ### 1.3 非目标
 
-- 不估算 token（不用文本长度、上下文百分比、消息条数反推）。
+- 不估算 token（加密库路径不做文本反推）。**例外**：Plan H 的 hooks 估算轨（§12），只按 hook 可见内容的字符数估算，显式标注为 `est`，永不与真值/额度相加。
+- Plan H 的 hook 进程只在内存中计算 `prompt` / `tool_input` / `tool_response` / `last_assistant_message` 的长度，**不落正文、不落命令参数、不落文件内容**；事件文件只保存长度和事件元数据。
 - 不调用 `api.trae.cn` 的 `ide_user_ent_usage` / `web_user_ent_usage` / `query_user_usage_group_by_session` 等私有接口。
 - 不读取 `/Users/wayne/.trae-cn/trae-jwt-token`，不接触登录态。
 - 不做 Trae CN 的额度 / credits 轴：本地无真值，且与 token 不同轴。
@@ -509,7 +514,9 @@ usage trae-cn-setup [--keychain-account "Trae CN Key"] [--key-file PATH] [--no-c
 
 ---
 
-## 11. 待拍板（请审核时确认）
+## 11. 待拍板（Phase 0 路径，已归档）
+
+> 以下问题属于加密库路径；Phase 0 不通过后均不再阻塞。Plan H 的已确认事项见 §13。
 
 1. **是否同意先做 Phase 0**（一次性读取 Keychain + 安装 `sqlcipher` + 临时复制加密库）？
    这是方案 A 的唯一入口。
@@ -524,3 +531,307 @@ usage trae-cn-setup [--keychain-account "Trae CN Key"] [--key-file PATH] [--no-c
 
 > 审核通过后按 §4 先做 Phase 0；Phase 0 结果确认后再按 §7 实施 Phase 1。
 > 未通过前不写采集实现代码。
+
+---
+
+## 12. Plan H：Hooks 估算轨（2026-11-01 设计，2026-11-02 实现）
+
+> 用户决定：既然 Trae CN 有 hooks，就采用与 Qoder `est` 相同的呈现方式做 token 估算。
+> 本文只设计**估算轨**，不碰加密库、不调私有 API、不读 JWT、不做额度。
+> 前提事实：Trae Hooks 的 stdin **没有** token/credits/quota/transcript 字段（PROBE §6.8），
+> 因此只能对 hook 可见的文本做字符级估算；这是弱估算，不是 Qoder 那种带上下文比例的估算。
+>
+> **实现状态（2026-11-02）**：H1–H3 已完成，`tests/test_trae_hooks.py`、
+> `tests/test_trae_collector.py`、`tests/test_cli_trae.py`、`tests/test_store.py` 覆盖安装/卸载、
+> 重放、分源存储、CLI 与 HTML；全量 77 个单测通过。H0 真实捕获仍需用户安装 hook 并操作 Trae CN 验收。
+
+### 12.1 边界与口径
+
+| 项 | 决定 |
+|---|---|
+| 数据来源 | Trae CN Hooks（`SessionStart` / `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop`） |
+| 记录内容 | 仅事件元数据 + 字符数；**不落 prompt、tool_input、tool_response、last_assistant_message 正文** |
+| 估算对象 | 每次「模型调用边界」：每个 `PreToolUse` 与每个 `Stop` 各一条 `Estimate` |
+| 存储 | 复用 `usage_est`，新增 `source='trae-cn.est'`；与 Qoder 的 `qoder.est` 分源、分示 |
+| 可加性 | **不可**与 token 真值、credits、活动指标相加；`report`/`html` 必须标注 |
+| 历史 | 只覆盖 hook 安装之后的会话；不回溯加密库历史 |
+| 模型 | hook 若提供 `model` 则记录；否则统一记 `trae-cn`（官方文档未列 `model`） |
+| 额度 | 不做。额度仍只在服务端响应/加密库中，hook 拿不到（PROBE §6.7） |
+
+### 12.2 数据流
+
+```
+Trae CN agent
+  ├─ SessionStart       ─┐
+  ├─ UserPromptSubmit    │    hook command（绝对路径的 Python + 独立脚本）
+  ├─ PreToolUse          ├──► 只算长度，追加一行 JSON
+  ├─ PostToolUse         │    /Users/wayne/.local/share/usage-ledger/trae-cn/events-YYYY-MM-DD.jsonl
+  └─ Stop               ─┘    （0600；无正文）
+                                      │
+                         usage sync / usage est --source trae-cn
+                                      │
+                         重建每个 session 的可见上下文长度
+                                      │
+                         usage_est.source='trae-cn.est'
+                                      │
+                    usage est / usage html / usage doctor
+```
+
+### 12.3 Hook 配置与安装
+
+官方配置（`https://docs.trae.cn/ide/reference-for-hooks-configuration`）：
+
+- 全局：`/Users/wayne/.trae-cn/hooks.json`（对本机所有工作区生效）
+- 项目：`<workspace>/.trae/hooks.json`（只对当前项目生效）
+- 顶层：`{"version": 1, "hooks": {"<EventName>": [<group>, ...]}}`
+- group：`matcher`（仅 PreToolUse/PostToolUse/Notification）、`loop_limit`（仅 Stop）、`hooks`
+- hook item：`type: "command"`、`command`、`timeout`（默认 30s）
+- 输入：stdin JSON；输出：stdout + 退出码；非 0/2 的退出码被忽略
+- 官方事件字段：`SessionStart{source}`、`UserPromptSubmit{prompt}`、
+  `PreToolUse{tool_use_id, tool_name, llm_tool_name, tool_input}`、
+  `PostToolUse{..., tool_response}`、`Stop{stop_hook_active, loop_count, last_assistant_message}`、
+  `Notification{notification_type, message, tool_use_id}`
+
+安装后的全局配置示例（由 `usage hooks install trae-cn --scope global` 生成/合并）：
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "/opt/homebrew/bin/python3 /Users/wayne/.local/share/usage-ledger/hooks/trae-cn-hook.py", "timeout": 5}]}
+    ],
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "/opt/homebrew/bin/python3 /Users/wayne/.local/share/usage-ledger/hooks/trae-cn-hook.py", "timeout": 5}]}
+    ],
+    "PreToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/opt/homebrew/bin/python3 /Users/wayne/.local/share/usage-ledger/hooks/trae-cn-hook.py", "timeout": 5}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/opt/homebrew/bin/python3 /Users/wayne/.local/share/usage-ledger/hooks/trae-cn-hook.py", "timeout": 5}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "/opt/homebrew/bin/python3 /Users/wayne/.local/share/usage-ledger/hooks/trae-cn-hook.py", "timeout": 5}]}
+    ]
+  }
+}
+```
+
+安装约束：
+
+1. 只合并、不覆盖：保留用户已有事件/组；JSON 解析失败则中止，不写文件。
+2. 写前备份 `hooks.json.bak-<timestamp>`，临时文件 + `os.replace` 原子替换。
+3. 幂等：通过「command 含 `trae-cn-hook.py` 绝对路径」识别自己的组；重复安装先移除旧组再写入。
+4. 命令使用 `sys.executable` + 脚本绝对路径并 `shlex.quote`；Python/venv 搬迁后需重跑安装。
+5. Hook 脚本独立、仅标准库；任何异常都 `exit 0`，绝不阻塞 Trae 的 agent。
+6. 默认 `timeout: 5` 秒；正常执行 < 100ms。
+7. Trae 可能在 Settings > Hooks 里要求确认/启用，或要求在「本地自动运行」模式下运行；
+   安装命令打印绝对路径与操作提示，但不替用户点 UI。
+8. 默认装全局（覆盖所有工作区）；如用户不接受全局 hook，可 `--scope project --project <abs path>`。
+
+### 12.4 事件记录格式（隐私关键）
+
+每行一个 JSON，建议 < 1 KB，字段固定：
+
+```json
+{"v":1,"uid":"<session>:<ts_ns>:<event>:<tool_use_id>","ts":1762000000.123,"event":"PreToolUse","session":"<session_id>","project":"usage-ledger","tool":"Read","tool_use_id":"toolu_xxx","chars_in":0,"chars_out":37}
+```
+
+- `chars_in`：进入上下文的字符数（`prompt`、`tool_response`）
+- `chars_out`：模型生成的字符数（`tool_input`、`last_assistant_message`）
+- `project`：`cwd` 的 basename，不存完整路径
+- `tool`：标准化工具名（可选；MCP 工具名可能含 server/tool 名，不含参数）
+- **不写**：prompt 文本、tool_input 内容、tool_response 内容、last_assistant_message 文本、命令、文件内容、完整 cwd
+- 文件权限 0600，目录 0700；按本地日期切文件；默认保留 180 天（可手工清理，估算结果已在 DB 中）
+
+长度测量规则：
+
+- 字符串：Python `len(s)`（Unicode 字符数）
+- 对象/数组：`len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))`
+- 无法解析的 stdin / 未知事件：直接 `exit 0`，不写事件
+
+### 12.5 估算算法
+
+对每个 `session_id` 顺序重放事件，维护可见上下文长度 `ctx_chars`：
+
+| 事件 | 动作 |
+|---|---|
+| `SessionStart` | 仅当该 session 尚未出现任何事件时 `ctx_chars = 0`；记录 project/model（若有）；防止重复 `SessionStart` 清空已累积上下文 |
+| `UserPromptSubmit` | `ctx_chars += chars_in` |
+| `PreToolUse` | 用**当前** `ctx_chars` 发一条估算；随后 `ctx_chars += chars_out`（tool_input 成为历史） |
+| `PostToolUse` | `ctx_chars += chars_in`（工具结果成为历史） |
+| `Stop` | 用当前 `ctx_chars` 发一条估算；随后 `ctx_chars += chars_out`（最终回复成为历史） |
+| `PreCompact` / `PostCompact` | 官方文档未列；若未来出现，`PostCompact` 后把 `ctx_chars` 重置为摘要长度或 0（前向兼容） |
+
+每条估算：
+
+```text
+est_input  = min(round(ctx_chars / factor) + overhead_tokens, window_tokens)
+est_output = round(chars_out / factor)
+chars_in   = ctx_chars
+chars_out  = 本次输出字符数
+ratio      = NULL
+source     = "trae-cn.est"
+request_id = "trae-cn:" + uid
+```
+
+默认参数（v1，可用环境变量覆盖，便于校准）：
+
+| 参数 | 默认 | 环境变量 | 说明 |
+|---|---|---|---|
+| `factor` | 3.8 | `USAGE_LEDGER_TRAE_EST_FACTOR` | 字符/ token；沿用 Qoder 默认值 |
+| `overhead_tokens` | 0 | `USAGE_LEDGER_TRAE_EST_OVERHEAD` | 系统提示/工具定义的固定补偿；默认 0 = 纯可见内容下限 |
+| `window_tokens` | 200000 | `USAGE_LEDGER_TRAE_EST_WINDOW` | `ctx_chars` 上限；超出按窗口截断 |
+
+示例（仅示意）：
+
+```text
+UserPromptSubmit: chars_in=200            ctx=200
+PreToolUse:       chars_out=120           emit(input=200)   ctx=320
+PostToolUse:      chars_in=8000           ctx=8320
+Stop:             chars_out=300           emit(input=8320)  ctx=8620
+→ 两个请求：est_input=53 / 2189，est_output=32 / 79（factor=3.8，overhead=0）
+```
+
+### 12.6 精度边界（必须在 UI/CLI 明示）
+
+**偏低因素**：
+
+- hook 拿不到系统提示、工具定义、Rules/Skills/Memory、MCP schema；
+- 拿不到工具调用之间的 assistant 自然语言/思考内容（`Stop` 只有最终回复）；
+- 附件、图片、未以文本形式出现在 `prompt` 里的上下文不可见；
+- 官方未提供 token 真值，无法做误差校准。
+
+**偏高因素**：
+
+- 同一轮并行多个工具调用会产生多条 `PreToolUse`，每条都按完整上下文计输入；
+- 没有压缩/截断信号时，`ctx_chars` 只增不减，压缩后仍按旧上限估算；
+- 工具结果/文件内容在上下文里可能被截断，hook 看到的是完整结果。
+
+**结论**：这是「可见内容下限 + 部分重复」的混合估算，**误差可能数倍且方向不定（未校准）**；
+只适合看趋势/占比，不适合对账、计费或与 Qoder 的 est 直接比较。
+CLI/HTML 固定标注：`Trae CN 弱估算（hook 可见内容，不含系统提示/工具定义）`。
+
+### 12.7 存储与命令接入
+
+**Schema**（`usage_est`）：
+
+```sql
+ALTER TABLE usage_est ADD COLUMN source TEXT NOT NULL DEFAULT 'qoder.est';
+CREATE INDEX IF NOT EXISTS idx_est_source_day ON usage_est(source, day);
+```
+
+- 新库在 `CREATE TABLE` 里直接带 `source`；旧库启动时检测 `PRAGMA table_info(usage_est)` 后补列。
+- `Estimate` 增加 `source: str = "qoder.est"`；Qoder 现有构造不传，行为不变。
+- `upsert_estimates` 写入 `source`；`request_id` 已带 `trae-cn:` 前缀，避免冲突。
+
+**新增源**：
+
+- 公开源名：`trae-cn`（`SOURCES` 增加）；子源名：`trae-cn.est`（`source_state` / `usage_est.source`）。
+- `scan_trae_cn_est()`：读事件文件 → 重放 → 返回 `SourceResult("trae-cn.est")`。
+- `source_signatures`：`trae-cn` → 事件目录最新 mtime；`trae-cn.est` 与 `trae-cn` 同签名。
+- `collect_all`：`trae-cn` → `scan_trae_cn_est()`。
+- `_sync_into`：`trae-cn.est` 走 `upsert_estimates` + `update_source_state`，不碰 `usage_turn`。
+- 不做 `usage_activity`；活动轴仍只属于 Qoder（如后续要加，另立方案）。
+
+**CLI**：
+
+```bash
+usage hooks install trae-cn --scope global      # 写/合并 ~/.trae-cn/hooks.json
+usage hooks status trae-cn                      # 配置、事件文件、最近事件、条数
+usage hooks uninstall trae-cn --scope global    # 只删自己的组
+usage sync --source trae-cn                     # 重建并入库（可重复执行）
+usage est --source trae-cn --group-by day,session
+usage est --source trae-cn --stateless --group-by day,model
+usage doctor                                    # 显示 hook 安装状态/覆盖/最近事件
+```
+
+- `usage est` 新增 `--source {qoder,trae-cn}`，默认 `qoder`（保持兼容）；
+  `trae-cn` 不支持 `ratio`，提示改为「无上下文比例，仅字符估算」。
+- `usage report --source trae-cn` 没有 token 真值，只显示提示；
+  Trae 估算只在 `usage est` 与 `usage html` 的补充区展示。
+- `usage sync`（不带 `--source`）默认包含 `trae-cn`；无 hook 日志时 `available=False`，不报错。
+
+**HTML（Phase H3）**：
+
+- 现有「Qoder 补充口径」区增加来源切换：`Qoder（活动/额度/估算）` 与 `Trae CN（估算）`；
+- Trae 面板复用 est 卡片/表格，固定标注「弱估算、不可相加」；
+- 无数据时不显示该来源。
+
+### 12.8 改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `src/usage_ledger/trae_hooks.py`（新增） | hook 安装/合并/卸载、事件文件路径、hook 脚本生成 |
+| `src/usage_ledger/collectors.py` | `scan_trae_cn_est()`、签名、`collect_all` 接入、估算常量 |
+| `src/usage_ledger/models.py` | `Estimate.source` 默认值 |
+| `src/usage_ledger/store.py` | `usage_est.source` schema + 迁移、upsert、按 source 查询 |
+| `src/usage_ledger/cli.py` | `hooks` 子命令、`SOURCES`、`est --source`、`sync`/`doctor` 接入 |
+| `src/usage_ledger/html_report.py` | 补充区来源切换与 Trae 估算面板（H3） |
+| `tests/fixtures/trae_hooks/`（新增） | 脱敏事件序列 |
+| `tests/test_trae_hooks.py`（新增） | 安装合并、长度记录、隐私、重放、幂等 |
+| `tests/test_store.py` / `test_cli.py` / `test_html.py` | source 迁移、`est --source`、doctor、HTML |
+| `README.md` / `docs/TRAE-CN-DESIGN.md` / `docs/PROBE.md` | 口径、命令、限制 |
+
+### 12.9 测试与验收
+
+**单元测试**：
+
+1. 安装器：空文件、已有其他 hook、已有旧的本项目 hook、损坏 JSON（中止且不覆盖）。
+2. 隐私：给定含敏感文本的 stdin，事件文件只含长度/元数据；断言敏感子串不出现。
+3. 重放：prompt → Pre → Post → Stop 的 est_input/est_output 与手算一致。
+4. 边界：无 tool、多个 tool、并行 tool、Stop 为空、跨天 session、乱序文件、重复事件。
+5. 幂等：同一事件日志 sync 两次，`usage_est` 行数不变。
+6. 迁移：旧库启动后 `source` 列存在，Qoder 行默认 `qoder.est`，查询不混源。
+7. 失败安全：stdin 非法/目录不可写 → 退出码 0，Trae 不受影响。
+
+**真实验收（需用户操作，约 2 分钟）**：
+
+1. 在 Trae CN 中启用 hook（Settings > Hooks 确认）；
+2. 打开任意工作区，发一条会触发至少一次工具调用的 prompt；
+3. 确认 `/Users/wayne/.local/share/usage-ledger/trae-cn/events-<date>.jsonl` 出现
+   `SessionStart` / `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop`；
+4. `usage sync --source trae-cn` 后，`usage est --source trae-cn --group-by day,session`
+   出现 ≥ 1 条，且 `chars_in/out` 与文件一致；
+5. `usage doctor` 显示 hook 已安装、最近事件时间、估算条数；
+6. 抽查事件文件/DB，确认没有 prompt/工具输出正文。
+
+### 12.10 风险与缓解
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| hook 未真正启用（手写配置不被识别） | 无数据 | H0 先做一次真实捕获；安装后提示用户在 Settings 确认；失败则回退项目级/UI 创建 |
+| hook 运行在沙箱，无法写 `~/.local/share` | 无数据 | 文档要求切「本地自动运行」；doctor 提示；不静默失败 |
+| hook 阻塞 agent | 体验受损 | 独立脚本、标准库、`timeout: 5`、所有异常 `exit 0` |
+| 估算严重偏低/偏高 | 误导 | 固定标注「弱估算/趋势」；不参与汇总、成本、额度；保留 `chars_*` 供校准 |
+| 全局 hook 影响所有工作区 | 安全/隐私顾虑 | 默认推荐全局但需用户批准；支持 project scope；脚本只读 stdin + 写本地元数据 |
+| Trae 升级改字段/路径 | 采集中断 | 字段缺失容错为 0；`doctor` 显示最近事件；H0 记录版本 |
+| 事件文件增长 | 磁盘 | 按日切分、0600、默认 180 天保留；同步只读元数据 |
+| 并行工具调用重复计输入 | 高估 | 文档明示；后续可按 `llm_tool_name`/时间窗聚合（暂不做） |
+
+### 12.11 分期
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| H0 | 真实 hook 捕获探针：确认启用方式、实际字段（尤其 `model`）、事件顺序；只记字段名+长度 | **待用户验收**（安装 hook 后发一条带工具调用的 prompt） |
+| H1 | hook 脚本 + 安装/状态/卸载 + 事件日志 + 重放 + `scan_trae_cn_est` + store source 迁移 | 已实现 |
+| H2 | `usage est --source trae-cn` + `sync`/`doctor` + 测试 + 文档 | 已实现 |
+| H3 | HTML 补充区来源切换 + Trae 估算面板 | 已实现 |
+
+> 真实 hooks 未由本仓库自动写入；安装命令为
+> `usage hooks install trae-cn --scope global`，执行前会展示目标路径并生成带时间戳备份。
+> H0 验收步骤见 README「下一步」。
+
+---
+
+## 13. Plan H 已确认事项
+
+1. **作用域**：默认全局 `/Users/wayne/.trae-cn/hooks.json`；同时支持 `--scope project`。
+2. **精度预期**：已接受「弱估算/可见内容下限，误差可能数倍且方向不定（未校准），只做趋势」。
+3. **隐私**：只保存字符数、session_id、project basename、工具名与事件元数据，不保存正文。
+4. **H0**：安装 hook 后由用户在 Trae CN 中发一条带工具调用的 prompt 做真实捕获验收；未通过前不宣称采集成功。
+5. **默认参数**：`factor=3.8`、`overhead=0`、`window=200000`；支持环境变量校准。
+6. **模型维度**：hook 未提供 `model` 时统一记 `trae-cn`。
+7. **HTML**：H1–H3 一次交付；Trae 面板只在有弱估算数据时显示。
+
+> 最终组合：全局 hook + H0 待验收 + 弱估算明示 + 默认参数 + 已实现 H1–H3；不碰加密库、JWT、私有 API、额度。

@@ -13,18 +13,20 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import __version__, scheduler
+from . import __version__, scheduler, trae_hooks
 from .aggregation import (DIMENSIONS, aggregate, match, merge_records, missing_days,
                           period_label)
-from .collectors import (EST_FACTOR_VERSION, collect_all, qoder_paths,
-                         scan_qoder_activity, scan_qoder_credit_sources,
+from .collectors import (EST_FACTOR_VERSION, TRAE_EST_SOURCE, TRAE_EST_VERSION,
+                         collect_all, qoder_paths, scan_qoder_activity,
+                         scan_qoder_credit_sources, scan_trae_cn_est,
                          source_signatures)
 from .html_report import build_payload, render_html
 from .models import ACTIVITY_FIELDS, FIELDS, Activity, SourceResult
 from .pricing import cost_for_record, normalize_model
 from .store import SqliteStore
 
-SOURCES = ("claude", "codex", "opencode", "kilo", "qoder")
+SOURCES = ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn")
+EST_SOURCES = {"qoder": "qoder.est", "trae-cn": TRAE_EST_SOURCE}
 ACTIVITY_SOURCE = "qoder.activity"
 ACTIVITY_CURSOR_KEY = "activity_cursor:qoder"
 ACTIVITY_STALL_KEY = "activity_stall:qoder"
@@ -35,8 +37,10 @@ HEADERS = {
     "day": "date", "week": "week", "month": "month", "source": "source",
     "model": "model", "project": "project", "session": "session",
 }
-NO_TOKEN_NOTICE = ("无 token 数据：Trae CN（本地只有额度键）、"
+NO_TOKEN_NOTICE = ("无 token 真值：Trae CN（仅 hook 字符弱估算，见 usage est --source trae-cn）、"
                    "ChatGPT 桌面端（无本地数据）")
+TRAE_EST_NOTICE = ("Trae CN 弱估算（%s）：仅 hook 可见内容，不含系统提示/工具定义，"
+                   "误差可能数倍且方向不定，不可与真值/额度相加" % TRAE_EST_VERSION)
 COST_NOTICE = "cost_equiv_usd 为按 API 价折算的等价成本，非实付；unknown 表示无价格表匹配"
 ACTIVITY_NOTICE = "活动指标（会话/提示/工具调用/时长）与 token 不可相加，也不参与成本"
 
@@ -275,6 +279,25 @@ def _store_credit_result(store, result: SourceResult, signatures: dict,
         print("  note:", note)
 
 
+def _store_trae_est_result(store, result: SourceResult, signatures: dict,
+                           quiet: bool) -> int:
+    status = _status(result)
+    error = "; ".join(msg for _, msg in result.errors[:3]) or None
+    inserted = store.upsert_estimates(result.estimates)
+    store.update_source_state(
+        TRAE_EST_SOURCE, result.files, store.est_count(TRAE_EST_SOURCE), status, error,
+        last_ts=max((row.ts for row in result.estimates), default=None),
+        last_mtime=signatures.get(TRAE_EST_SOURCE))
+    if not quiet:
+        print("trae-cn.est: 弱估算 %d 条（本批 %d），files=%d events=%d sessions=%d errors=%d status=%s" %
+              (store.est_count(TRAE_EST_SOURCE), inserted, result.files,
+               result.key_kinds.get("events", 0), result.key_kinds.get("sessions", 0),
+               len(result.errors), status))
+        for note in result.notes:
+            print("  note:", note)
+    return inserted
+
+
 def _sync_into(store, sources=None, full=False, since=None, quiet=False) -> dict:
     wanted = list(sources) if sources else list(SOURCES)
     signatures = source_signatures(source_home(), wanted)
@@ -301,6 +324,9 @@ def _sync_into(store, sources=None, full=False, since=None, quiet=False) -> dict
             continue
         if result.name == "qoder.credits":
             _store_credit_result(store, result, signatures, quiet)
+            continue
+        if result.name == TRAE_EST_SOURCE:
+            total += _store_trae_est_result(store, result, signatures, quiet)
             continue
         records = [rec for rec in result.records if not since or rec.day >= since]
         if records:
@@ -340,14 +366,21 @@ def _refresh_if_stale(store, source=None) -> bool:
     sources = [source] if source else None
     current = source_signatures(source_home(), sources)
     stored = store.source_mtimes()
-    stale = [name for name, signature in current.items()
-             if signature is not None
-             and (stored.get(name) is None or signature > stored[name])]
+    stale = []
+    for name, signature in current.items():
+        if signature is None:
+            continue
+        stored_signature = stored.get(name)
+        if stored_signature is None and name == "trae-cn":
+            stored_signature = stored.get(TRAE_EST_SOURCE)
+        if stored_signature is None or signature > stored_signature:
+            stale.append(name)
     if not stale:
         return False
     public = []
     for name in stale:
         public_name = ("qoder" if name in (ACTIVITY_SOURCE, "qoder.credits", "qoder.est")
+                       else "trae-cn" if name == TRAE_EST_SOURCE
                        else name)
         if public_name not in public:
             public.append(public_name)
@@ -395,6 +428,23 @@ def _refresh_credits_if_stale(store) -> bool:
     return True
 
 
+def _refresh_trae_est_if_stale(store) -> bool:
+    signatures = source_signatures(source_home(), ["trae-cn"])
+    stored = store.source_mtimes()
+    signature = signatures.get(TRAE_EST_SOURCE)
+    if signature is None or stored.get(TRAE_EST_SOURCE) == signature:
+        return False
+    print("auto-sync: 检测到 Trae CN hook 事件有新数据，正在刷新估算…",
+          file=sys.stderr)
+    try:
+        _sync_into(store, sources=["trae-cn"], quiet=True)
+    except (sqlite3.Error, OSError) as exc:
+        print("auto-sync: Trae 估算刷新失败（%s），继续使用库中现有数据" % exc,
+              file=sys.stderr)
+        return False
+    return True
+
+
 def cmd_sync(args):
     if args.stateless:
         print("sync 需要写入数据库，不能与 --stateless 同时使用", file=sys.stderr)
@@ -407,6 +457,13 @@ def cmd_sync(args):
                 print("qoder.activity: days=%d rows=%d sessions=%d tool_calls=%d files=%d status=%s" %
                       (len(result.affected_days), totals["rows"], totals["sessions"],
                        totals["tool_calls"], result.files, _status(result)))
+                continue
+            if result.name == TRAE_EST_SOURCE:
+                est_total = sum(row.est_input + row.est_output
+                                for row in result.estimates)
+                print("trae-cn.est: %d estimates, %s est tokens, files=%d, status=%s" %
+                      (len(result.estimates), _fmt_int(est_total), result.files,
+                       _status(result)))
                 continue
             records = [rec for rec in result.records if not since or rec.day >= since]
             tokens = sum(rec.counts.total() for rec in records)
@@ -968,8 +1025,12 @@ def _write_est_rows(rows, dims, fmt: str):
 def cmd_est(args):
     since, until = _effective_range(args)
     dims = _parse_est_dims(args.group_by)
+    source = EST_SOURCES[args.source]
     if args.stateless:
-        result = scan_qoder_credit_sources(source_home())
+        if args.source == "trae-cn":
+            result = scan_trae_cn_est(home=source_home())
+        else:
+            result = scan_qoder_credit_sources(source_home())
         rows = _aggregate_estimates(result.estimates, dims, since, until)
         missing = sum(1 for row in result.estimates if row.ratio is None)
         requests = len(result.estimates)
@@ -978,21 +1039,33 @@ def cmd_est(args):
     else:
         store = SqliteStore(db_path())
         try:
-            _refresh_credits_if_stale(store)
-            rows = store.est_rows(since, until, dims)
-            totals = store.est_totals(since, until)
+            if args.source == "trae-cn":
+                _refresh_trae_est_if_stale(store)
+            else:
+                _refresh_credits_if_stale(store)
+            rows = store.est_rows(since, until, dims, source=source)
+            totals = store.est_totals(since, until, source=source)
             missing = totals["missing_ratio"]
             requests = totals["requests"]
         finally:
             store.close()
     _write_est_rows(rows, dims, args.format)
-    print("估算 token 由转录文本 + 上下文比例推算（%s），±30~40%% 误差，"
-          "不可与真值/额度相加" % EST_FACTOR_VERSION, file=sys.stderr)
-    if requests:
-        print("估算覆盖 %d 请求；ratio 缺失 %d（这些请求 est_input 记 0）" %
-              (requests, missing), file=sys.stderr)
+    if args.source == "trae-cn":
+        print(TRAE_EST_NOTICE, file=sys.stderr)
+        if requests:
+            print("估算覆盖 %d 请求（仅 hook 安装后的会话；无上下文比例）" % requests,
+                  file=sys.stderr)
+        else:
+            print("no estimate data in range（先运行 usage hooks install trae-cn --scope global）",
+                  file=sys.stderr)
     else:
-        print("no estimate data in range", file=sys.stderr)
+        print("估算 token 由转录文本 + 上下文比例推算（%s），±30~40%% 误差，"
+              "不可与真值/额度相加" % EST_FACTOR_VERSION, file=sys.stderr)
+        if requests:
+            print("估算覆盖 %d 请求；ratio 缺失 %d（这些请求 est_input 记 0）" %
+                  (requests, missing), file=sys.stderr)
+        else:
+            print("no estimate data in range", file=sys.stderr)
     return 0
 
 
@@ -1030,6 +1103,33 @@ def _load_credit_payload(args, since, until, filters):
             EST_FACTOR_VERSION)
 
 
+def _load_trae_est_payload(args, since, until, filters):
+    if filters.get("source") not in (None, "trae-cn"):
+        return [], {}, TRAE_EST_VERSION
+    if args.stateless or not os.path.exists(db_path()):
+        result = scan_trae_cn_est(home=source_home())
+        rows = _aggregate_estimates(result.estimates, ("day", "model"), since, until)
+        selected = [row for row in result.estimates
+                    if (not since or row.day >= since) and (not until or row.day <= until)]
+        totals = {
+            "est_input": sum(row.est_input for row in selected),
+            "est_output": sum(row.est_output for row in selected),
+            "requests": len(selected),
+            "days": len({row.day for row in selected}),
+            "models": len({row.model for row in selected}),
+            "missing_ratio": sum(1 for row in selected if row.ratio is None),
+        }
+    else:
+        store = SqliteStore(db_path())
+        try:
+            _refresh_trae_est_if_stale(store)
+            rows = store.est_rows(since, until, ("day", "model"), source=TRAE_EST_SOURCE)
+            totals = store.est_totals(since, until, source=TRAE_EST_SOURCE)
+        finally:
+            store.close()
+    return rows, totals, TRAE_EST_VERSION
+
+
 def cmd_html(args):
     since, until = _effective_range(args)
     filters = parse_filters(args.filter)
@@ -1042,6 +1142,8 @@ def cmd_html(args):
     records, activities, coverage = _load_records(args, since, until, filters)
     credit_data, quota, est_rows, est_totals, factor_version = _load_credit_payload(
         args, since, until, filters)
+    trae_rows, trae_totals, trae_factor = _load_trae_est_payload(
+        args, since, until, filters)
     dims = ("day", "source", "model", "project")
     rows = aggregate(records, dims)
     activity_rows = _filter_activity(activities, since, until, filters)
@@ -1049,13 +1151,16 @@ def cmd_html(args):
     if credit_data:
         span_days += [row["day"] for row in credit_data["days"]]
     span_days += [row["day"] for row in est_rows]
+    span_days += [row["day"] for row in trae_rows]
     display_since = since or min(span_days, default=None)
     display_until = until or max(span_days, default=None)
     payload = build_payload(rows, dims, display_since, display_until,
                             [COST_NOTICE, NO_TOKEN_NOTICE],
                             activity=activity_rows, coverage=coverage,
                             credits=credit_data, quota=quota, est_rows=est_rows,
-                            est_totals=est_totals, factor_version=factor_version)
+                            est_totals=est_totals, factor_version=factor_version,
+                            trae_est_rows=trae_rows, trae_est_totals=trae_totals,
+                            trae_factor_version=trae_factor)
     output = os.path.abspath(os.path.expanduser(args.output or "usage-report.html"))
     parent = os.path.dirname(output)
     if parent and not os.path.isdir(parent):
@@ -1149,9 +1254,10 @@ def cmd_doctor(args):
                 print("activity: days=%d rows=%d sessions=%d prompts=%d tool_calls=%d" %
                       (activity["days"], store.activity_count(), activity["sessions"],
                        activity["prompts"], activity["tool_calls"]))
-            print("credits: requests=%d quota_snapshots=%d est_rows=%d missing_ratio=%d" %
+            print("credits: requests=%d quota_snapshots=%d est_rows=%d missing_ratio=%d "
+                  "trae_est_rows=%d" %
                   (store.credit_count(), store.quota_count(), store.est_count(),
-                   store.est_missing_ratio()))
+                   store.est_missing_ratio(), store.est_count(TRAE_EST_SOURCE)))
             latest_quota = store.latest_quota().get("add_on")
             if latest_quota:
                 age_h = (time.time() - latest_quota["ts"]) / 3600
@@ -1179,8 +1285,25 @@ def cmd_doctor(args):
         else:
             print("DB 不存在（尚未 sync/backfill）")
 
+    hook = trae_hooks.status("global", home=source_home())
+    installed = sum(hook["hook_groups"].values())
+    if hook["config_exists"] or hook["script_exists"] or installed:
+        print("trae-cn hooks: config=%s installed=%d/%d script=%s files=%d events=%d "
+              "sessions=%d" %
+              (hook["config_path"], installed, len(trae_hooks.HOOK_EVENTS),
+               hook["script_path"], hook.get("files", 0), hook.get("events", 0),
+               hook.get("sessions", 0)))
+        if hook.get("error"):
+            print("  warning: hooks 配置无法解析：%s" % hook["error"])
+        latest = hook.get("last")
+        if isinstance(latest, dict) and isinstance(latest.get("ts"), (int, float)):
+            print("  latest: %s（%s）" % (latest.get("event"), _ago(latest["ts"])))
+    else:
+        print("trae-cn hooks: 未安装（usage hooks install trae-cn --scope global）")
+
     results = _source_results([args.probe] if args.probe else None)
-    if args.probe and not any(result.name == args.probe for result in results):
+    probe_name = TRAE_EST_SOURCE if args.probe == "trae-cn" else args.probe
+    if args.probe and not any(result.name == probe_name for result in results):
         print("unknown source: %s" % args.probe, file=sys.stderr)
         return 2
     recent_cutoff = (date.today() - timedelta(days=7)).isoformat()
@@ -1217,6 +1340,20 @@ def cmd_doctor(args):
                           (month, bucket["sessions"], bucket["prompts"],
                            bucket["assistant_calls"], bucket["tool_calls"],
                            bucket["turns"], _fmt_duration(bucket["duration_ms"])))
+            continue
+
+        if result.name == TRAE_EST_SOURCE:
+            print("trae-cn.est: files=%d events=%d sessions=%d estimates=%d "
+                  "errors=%d status=%s" %
+                  (result.files, result.key_kinds.get("events", 0),
+                   result.key_kinds.get("sessions", 0), len(result.estimates),
+                   len(result.errors), _status(result)))
+            for note in result.notes:
+                print("  note:", note)
+            if not result.available:
+                print("  warning: hook 事件目录不存在；估算无法刷新")
+            for error_path, error in result.errors[:5]:
+                print("  ERROR", error_path, error)
             continue
 
         if result.name == "qoder.credits":
@@ -1342,6 +1479,56 @@ def cmd_schedule(args):
     return 0
 
 
+def cmd_hooks(args):
+    if args.action == "status":
+        info = trae_hooks.status(args.scope, args.project, home=source_home())
+        print("source: trae-cn")
+        print("config: %s (exists=%s)" % (info["config_path"], info["config_exists"]))
+        print("script: %s (exists=%s)" % (info["script_path"], info["script_exists"]))
+        if info.get("error"):
+            print("error: %s" % info["error"])
+        for event, count in info["hook_groups"].items():
+            print("hook: %-18s groups=%d" % (event, count))
+        print("events: files=%d events=%d sessions=%d" %
+              (info.get("files", 0), info.get("events", 0), info.get("sessions", 0)))
+        latest = info.get("last")
+        if isinstance(latest, dict) and isinstance(latest.get("ts"), (int, float)):
+            print("latest: %s at %s" %
+                  (latest.get("event"),
+                   datetime.fromtimestamp(latest["ts"]).astimezone().isoformat(
+                       timespec="seconds")))
+        if not sum(info["hook_groups"].values()):
+            print("hint: usage hooks install trae-cn --scope global")
+        return 0
+
+    if args.action == "install":
+        info = trae_hooks.install(args.scope, args.project, home=source_home(),
+                                  dry_run=args.dry_run)
+        print("config: %s" % info["config_path"])
+        print("script: %s" % info["script_path"])
+        print("command: %s" % info["command"])
+        if info["backup"]:
+            print("backup: %s" % info["backup"])
+        touched = sum(1 for event, groups in info["config"]["hooks"].items()
+                      if event in trae_hooks.HOOK_EVENTS and groups)
+        print("installed: %d events（弱估算，仅记录字符数与元数据）" % touched)
+        print("提示：如 Trae CN 未自动加载，请在 Settings > Hooks 中确认并启用；"
+              "hook 需要以“本地自动运行”模式执行。")
+        if args.dry_run:
+            print("dry-run: 未写入 hooks.json、未创建 hook 脚本")
+        return 0
+
+    info = trae_hooks.uninstall(args.scope, args.project, home=source_home(),
+                                dry_run=args.dry_run)
+    print("config: %s" % info["config_path"])
+    print("removed groups: %d" % info["removed"])
+    if info["backup"]:
+        print("backup: %s" % info["backup"])
+    if args.dry_run:
+        print("dry-run: 未修改 hooks.json")
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="usage")
     parser.add_argument("--version", action="version",
@@ -1412,6 +1599,7 @@ def build_parser():
     est.add_argument("--range")
     est.add_argument("--since")
     est.add_argument("--until")
+    est.add_argument("--source", choices=["qoder", "trae-cn"], default="qoder")
     est.add_argument("--group-by")
     est.add_argument("--format", choices=["table", "json", "csv"], default="table")
     est.set_defaults(func=cmd_est)
@@ -1454,6 +1642,14 @@ def build_parser():
     schedule.add_argument("action", choices=["install", "uninstall", "status"])
     schedule.add_argument("--dry-run", action="store_true")
     schedule.set_defaults(func=cmd_schedule)
+
+    hooks = sub.add_parser("hooks", help="Trae CN hook 安装/状态/卸载")
+    hooks.add_argument("action", choices=["install", "uninstall", "status"])
+    hooks.add_argument("source", choices=["trae-cn"])
+    hooks.add_argument("--scope", choices=["global", "project"], default="global")
+    hooks.add_argument("--project")
+    hooks.add_argument("--dry-run", action="store_true")
+    hooks.set_defaults(func=cmd_hooks)
     return parser
 
 

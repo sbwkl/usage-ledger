@@ -258,3 +258,131 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
 - 不新增 `trae-cn` 采集器，不写实现代码。
 - `usage doctor` 的 Trae CN 说明改为：「加密库存在，但密钥由 Trae 运行时下发，本地不可读 → 不采集」。
 - 若后续 Trae 提供导出 / 公开接口，或用户明确授权 IPC / 内存级取证，再重新评估。
+
+### 6.6 竞品方案复测（2026-10-31，内存扫描 → 仍不通过）
+
+> 授权语境：用户要求「参考竞品的实现方案再试一次」，本次复测按一次性取证实验执行。
+> 约束不变：密钥不打印 / 不落盘；只读本地数据；不修改 Trae 安装与配置；不读 JWT / 会话正文。
+> **结论：竞品的内存扫描方案在 macOS 27 + 当前 Trae CN 构建上不可用；维持方案 D。**
+
+竞品做法（Oh-My-Trae / trae-db-decrypt，Windows）：枚举 `Trae CN.exe` 进程内存，用正则找 64/96 位 hex
+候选（96 位 = key + salt），再用 SQLCipher 4 的 HMAC-SHA512 校验 page 1，命中后交给 sqlcipher 解密。
+本次把该流程原样移植到 macOS 并做了端到端验证：
+
+1. **算法与移植可用（自测通过）**
+   - 纯 Mach API 扫描器（`task_for_pid` + `mach_vm_region` + `mach_vm_read_overwrite`）与 lldb Python
+     扫描器两版实现，均对自建 SQLCipher 测试库做了全链路自测：内存中植入 `x'<key>'` → 正则命中 →
+     HMAC 校验通过 → `sqlcipher` 打开成功。两版自测均 PASS（含一次 74 MB / 22 区域扫描）。
+   - 说明失败点不在算法、正则或 HMAC 参数（salt=page1[:16]、mac_salt=salt^0x3a、
+     PBKDF2-HMAC-SHA512 2 轮、HMAC 覆盖 page1[16:4032]+pgno），而在目标进程的读取权限。
+
+2. **macOS 27 的 taskport 限制**
+   - `task_for_pid` 对任意 Trae 进程返回 `kr=5 (KERN_FAILURE)`，**root 也一样**。根因：授权权
+     `system.privilege.taskport` 为 `allow-root=false, authenticate-user=true, class=user, group=_developer`，
+     Developer mode 默认关闭。
+   - 用户已执行 `sudo /usr/sbin/DevToolsSecurity -enable`（现为 enabled）。此后验证：
+     Homebrew Python 等**非 hardened** 同用户进程可 attach；Trae 进程仍全部拒绝。
+
+3. **根因：Trae CN 全进程 hardened runtime，且无 get-task-allow**
+   - 主进程 PID 60950、utility PID 61272（`libharness.dylib` 持有者）及全部 Helper 均为
+     `codesign flags=0x10000(runtime)`，entitlements 中**没有** `com.apple.security.get-task-allow`。
+   - 受控实验（`/tmp/hardtest`，同一二进制三种签名）：
+     | 签名 | attach 结果 |
+     |---|---|
+     | ad-hoc（无 runtime） | 成功 |
+     | `--options runtime` | 拒绝 |
+     | runtime + get-task-allow | 成功 |
+   - `lldb process launch` 启动 hardened 二进制同样被拒；Apple `debugserver`（具备
+     `com.apple.private.cs.debugger`）也拿不到 hardened Trae 的 task port。
+   - 结论：这不是 Developer mode / 权限问题，而是 hardened runtime 策略；不重新签名（注入
+     get-task-allow）就无法读取 Trae 内存。重签名会破坏现有签名/公证与自动更新，且属于修改应用本体，
+     不在只读实验范围内，**不采纳**。
+
+4. **备份旁路同样不可用**
+   - 进程 env：`ICUBE_ENABLE_DATABASE_BACKUP=0`、`ICUBE_DATABASE_BACKUP_INTERVAL=300000`。
+   - main.js 取值来源：`productService.iCubeApp?.dbBackup?.enable ?? false`（interval 默认 5 分钟），
+     `product.json` 的 `iCubeApp` 中**无 `dbBackup` 键** → 产品配置默认关闭，非用户设置项。
+   - `/Users/wayne/Library/Application Support/Trae CN/Backups` 为空；日志无 `[Backup]` 记录。
+   - harness 备份实现含 `sqlite3_backup_init` 与 `SELECT sqlcipher_export('encrypted');`，即使开启，
+     产出仍为 SQLCipher 加密库；`exportUserBuilderData` 也只是复制加密的 `database.db`。
+
+5. **清理**：本复测脚本与报告位于 `/tmp/trae-keyprobe`、`/tmp/competitor`，均未保存密钥或明文库；
+   全过程只读，源库大小/mtime 未变。临时自测库与报告可由用户随时删除。
+
+**处置：维持 §6.5 的方案 D。** 仅当以下任一条件成立时再重新评估：
+(a) Trae CN 后续版本提供明文导出/公开用量接口；(b) 用户明确授权修改应用签名并接受更新/公证副作用
+（不推荐）；(c) Trae 改为非 hardened 构建。
+
+### 6.7 额度 / credits 数据源复测（2026-11-01，仍不可得）
+
+> 问题：能否像 Qoder 的 `usage credits` 那样统计 Trae CN 的额度用量？
+> **结论：不能。额度真值只在服务端响应与加密库中；本地明文只有套餐/权益/活动配置，没有余额或消耗数值。**
+
+逐项实测（全部只读）：
+
+| 来源 | 实际内容 | 额度数值 |
+|---|---|---|
+| `User/globalStorage/state.vscdb`（122 key） | 仅 `cn.fast_request.lock_map`、`credits.*` 横幅弹窗状态、模型/工作台配置 | 无 |
+| `User/globalStorage/storage.json`（31 key） | `iCubeServerData://icube.cloudide`（5,056 B）：`entitlementInfo`（Free、`fast_request_per=0`）、`commercialActivityInfo`（签到/新人/邀请奖励配置）、`originPayStatusData`（`is_credits_billing=true` 等套餐标志） | 无 used/remaining |
+| `logs/*/main.log` | `/pay/ide_user_ent_usage`、`/ug/checkin_credits/status|claim` 的 `ttnet fetch request/response`，仅 URL + HTTP 200，无响应体 | 无 |
+| `logs/*/window1/renderer.log` | `[CheckinCredits] invalidation reconciled {"statusRefreshResult":"fulfilled","creditsRefreshResult":"rejected"}`；`[CommercialActivityService]` 活动配置 | 无余额 |
+| `Local Storage/leveldb` | 仅 `trae-cn-credits-billing-status:v1:<uid>` → `{"is_credits_billing":true,"should_force_switch":true}` | 无 |
+| `Cache/Cache_Data`、`CachedData` | 命中 `ide_user_ent_usage` / `checkin_credits` 的文件均为前端 JS bundle（API client 代码），无响应 JSON | 无 |
+| `Partitions/trae-webview` | 用量面板所在 webview；Local Storage 114 B，Cache 无 usage 字段 | 无 |
+| `User/workspaceStorage/*/state.vscdb` | 仅聊天会话索引/输入历史，无 usage/token/credit 键 | 无 |
+
+补充事实：
+
+- 用量前端调用的接口（来自缓存 JS bundle，仅作事实记录，未调用）：
+  `POST /trae/api/v1/pay/ide_user_ent_usage`（`require_usage` / `full_data`）、
+  `POST /trae/api/v1/pay/query_user_usage_group_by_session`（按会话的用量历史）。
+  二者都是服务端 POST，响应不落盘；调用需要登录态，属于设计 §1.3 的非目标。
+- 加密库内是否另存 credits 无法验证（无密钥）；即便有，也与 token 一样不可读，不改变结论。
+- 本地真正可得的只有「权益状态」：套餐身份（Free/Pro）、`is_credits_billing`、`fast_request_per`、
+  签到/活动配置与已领取日期、API 刷新时间。这些不是用量，不足以构成额度轨。
+
+**处置**：维持不做 Trae CN 的额度/credits 轴。仅当客户端开始把用量摘要写入日志、提供官方导出，
+或开放公开接口时再评估。
+
+### 6.8 Hooks 数据源探针（2026-11-01，可挂但无用量字段）
+
+> 问题：Trae CN 是否有类 Claude Code 的 hook 机制，允许用户自己统计 token / 额度用量？
+> **结论：有 Hooks，但 hook 输入里没有 token / 额度 / 对话记录路径，无法用于统计用量；最多只能记活动量。**
+
+1. **配置位置**
+   - 项目级：`<workspace>/.trae/hooks.json`（workbench 的 `contextAssetService` 中 `assetType:"hook"`、
+     `projectRelPath:".trae/hooks.json"`、`globalRelPath:"hooks.json"`）。
+   - 全局级：`<dataFolderName>/hooks.json`；`product.json` 的 `dataFolderName = .trae-cn`
+     → `/Users/wayne/.trae-cn/hooks.json`（当前不存在）。
+   - Settings > Hooks 可配置；UI 文案提示「支持配置项目级 Hooks」，并建议只在受信任工作区启用。
+   - 运行时环境变量：`TRAE_PROJECT_DIR`、`TRAE_ENV_FILE`、`CLAUDE_ENV_FILE`、`CLAUDE_PROJECT_DIR`；
+     本机 `/Users/wayne/Library/Application Support/Trae CN/ModularData/ai-agent/hooks_env` 为空目录。
+
+2. **事件**（官方文档六个；本地二进制字符串另有 PreCompact / PostCompact）
+   `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`、`Notification`，
+   二进制中额外出现 `PreCompact`、`PostCompact`（文档未列出，未实测）。
+   配置结构：`RawHooksConfig{version, hooks}` → `RawEventHookGroup{matcher, loop_limit}` →
+   `RawHookItem{type: command|url, timeout, headers, allowedEnvVars, statusMessage}`。
+
+3. **hook stdin 字段**（libharness 的 `harness/user-hooks/src/executor.rs` 序列化路径）
+   - 公共：`session_id`、`cwd`、`hook_event_name`、`workspace_roots`、`agent_type`、`email`、`model`
+   - 事件相关：`tool_name`、`tool_use_id`、`llm_tool_name`、`tool_input`、`tool_response`、`prompt`、
+     `loop_count`、`loop_context`、`text_content`、`last_assistant_message`、`notification_type`、
+     `title`、`trigger`、`custom_instructions`、`compact_summary`、`compact_summary_meta`、
+     `stop_hook_active`、`selected_options`
+   - **没有**：`token_usage`、`prompt_tokens`、`completion_tokens`、`credits`、`usage`、`quota`、
+     `transcript_path`。全量搜索 libharness 的 hook 相关字符串均无这些字段。
+   - hook 输出支持 `continue` / `stopReason` / `decision` / `reason` / `hookSpecificOutput` /
+     `goal` / `ralph_loop`，都是流程控制，不回传用量。
+
+4. **可做与不可做**
+   - 不可做：精确 token / 额度统计。用量仍只在 SQLCipher 库与服务端响应中，hook 也拿不到库密钥。
+   - 可做（若用户批准写入 hook 配置）：按 `UserPromptSubmit` / `Stop` / `PreToolUse` 计数会话数、
+     轮次数、工具调用数，作为**活动量**轴；这不属于现有任何源的口径。
+   - 不建议：用 `prompt` / `last_assistant_message` 估算 token——违反设计 §1.3「不估算 token」，
+     且 hook 会拿到正文，与「不落正文」原则冲突。
+
+**处置（2026-11-01 更新）**：按用户决定，改走 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md) §12 的 Plan H——
+用 hooks 可见内容做 `trae-cn.est` **弱估算**（只记字符数/事件元数据，不落正文），
+不以 hooks 采 token 真值或额度。安装 hook 需用户批准（全局 `/Users/wayne/.trae-cn/hooks.json`
+或项目级 `<workspace>/.trae/hooks.json`）。仅当未来 Trae 提供用量字段/导出时，才考虑升级为真值轨。

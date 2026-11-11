@@ -4,7 +4,7 @@
 
 一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
 
-**状态**：v0.5 已实现并通过验收——5 个 collector（含 Qoder 四轨）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。49 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.5 已实现并通过验收——6 个源采集（含 Qoder 四轨、Trae CN hook 弱估算）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。77 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、Trae CN hooks/弱估算、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -28,7 +28,7 @@
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（服务端每请求计费）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
 | WorkBuddy | ✅ | P1，需先安装核实样本 |
-| Trae CN | ❌ | 本地只有额度键，无 token 字段 |
+| Trae CN | ⚠️ 弱估算 | 加密库无本地密钥、额度不落盘；通过官方 hooks 记录字符数与事件元数据，重放为 **hook 弱估算**（`trae-cn.est`）。只覆盖安装 hook 后的请求，误差可能数倍，不可与 token 真值或额度相加 |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
 > 缺口是**厂商不下发**，不是解析器写不出来。任何工具都无法凭空造出这些平台的 token 数。工具会在 `doctor` 与报告页脚显式说明，避免"看起来没花"与"没采到"混淆。Qoder 新版本客户端已不再写 token，只保留活动元数据；活动指标用于观察 agent 使用强度，不参与 token 与成本统计。
@@ -58,20 +58,22 @@ usage-ledger/
 │   ├── DESIGN.md       实现方案（v0.4，含 DDL / CLI / 计价 / 里程碑 / 风险）
 │   ├── QODER-DESIGN.md Qoder 双轨设计（token + 活动指标）
 │   ├── QODER-CREDITS-DESIGN.md Qoder 额度 + 估算 token 设计
+│   ├── TRAE-CN-DESIGN.md Trae CN 接入与 hook 弱估算设计
 │   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
 │   ├── PROBE.md        实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
 │   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   5 源采集（Claude/Codex/OpenCode/Kilo/Qoder 双轨）
+│   ├── collectors.py   6 源采集（Claude/Codex/OpenCode/Kilo/Qoder 双轨/Trae CN 弱估算）
+│   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
 │   ├── aggregation.py  报表聚合与过滤
 │   ├── html_report.py  离线单文件交互报表（内联 CSS/JS/SVG）
 │   ├── scheduler.py    launchd 任务生成/安装/查询
 │   ├── cli.py          命令行入口
 │   └── pricing.py      模型别名与价格表（价格表当前为空）
-└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder）
+└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder/Trae CN）
 ```
 
 ## 安装
@@ -91,6 +93,10 @@ usage report --since 7d         # 日报：天 × 源 × 模型
 usage activity --since 30d      # Qoder 活动指标：会话/提示/工具调用/时长（非 token）
 usage credits --since 7d        # Qoder 配额消耗：每请求 billable credits（服务端真值）
 usage est --group-by day,model  # Qoder 估算 token（est，±30~40%，不可与真值相加）
+usage hooks install trae-cn --scope global  # 安装 Trae CN hooks（只记字符数与元数据）
+usage hooks status trae-cn      # hook 配置、事件文件、最近事件
+usage sync --source trae-cn     # 重放 hook 事件并写入 trae-cn.est
+usage est --source trae-cn      # Trae CN 弱估算 token（只覆盖安装 hook 后）
 usage top models                # 模型排行
 usage html --open               # 生成 usage-report.html 并在浏览器打开
 usage live                      # 直读源的实时视图
@@ -157,6 +163,32 @@ usage est --stateless --group-by model   # 绕过数据库直读转录
 
 ---
 
+## Trae CN hooks 弱估算（est）
+
+Trae CN 的 token 真值与额度都不可本地读取，但官方 hooks 能看到会话、工具调用与文本**长度**。
+本项目安装一个只算字符数的 hook，把事件元数据写入本地 JSONL，再重放为 `trae-cn.est`：
+
+```bash
+usage hooks install trae-cn --scope global   # 合并写入 /Users/wayne/.trae-cn/hooks.json（带备份）
+usage hooks status trae-cn                   # 配置、事件文件、最近事件、覆盖会话
+usage sync --source trae-cn                  # 幂等重放事件文件
+usage est --source trae-cn --group-by day,model
+usage hooks uninstall trae-cn --scope global # 只删除本项目安装的 hook 组
+```
+
+- **隐私**：hook 只写 `event`、`session`、`project` basename、`tool`、`chars_in/out`、可选 `model` 与时间戳；
+  不落 prompt、tool_input、tool_response、last_assistant_message 正文，不读加密库、JWT 或私有 API。
+- **口径**：每个 `PreToolUse` 与 `Stop` 各记一次模型调用边界；`est_input = min(上下文累积字符 ÷ factor, window)`，
+  `est_output = 输出字符 ÷ factor`。默认 `factor=3.8`、`overhead=0`、`window=200000`，可用
+  `USAGE_LEDGER_TRAE_EST_FACTOR/_OVERHEAD/_WINDOW` 校准。
+- **边界**：hook 看不到系统提示、工具定义、Skills/Memory/MCP schema，也看不到工具调用之间的 assistant 文本；
+  并行工具会重复计输入。该轨是**弱估算/可见内容下限 + 部分重复**，误差可能数倍且方向不定，
+  只适合看趋势，**永不与 token 真值或额度相加**。
+- **覆盖**：只从安装 hook 之后的会话开始记录，不回溯加密库历史；额度仍不可得。
+- 未安装 hook 时 `usage doctor` 会显示未安装/事件目录不存在，不影响其他源。
+
+---
+
 ## 交互式 HTML 报表
 
 ```bash
@@ -172,13 +204,17 @@ usage --stateless html --output /tmp/usage.html   # 不读库，直接读源
 
 - KPI：总 token、输入/输出/缓存读/缓存写/推理、缓存占比、轮次
 - 可切换指标的每日堆叠柱状图（按来源），悬停查看当天明细；区间超过 200 天自动按周聚合
-- **Agent 活动（非 token）区块**：筛选包含 Qoder 且区间内有活动时显示；卡片（活跃会话/提示/assistant 调用/工具调用/运行时长）、可切换指标的每日活动柱状图、按天 × 项目的活动明细表
-- **Qoder 额度区块**：区间/今日/本月 billable credits、免费 credits、最新余额；每日 billable + 免费堆叠柱状图；按天明细表（credits/请求/免费/快照）。credits 为服务端真值，非 token
-- **Qoder 估算 token 区块**：est 总/输入/输出、覆盖请求；按天 × 模型明细表，固定标注 `est` 与误差范围
-- 顶部覆盖提示：Qoder token、活动、额度、估算各自的时间范围，并注明"不可相加"
+- **补充口径（非 token）区块**：置于主明细表之后，按可用数据显示来源切换：「Qoder」与「Trae CN」
+  - Qoder：页头标签页切换「活动 / 额度 / 估算」三个面板，与主报表同一套卡片/图表样式
+    - 活动：KPI（活跃会话/提示/assistant 调用/工具调用/运行时长）、可切换指标的每日活动柱状图、按天 × 项目的活动明细表
+    - 额度：最新余额卡片（余额/已用/总量/进度条/快照日）+ 区间 billable/免费/日均 KPI、每日 billable + 免费堆叠柱状图、按天明细表（credits/请求/免费/快照）。credits 为服务端真值，非 token
+    - 估算：est 总/输入/输出、覆盖请求；按天 × 模型明细表，固定标注 `est` 与误差范围
+  - Trae CN：hook 弱估算 KPI（est 总/输入/输出、覆盖请求）与按天 × 模型明细表，
+    固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与 token 真值或额度相加」
+- 顶部覆盖提示：Qoder token、活动、额度、估算与 Trae CN 弱估算各自的时间范围，并注明口径不可相加；有补充数据时提供「查看补充 ↓」跳转
 - 模型 Top 8 / 项目 Top 8，点击筛选、再点取消（列表不会被自身筛选折叠）
 - 快捷区间：今日 / 全部 / 近 7·30·90 天；日期选择上界为打开页面的当天（数据未产生也能选"今日"）
-- 来源 chip：单击只看该来源、再点恢复全部；⌘/Ctrl/Shift+单击多选
+- 来源 chip：单击只看该来源、再点恢复全部；⌘/Ctrl/Shift+单击多选。Trae CN 没有 token 真值，只出现在补充区来源切换中，不作为 token 来源 chip
 - 日期范围、来源、模型、项目、全文搜索联合过滤
 - 可排序、可分页的明细表；缺失日期显式标注（图表按 0 显示）
 - 浅色/深色主题，选择记在 `localStorage`
@@ -196,9 +232,12 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 ## 下一步
 
 1. 安装 launchd：`usage schedule install`（hourly sync / 00:15 full rescan / 00:20 prune）
-2. 计价（可选）：价格表目前为空，`cost_equiv_usd` 恒为 `unknown`——PROBE 证明本机 18/21 个模型是 free/别名，成本列价值低
-3. WorkBuddy collector（需先安装 WorkBuddy 采集样本）
-4. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon；Qoder 估算系数用新样本定期校准
+2. Trae CN H0 真实捕获验收：`usage hooks install trae-cn --scope global` 后，在 Trae CN 设置 > Hooks 确认已加载，
+   发一条带工具调用的 prompt，再运行 `usage hooks status trae-cn` / `usage sync --source trae-cn` /
+   `usage est --source trae-cn` 核对事件字段与估算结果
+3. 计价（可选）：价格表目前为空，`cost_equiv_usd` 恒为 `unknown`——PROBE 证明本机 18/21 个模型是 free/别名，成本列价值低
+4. WorkBuddy collector（需先安装 WorkBuddy 采集样本）
+5. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon；Qoder 估算系数用新样本定期校准
 
 > 完整快照随时可复现：`python3 scripts/probe.py`
 > 验收命令：`python3 -m unittest discover -s tests -t .`

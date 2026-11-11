@@ -95,6 +95,7 @@ class Estimate:
     chars_in: int
     chars_out: int
     ratio: float | None
+    source: str = "qoder.est"
 
 
 ACTIVITY_FIELDS = ("sessions", "prompts", "assistant_calls",

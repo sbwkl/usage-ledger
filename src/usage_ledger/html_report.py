@@ -10,7 +10,9 @@ PLACEHOLDER = "__USAGE_LEDGER_PAYLOAD__"
 
 def build_payload(rows, dims, since, until, notices, generated_at=None,
                   activity=None, coverage=None, credits=None, quota=None,
-                  est_rows=None, est_totals=None, factor_version=None) -> dict:
+                  est_rows=None, est_totals=None, factor_version=None,
+                  trae_est_rows=None, trae_est_totals=None,
+                  trae_factor_version=None) -> dict:
     payload_rows = []
     for row in rows:
         item = dict(zip(dims, row["dims"]))
@@ -41,6 +43,9 @@ def build_payload(rows, dims, since, until, notices, generated_at=None,
             "quota": quota or {},
         },
         "est": est_data,
+        "trae_est": {"rows": list(trae_est_rows or []),
+                     "totals": trae_est_totals or {},
+                     "factor_version": trae_factor_version or ""},
         "coverage": coverage or {},
         "notices": list(notices),
     }
@@ -135,9 +140,26 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .kpi-label{font-size:12px;color:var(--muted)}
 .kpi-value{font-size:clamp(20px,2.1vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.coverage{margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
-.activity-kpis .kpi,.credit-kpis .kpi,.est-kpis .kpi{border-style:dashed}
+.coverage{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
+.coverage-jump{color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap}
+.coverage-jump:hover{text-decoration:underline}
 .section-tag{font-size:11px;font-weight:600;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:8px;vertical-align:2px}
+.section-tag.quiet{background:var(--surface-2);border:1px solid var(--border);color:var(--muted);font-weight:500}
+.qoder-extra{display:flex;flex-direction:column;gap:16px}
+.qoder-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:0 4px}
+.qoder-head h2{font-size:15px;margin:0;letter-spacing:.2px}
+.qoder-head p{margin:3px 0 0}
+.qoder-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tabs{display:inline-flex;gap:3px;padding:3px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px}
+.tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;padding:5px 13px;border-radius:7px;cursor:pointer;transition:background .15s,color .15s}
+.tab:hover:not(:disabled){color:var(--text)}
+.tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tab:disabled{opacity:.35;cursor:default}
+.qoder-panel{display:flex;flex-direction:column;gap:16px}
+.quota-kpi .kpi-sub{white-space:normal;overflow:visible}
+.quota-track{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:9px}
+.quota-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c1a4)}
+.quota-fill.warn{background:linear-gradient(90deg,#f59e0b,#ef4444)}
 .grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.85fr);gap:16px}
 .chart-card{grid-column:1/-1}
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
@@ -250,85 +272,6 @@ try {
 
   <section class="kpis" id="kpis" aria-label="汇总指标"></section>
 
-  <section class="kpis activity-kpis" id="activity-kpis" aria-label="Qoder 活动指标" hidden></section>
-
-  <section class="card chart-card" id="activity-chart-card" hidden>
-    <div class="card-head">
-      <h2>Agent 活动（非 token）<span class="section-tag">Qoder</span></h2>
-      <label class="field">指标
-        <select id="activity-metric">
-          <option value="tool_calls">工具调用</option>
-          <option value="sessions">活跃会话</option>
-          <option value="prompts">提示数</option>
-          <option value="assistant_calls">assistant 调用</option>
-        </select>
-      </label>
-    </div>
-    <div class="legend" id="activity-legend"></div>
-    <div class="chart-wrap">
-      <div id="activity-chart"></div>
-      <div id="activity-tooltip" class="tooltip"></div>
-    </div>
-    <p class="muted" id="activity-hint" style="margin:8px 0 0"></p>
-  </section>
-
-  <section class="card table-card" id="activity-table-card" hidden>
-    <div class="card-head">
-      <h2>活动明细</h2>
-      <span class="muted" id="activity-rowinfo"></span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead id="activity-thead"></thead>
-        <tbody id="activity-tbody"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="kpis credit-kpis" id="credit-kpis" aria-label="Qoder 额度指标" hidden></section>
-
-  <section class="card chart-card" id="credit-chart-card" hidden>
-    <div class="card-head">
-      <h2>Qoder 配额消耗（credits，非 token）<span class="section-tag">Qoder</span></h2>
-      <span class="muted" id="credit-range"></span>
-    </div>
-    <div class="legend" id="credit-legend"></div>
-    <div class="chart-wrap">
-      <div id="credit-chart"></div>
-      <div id="credit-tooltip" class="tooltip"></div>
-    </div>
-    <p class="muted" id="credit-hint" style="margin:8px 0 0"></p>
-  </section>
-
-  <section class="card table-card" id="credit-table-card" hidden>
-    <div class="card-head">
-      <h2>额度明细</h2>
-      <span class="muted" id="credit-rowinfo"></span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead id="credit-thead"></thead>
-        <tbody id="credit-tbody"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="kpis est-kpis" id="est-kpis" aria-label="Qoder 估算 token" hidden></section>
-
-  <section class="card table-card" id="est-table-card" hidden>
-    <div class="card-head">
-      <h2>Qoder 估算 token（est，非真值）<span class="section-tag">Qoder</span></h2>
-      <span class="muted" id="est-rowinfo"></span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead id="est-thead"></thead>
-        <tbody id="est-tbody"></tbody>
-      </table>
-    </div>
-    <p class="muted" id="est-hint" style="margin:8px 0 0"></p>
-  </section>
-
   <section class="grid">
     <div class="card chart-card">
       <div class="card-head">
@@ -379,6 +322,123 @@ try {
     </div>
   </section>
 
+  <section class="qoder-extra" id="qoder-extra" aria-label="补充口径" hidden>
+    <div class="qoder-head">
+      <div>
+        <h2>补充口径<span class="section-tag quiet">非 token</span></h2>
+        <p class="muted">Qoder 活动、额度、估算与 token 真值口径不同，不可相加；Trae CN 为 hook 弱估算，同样不可相加。</p>
+      </div>
+      <div class="qoder-head-actions">
+        <div class="tabs" id="supp-source-tabs" role="tablist" aria-label="补充口径来源" hidden>
+          <button type="button" class="tab active" data-supp-source="qoder" role="tab" aria-selected="true">Qoder</button>
+          <button type="button" class="tab" data-supp-source="trae-cn" role="tab" aria-selected="false">Trae CN</button>
+        </div>
+        <div class="tabs" id="qoder-tabs" role="tablist" aria-label="Qoder 补充指标">
+          <button type="button" class="tab active" data-qoder-tab="activity" role="tab" aria-selected="true">活动</button>
+          <button type="button" class="tab" data-qoder-tab="credits" role="tab" aria-selected="false">额度</button>
+          <button type="button" class="tab" data-qoder-tab="est" role="tab" aria-selected="false">估算</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="qoder-panel" data-qoder-panel="activity">
+      <section class="kpis" id="activity-kpis" aria-label="Qoder 活动指标" hidden></section>
+      <section class="card chart-card" id="activity-chart-card" hidden>
+        <div class="card-head">
+          <h2>活动指标</h2>
+          <label class="field">指标
+            <select id="activity-metric">
+              <option value="tool_calls">工具调用</option>
+              <option value="sessions">活跃会话</option>
+              <option value="prompts">提示数</option>
+              <option value="assistant_calls">assistant 调用</option>
+            </select>
+          </label>
+        </div>
+        <div class="legend" id="activity-legend"></div>
+        <div class="chart-wrap">
+          <div id="activity-chart"></div>
+          <div id="activity-tooltip" class="tooltip"></div>
+        </div>
+        <p class="muted" id="activity-hint" style="margin:8px 0 0"></p>
+      </section>
+      <section class="card table-card" id="activity-table-card" hidden>
+        <div class="card-head">
+          <h2>活动明细</h2>
+          <span class="muted" id="activity-rowinfo"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="activity-thead"></thead>
+            <tbody id="activity-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div class="qoder-panel" data-qoder-panel="credits" hidden>
+      <section class="kpis" id="credit-kpis" aria-label="Qoder 额度指标" hidden></section>
+      <section class="card chart-card" id="credit-chart-card" hidden>
+        <div class="card-head">
+          <h2>额度消耗（credits）</h2>
+          <span class="muted" id="credit-range"></span>
+        </div>
+        <div class="legend" id="credit-legend"></div>
+        <div class="chart-wrap">
+          <div id="credit-chart"></div>
+          <div id="credit-tooltip" class="tooltip"></div>
+        </div>
+        <p class="muted" id="credit-hint" style="margin:8px 0 0"></p>
+      </section>
+      <section class="card table-card" id="credit-table-card" hidden>
+        <div class="card-head">
+          <h2>额度明细</h2>
+          <span class="muted" id="credit-rowinfo"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="credit-thead"></thead>
+            <tbody id="credit-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div class="qoder-panel" data-qoder-panel="est" hidden>
+      <section class="kpis" id="est-kpis" aria-label="Qoder 估算 token" hidden></section>
+      <section class="card table-card" id="est-table-card" hidden>
+        <div class="card-head">
+          <h2>估算 token（est）</h2>
+          <span class="muted" id="est-rowinfo"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="est-thead"></thead>
+            <tbody id="est-tbody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="est-hint" style="margin:8px 0 0"></p>
+      </section>
+    </div>
+
+    <div class="qoder-panel" data-trae-panel hidden>
+      <section class="kpis" id="trae-est-kpis" aria-label="Trae CN 弱估算 token" hidden></section>
+      <section class="card table-card" id="trae-est-table-card" hidden>
+        <div class="card-head">
+          <h2>Trae CN 弱估算（est）</h2>
+          <span class="muted" id="trae-est-rowinfo"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="trae-est-thead"></thead>
+            <tbody id="trae-est-tbody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="trae-est-hint" style="margin:8px 0 0"></p>
+      </section>
+    </div>
+  </section>
+
   <footer id="footer"></footer>
 </main>
 
@@ -396,9 +456,9 @@ try {
                           assistant_with_metrics: "带指标", turns: "turns",
                           tool_calls: "工具调用", duration_ms: "运行时长" };
   var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed",
-                       kilo: "#10b981", qoder: "#e11d48" };
+                       kilo: "#10b981", qoder: "#e11d48", "trae-cn": "#0d9488" };
   var PALETTE = ["#ef4444", "#f59e0b", "#14b8a6", "#6366f1"];
-  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "qoder"];
+  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn"];
   var numberFormat = new Intl.NumberFormat("en-US");
   var $ = function (selector) { return document.querySelector(selector); };
 
@@ -454,6 +514,21 @@ try {
   });
   var EST_TOTALS = EST_DATA.totals || {};
   var EST_FACTOR = EST_DATA.factor_version || "v1";
+
+  var TRAE_EST_DATA = DATA.trae_est || {};
+  var TRAE_EST = (Array.isArray(TRAE_EST_DATA.rows) ? TRAE_EST_DATA.rows : []).map(function (row) {
+    return {
+      day: row.day,
+      model: row.model || "trae-cn",
+      est_input: number(row.est_input),
+      est_output: number(row.est_output),
+      requests: number(row.requests),
+      chars_in: number(row.chars_in),
+      chars_out: number(row.chars_out)
+    };
+  });
+  var TRAE_EST_FACTOR = TRAE_EST_DATA.factor_version || "trae-hook-v1";
+  var TRAE_EST_NOTE = "Trae CN 弱估算（hook 可见内容，不含系统提示/工具定义）";
   var COVERAGE = DATA.coverage || {};
 
   var PRESENT = [];
@@ -496,16 +571,18 @@ try {
   var activityBounds = minMaxDay(ACTIVITY);
   var creditBounds = minMaxDay(CREDITS);
   var estBounds = minMaxDay(EST);
+  var traeEstBounds = minMaxDay(TRAE_EST);
   var RANGE = DATA.range || {};
   var DATA_SINCE = RANGE.since || earliestDay(
     earliestDay(tokenBounds[0], activityBounds[0]),
-    earliestDay(creditBounds[0], estBounds[0]));
+    earliestDay(creditBounds[0], earliestDay(estBounds[0], traeEstBounds[0])));
   var DATA_UNTIL = RANGE.until || latestDay(
     latestDay(tokenBounds[1], activityBounds[1]),
-    latestDay(creditBounds[1], estBounds[1]));
+    latestDay(creditBounds[1], latestDay(estBounds[1], traeEstBounds[1])));
   var DATA_DAYS = new Set(ROWS.map(function (row) { return row.day; }));
   CREDITS.forEach(function (row) { DATA_DAYS.add(row.day); });
   EST.forEach(function (row) { DATA_DAYS.add(row.day); });
+  TRAE_EST.forEach(function (row) { DATA_DAYS.add(row.day); });
   var TODAY = localToday();
   var PICK_MAX = DATA_UNTIL > TODAY ? DATA_UNTIL : TODAY;
 
@@ -518,6 +595,8 @@ try {
     q: "",
     metric: "total",
     activityMetric: "tool_calls",
+    qoderTab: "activity",
+    suppSource: "qoder",
     sortKey: "day",
     sortDir: "desc",
     page: 0,
@@ -546,6 +625,11 @@ try {
     estKpis: $("#est-kpis"), estTableCard: $("#est-table-card"),
     estThead: $("#est-thead"), estTbody: $("#est-tbody"),
     estRowinfo: $("#est-rowinfo"), estHint: $("#est-hint"),
+    traeEstKpis: $("#trae-est-kpis"), traeEstTableCard: $("#trae-est-table-card"),
+    traeEstThead: $("#trae-est-thead"), traeEstTbody: $("#trae-est-tbody"),
+    traeEstRowinfo: $("#trae-est-rowinfo"), traeEstHint: $("#trae-est-hint"),
+    traePanel: $("[data-trae-panel]"), suppSourceTabs: $("#supp-source-tabs"),
+    qoderExtra: $("#qoder-extra"), qoderTabs: $("#qoder-tabs"),
     generated: $("#generated"), footer: $("#footer"), theme: $("#theme")
   };
 
@@ -592,10 +676,13 @@ try {
     return totals;
   }
 
+  function hasQoderData() {
+    return ROWS.some(function (row) { return row.source === "qoder"; }) ||
+      ACTIVITY.length > 0 || CREDITS.length > 0 || EST.length > 0;
+  }
+
   function hasCoverage() {
-    var qoder = COVERAGE && COVERAGE.qoder;
-    return !!((qoder && (qoder.token_since || qoder.activity_since)) ||
-      CREDITS.length || EST.length);
+    return hasQoderData() || TRAE_EST.length > 0;
   }
 
   function renderCoverage() {
@@ -604,25 +691,46 @@ try {
       el.coverage.hidden = true;
       return;
     }
-    var parts = [];
-    if (qoder.token_since) {
-      parts.push("token " + qoder.token_since + " ~ " + qoder.token_until);
-    } else {
-      parts.push("本地无 token 真值");
+    var qoderParts = [];
+    if (hasQoderData()) {
+      if (qoder.token_since) {
+        qoderParts.push("token " + qoder.token_since + " ~ " + qoder.token_until);
+      } else {
+        qoderParts.push("本地无 token 真值");
+      }
+      if (qoder.activity_since) {
+        qoderParts.push("活动 " + qoder.activity_since + " ~ " + qoder.activity_until);
+      }
+      if (creditBounds[0]) {
+        qoderParts.push("额度 " + creditBounds[0] + " ~ " + creditBounds[1]);
+      }
+      if (estBounds[0]) {
+        qoderParts.push("估算 " + estBounds[0] + " ~ " + estBounds[1]);
+      }
     }
-    if (qoder.activity_since) {
-      parts.push("活动 " + qoder.activity_since + " ~ " + qoder.activity_until);
+    var textParts = [];
+    if (qoderParts.length) textParts.push("Qoder 覆盖：" + qoderParts.join(" · "));
+    if (traeEstBounds[0]) {
+      textParts.push("Trae CN 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1]);
     }
-    if (creditBounds[0]) {
-      parts.push("额度 " + creditBounds[0] + " ~ " + creditBounds[1]);
+    var text = textParts.join("；") + (qoderParts.length
+      ? " —— 活动 / 额度 / 估算与 token 口径不同，不可相加"
+      : " —— 弱估算不可与 token 真值相加");
+    if (qoderParts.length && qoder.token_until) {
+      text += "；" + qoder.token_until + " 之后本地无 token 数据";
     }
-    if (estBounds[0]) {
-      parts.push("估算 " + estBounds[0] + " ~ " + estBounds[1]);
+    el.coverage.textContent = "";
+    var span = document.createElement("span");
+    span.textContent = text;
+    el.coverage.appendChild(span);
+    if (filteredActivity().length || filteredCredits().length ||
+        filteredEstimates().length || filteredTraeEstimates().length) {
+      var jump = document.createElement("a");
+      jump.className = "coverage-jump";
+      jump.href = "#qoder-extra";
+      jump.textContent = "查看补充 ↓";
+      el.coverage.appendChild(jump);
     }
-    var text = "Qoder 覆盖：" + parts.join(" · ") +
-      " —— 活动 / 额度 / 估算与 token 口径不同，不可相加";
-    if (qoder.token_until) text += "；" + qoder.token_until + " 之后本地无 token 数据";
-    el.coverage.textContent = text;
     el.coverage.hidden = false;
   }
 
@@ -831,6 +939,24 @@ try {
       });
     }
 
+    if (el.qoderTabs) {
+      el.qoderTabs.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-qoder-tab]");
+        if (!button || button.disabled) return;
+        state.qoderTab = button.getAttribute("data-qoder-tab");
+        syncSupplement(true);
+      });
+    }
+
+    if (el.suppSourceTabs) {
+      el.suppSourceTabs.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-supp-source]");
+        if (!button || button.disabled) return;
+        state.suppSource = button.getAttribute("data-supp-source");
+        syncSupplement(true);
+      });
+    }
+
     el.reset.addEventListener("click", resetFilters);
     el.prev.addEventListener("click", function () {
       if (state.page > 0) { state.page -= 1; render(); }
@@ -927,6 +1053,19 @@ try {
       if (state.end && row.day > state.end) return false;
       if (state.q) {
         var haystack = (row.day + " " + row.model + " qoder est").toLowerCase();
+        if (haystack.indexOf(state.q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function filteredTraeEstimates() {
+    if (!TRAE_EST.length) return [];
+    return TRAE_EST.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (state.q) {
+        var haystack = (row.day + " " + row.model + " trae cn").toLowerCase();
         if (haystack.indexOf(state.q) < 0) return false;
       }
       return true;
@@ -1171,7 +1310,7 @@ try {
     var assistant = days.reduce(function (acc, day) {
       return acc + byDay.get(day).assistant_calls;
     }, 0);
-    el.activityHint.textContent = "活动指标与 token 不可相加 · turnMetrics 覆盖 " +
+    el.activityHint.textContent = "turnMetrics 覆盖 " +
       (assistant ? pct(withMetrics / assistant) : "—") +
       "；未带 metrics 的 assistant 其 turns/时长为 0，不代表没使用";
   }
@@ -1240,13 +1379,62 @@ try {
     return number(value).toFixed(2);
   }
 
+  function fmtQuota(value) {
+    var parsed = number(value);
+    return Math.abs(parsed - Math.round(parsed)) < 0.005 ? fmtInt(parsed) : parsed.toFixed(2);
+  }
+
   var CREDIT_BILLABLE_COLOR = "#e11d48";
   var CREDIT_FREE_COLOR = "#f59e0b";
 
   function quotaSummary() {
     var addOn = QUOTA.add_on;
     if (addOn && (number(addOn.total) > 0 || number(addOn.remaining) > 0)) return addOn;
-    return QUOTA.user || addOn || null;
+    var user = QUOTA.user;
+    if (user && (number(user.total) > 0 || number(user.remaining) > 0)) return user;
+    return null;
+  }
+
+  function addQuotaKpi(host, quota) {
+    var card = document.createElement("div");
+    card.className = "kpi primary quota-kpi";
+    var label = document.createElement("div");
+    label.className = "kpi-label";
+    label.textContent = "最新额度余额";
+    var value = document.createElement("div");
+    value.className = "kpi-value";
+    var sub = document.createElement("div");
+    sub.className = "kpi-sub";
+    card.appendChild(label);
+    card.appendChild(value);
+    card.appendChild(sub);
+    if (quota) {
+      var total = number(quota.total);
+      var used = number(quota.used);
+      var remaining = number(quota.remaining);
+      var ratio = typeof quota.pct === "number" && quota.pct >= 0
+        ? quota.pct : (total > 0 ? used / total : 0);
+      value.textContent = fmtQuota(remaining) + " credits";
+      sub.textContent = "used " + fmtQuota(used) + " / " + fmtQuota(total) +
+        " · 已用 " + pct(ratio) + " · 快照 " + (quota.day || "—");
+      value.title = sub.textContent;
+      var track = document.createElement("div");
+      track.className = "quota-track";
+      track.setAttribute("role", "progressbar");
+      track.setAttribute("aria-label", "Qoder 额度已用比例");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+      track.setAttribute("aria-valuenow", String(Math.round(Math.max(0, Math.min(1, ratio)) * 100)));
+      var fill = document.createElement("div");
+      fill.className = "quota-fill" + (ratio >= 0.8 ? " warn" : "");
+      fill.style.width = Math.max(0, Math.min(100, ratio * 100)) + "%";
+      track.appendChild(fill);
+      card.appendChild(track);
+    } else {
+      value.textContent = "—";
+      sub.textContent = "本地日志无额度快照";
+    }
+    host.appendChild(card);
   }
 
   function renderCredits() {
@@ -1265,30 +1453,15 @@ try {
       free += row.free_credits;
       requests += row.requests;
     });
-    var todayRow = null;
-    var monthCredits = 0;
-    var monthPrefix = TODAY.slice(0, 7);
-    rows.forEach(function (row) {
-      if (row.day === TODAY) todayRow = row;
-      if (row.day.slice(0, 7) === monthPrefix) monthCredits += row.credits;
-    });
     var quota = quotaSummary();
 
     el.creditKpis.textContent = "";
+    addQuotaKpi(el.creditKpis, quota);
     addKpiTo(el.creditKpis, "区间 billable", fmtCredits(billable),
-      fmtInt(requests) + " 请求 · 服务端计费真值", true);
-    addKpiTo(el.creditKpis, "今日", todayRow ? fmtCredits(todayRow.credits) : "—",
-      todayRow ? fmtInt(todayRow.requests) + " 请求" : "今日无记录");
-    addKpiTo(el.creditKpis, "本月", fmtCredits(monthCredits), monthPrefix);
+      fmtInt(requests) + " billable 请求 · 服务端计费真值");
     addKpiTo(el.creditKpis, "免费 credits", fmtCredits(free), "不计入配额");
-    if (quota) {
-      var pctText = typeof quota.pct === "number" ? pct(quota.pct) : "—";
-      addKpiTo(el.creditKpis, "当前余额", fmtCredits(quota.remaining),
-        "used " + fmtCredits(quota.used) + " / " + fmtCredits(quota.total) +
-        " · " + pctText + " · 快照 " + quota.day);
-    } else {
-      addKpiTo(el.creditKpis, "当前余额", "—", "本地日志无额度快照");
-    }
+    addKpiTo(el.creditKpis, "区间日均", fmtCredits(rows.length ? billable / rows.length : 0),
+      fmtInt(rows.length) + " 天有数据");
     el.creditRange.textContent = "区间合计 " + fmtCredits(billable) + " credits";
     renderCreditChart(rows);
     renderCreditTable(rows);
@@ -1470,8 +1643,8 @@ try {
       el.creditLegend.appendChild(item);
     });
 
-    el.creditHint.textContent = "credits 为服务端每请求计费真值（billable）；余额来自本地日志快照；" +
-      "非 token、不可与 token 或估算相加。额度按天汇总，不受模型/项目筛选影响。";
+    el.creditHint.textContent = "credits 为服务端每请求计费真值；免费 credits 不计配额；" +
+      "余额来自最新日志快照。额度按天汇总，不受模型/项目筛选影响。";
   }
 
   var CREDIT_COLUMNS = [
@@ -1615,7 +1788,151 @@ try {
     el.estRowinfo.textContent = fmtInt(sorted.length) + " 行 · est 总 Token " +
       fmtInt(input + output) + " · " + fmtInt(requests) + " 请求";
     el.estHint.textContent = "由转录文本 + context_usage_ratio × 200K 估算（系数 " + EST_FACTOR +
-      "）；±30~40% 误差，仅覆盖新客户端转录；不可与 token 真值或额度相加。";
+      "）；±30~40% 误差，仅覆盖带 ratio 的新客户端转录。";
+  }
+
+  function renderTraeEstimates() {
+    var rows = filteredTraeEstimates();
+    var visible = rows.length > 0;
+    el.traeEstKpis.hidden = !visible;
+    el.traeEstTableCard.hidden = !visible;
+    if (!visible) return;
+
+    var input = 0;
+    var output = 0;
+    var requests = 0;
+    var models = new Set();
+    rows.forEach(function (row) {
+      input += row.est_input;
+      output += row.est_output;
+      requests += row.requests;
+      models.add(row.model);
+    });
+
+    el.traeEstKpis.textContent = "";
+    addKpiTo(el.traeEstKpis, "est 总 Token", fmtCompact(input + output),
+      fmtInt(input + output), true);
+    addKpiTo(el.traeEstKpis, "est 输入", fmtCompact(input), "hook 字符累积 ÷ 系数");
+    addKpiTo(el.traeEstKpis, "est 输出", fmtCompact(output), "assistant / 工具响应字符 ÷ 系数");
+    addKpiTo(el.traeEstKpis, "覆盖请求", fmtCompact(requests),
+      "弱估算 · 模型 " + fmtInt(models.size));
+    renderTraeEstTable(rows);
+  }
+
+  var TRAE_EST_COLUMNS = [
+    { key: "day", label: "日期", type: "text" },
+    { key: "model", label: "模型", type: "text" },
+    { key: "est_input", label: "est 输入", type: "num" },
+    { key: "est_output", label: "est 输出", type: "num" },
+    { key: "chars_in", label: "上下文字符", type: "num" },
+    { key: "chars_out", label: "输出字符", type: "num" },
+    { key: "requests", label: "请求", type: "num" }
+  ];
+
+  function renderTraeEstTable(rows) {
+    var sorted = rows.slice().sort(function (a, b) {
+      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
+      return String(a.model).localeCompare(String(b.model), "zh-CN");
+    });
+    el.traeEstThead.textContent = "";
+    var headerRow = document.createElement("tr");
+    TRAE_EST_COLUMNS.forEach(function (column) {
+      var th = document.createElement("th");
+      if (column.type === "num") th.className = "num";
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "th-btn";
+      button.appendChild(document.createTextNode(column.label));
+      th.appendChild(button);
+      headerRow.appendChild(th);
+    });
+    el.traeEstThead.appendChild(headerRow);
+
+    el.traeEstTbody.textContent = "";
+    var input = 0;
+    var output = 0;
+    var requests = 0;
+    sorted.forEach(function (row) {
+      input += row.est_input;
+      output += row.est_output;
+      requests += row.requests;
+      var tr = document.createElement("tr");
+      TRAE_EST_COLUMNS.forEach(function (column) {
+        var td = document.createElement("td");
+        if (column.type === "num") td.className = "num";
+        if (column.type === "num") {
+          td.textContent = fmtInt(row[column.key]);
+          if (!number(row[column.key])) td.classList.add("zero");
+        } else if (column.key === "model") {
+          td.textContent = row.model;
+          td.title = row.model;
+        } else {
+          td.textContent = row[column.key];
+        }
+        tr.appendChild(td);
+      });
+      el.traeEstTbody.appendChild(tr);
+    });
+    el.traeEstRowinfo.textContent = fmtInt(sorted.length) + " 行 · est 总 Token " +
+      fmtInt(input + output) + " · " + fmtInt(requests) + " 请求";
+    el.traeEstHint.textContent = TRAE_EST_NOTE + "；由 hook 事件字符数重放估算（" +
+      TRAE_EST_FACTOR + "），仅覆盖安装 hook 后的请求，误差可能数倍且方向不定，" +
+      "不可与 token 真值或额度相加。";
+  }
+
+  var QODER_TABS = ["activity", "credits", "est"];
+
+  function qoderAvailability() {
+    return {
+      activity: filteredActivity().length > 0,
+      credits: filteredCredits().length > 0,
+      est: filteredEstimates().length > 0
+    };
+  }
+
+  function syncSupplement(rerenderCharts) {
+    var available = qoderAvailability();
+    var qoderAny = QODER_TABS.some(function (name) { return available[name]; });
+    var traeAny = filteredTraeEstimates().length > 0;
+    var any = qoderAny || traeAny;
+    el.qoderExtra.hidden = !any;
+    if (!any) return;
+
+    el.suppSourceTabs.hidden = !(qoderAny && traeAny);
+    if (!qoderAny) state.suppSource = "trae-cn";
+    else if (!traeAny) state.suppSource = "qoder";
+    else if (state.suppSource !== "qoder" && state.suppSource !== "trae-cn") {
+      state.suppSource = "qoder";
+    }
+
+    Array.prototype.forEach.call(el.suppSourceTabs.querySelectorAll("[data-supp-source]"), function (button) {
+      var name = button.getAttribute("data-supp-source");
+      var active = name === state.suppSource;
+      button.disabled = name === "qoder" ? !qoderAny : !traeAny;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    el.qoderTabs.hidden = state.suppSource !== "qoder";
+    el.traePanel.hidden = state.suppSource !== "trae-cn";
+
+    if (qoderAny && !available[state.qoderTab]) {
+      state.qoderTab = QODER_TABS.filter(function (name) { return available[name]; })[0];
+    }
+    Array.prototype.forEach.call(el.qoderTabs.querySelectorAll("[data-qoder-tab]"), function (button) {
+      var name = button.getAttribute("data-qoder-tab");
+      var active = name === state.qoderTab && state.suppSource === "qoder";
+      button.disabled = !available[name];
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    Array.prototype.forEach.call(el.qoderExtra.querySelectorAll("[data-qoder-panel]"), function (panel) {
+      panel.hidden = state.suppSource !== "qoder" ||
+        panel.getAttribute("data-qoder-panel") !== state.qoderTab;
+    });
+    if (rerenderCharts && state.suppSource === "qoder") {
+      if (state.qoderTab === "activity") renderActivityChart(filteredActivity());
+      if (state.qoderTab === "credits") renderCreditChart(filteredCredits());
+    }
   }
 
   function metricOf(values) {
@@ -2118,12 +2435,19 @@ try {
         "，±30~40% 误差），不可与 token 真值或额度相加。";
       el.footer.appendChild(estNote);
     }
+    if (TRAE_EST.length) {
+      var traeNote = document.createElement("p");
+      traeNote.textContent = TRAE_EST_NOTE + "；仅覆盖安装 hook 后的请求，" +
+        "误差可能数倍且方向不定，只适合看趋势，不可与 token 真值或额度相加。";
+      el.footer.appendChild(traeNote);
+    }
     var scope = document.createElement("p");
     scope.textContent = "数据范围 " + (DATA_SINCE || "—") + " ~ " + (DATA_UNTIL || "—") +
       " · " + fmtInt(ROWS.length) + " 行日/来源/模型/项目聚合" +
       (ACTIVITY.length ? " · " + fmtInt(ACTIVITY.length) + " 行活动聚合" : "") +
       (CREDITS.length ? " · " + fmtInt(CREDITS.length) + " 天额度" : "") +
       (EST.length ? " · " + fmtInt(EST.length) + " 行估算聚合" : "") +
+      (TRAE_EST.length ? " · " + fmtInt(TRAE_EST.length) + " 行 Trae 弱估算聚合" : "") +
       " · 页面不发起任何网络请求";
     el.footer.appendChild(scope);
     var generated = document.createElement("p");
@@ -2147,18 +2471,26 @@ try {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
       renderChart(filteredRows());
-      if (!el.activityChartCard.hidden) renderActivityChart(filteredActivity());
-      if (!el.creditChartCard.hidden) renderCreditChart(filteredCredits());
+      if (!el.qoderExtra.hidden && state.suppSource === "qoder" &&
+          state.qoderTab === "activity") {
+        renderActivityChart(filteredActivity());
+      }
+      if (!el.qoderExtra.hidden && state.suppSource === "qoder" &&
+          state.qoderTab === "credits") {
+        renderCreditChart(filteredCredits());
+      }
     }, 150);
   });
 
   function render() {
     var rows = filteredRows();
     renderKpis(rows);
-    renderCoverage();
     renderActivity();
     renderCredits();
     renderEstimates();
+    renderTraeEstimates();
+    syncSupplement(false);
+    renderCoverage();
     renderChart(rows);
     renderBars(filteredRows("model"), filteredRows("project"));
     renderTable(rows);

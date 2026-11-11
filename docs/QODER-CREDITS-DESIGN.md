@@ -20,7 +20,7 @@
 | **估算 token** | `qoder.est` | **估算值** | 同一转录：`context_usage_ratio` + 文本字符数 | 2026-09-16 起，持续 |
 
 - 四轨分表分示，任何两轨都不相加；估算 token 永远带 `est` 标注。
-- `usage report`（token）行为不变；新增 `usage credits` 命令与 HTML 额度卡片；估算 token 并入 HTML 新区块。
+- `usage report`（token）行为不变；新增 `usage credits` 命令与 HTML 补充口径区块（活动/额度/估算统一标签页）。
 
 ## 2. 数据源实测（2026-10-30 探测）
 
@@ -122,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_quota_day ON usage_quota(day, quota_kind);
 
 - `usage credits [--range|--since|--until] [--format table|json]`：默认列 `day, credits, requests, free_credits, snapshots`；页脚输出最新快照余额与覆盖率。
 - `usage doctor`：显示 `qoder.credits` 请求数/天数/最新转录时间、最新快照年龄（>24h 告警）、日志目录数、解析失败数、快照与 credits 交叉校验偏差。
-- HTML：额度卡片（今日/本月 billable credits、免费 credits、最新余额）+ 每日消耗柱状图；口径注释「credits 为服务端每请求计费真值；余额来自本地日志快照；非 token、不可与 token 相加」。
+- HTML：主明细表之后「Qoder 补充口径」区块，标签页切换 活动/额度/估算；额度面板 = 最新余额卡片（余额/已用/总量/进度条/快照日）+ 区间 billable/免费/日均 KPI + 每日消耗柱状图 + 明细表；口径注释「credits 为服务端每请求计费真值；余额来自本地日志快照；非 token、不可与 token 相加」。
 
 ## 4. 估算 token 设计（`qoder.est`）
 
@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_est_day ON usage_est(day);
 
 ### 4.4 展示
 
-- HTML 新增「Qoder 估算 token（est）」区块：仅当筛选含 qoder 且有 est 数据时显示；明确标注「由转录文本 + 上下文比例估算，±30~40% 误差，不含缓存拆分，不可与真值/额度相加」。
+- HTML「Qoder 补充口径」区块的估算面板：仅当筛选含 qoder 且有 est 数据时可用；明确标注「由转录文本 + 上下文比例估算，±30~40% 误差，不含缓存拆分，不可与真值/额度相加」。
 - `usage est [--range|--since|--until] [--format table|json] [--group-by day,model,project]`，默认 `day,model`。
 
 ## 5. 风险

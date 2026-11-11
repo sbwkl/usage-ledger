@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS usage_quota (
 CREATE INDEX IF NOT EXISTS idx_quota_day ON usage_quota(day, quota_kind);
 CREATE TABLE IF NOT EXISTS usage_est (
   request_id TEXT PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'qoder.est',
   ts REAL NOT NULL,
   day TEXT NOT NULL,
   project TEXT NOT NULL DEFAULT '',
@@ -133,7 +134,16 @@ class SqliteStore:
         self.conn = sqlite3.connect(db_path, timeout=5)
         self.conn.execute("PRAGMA busy_timeout=5000")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self):
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(usage_est)")}
+        if "source" not in columns:
+            self.conn.execute(
+                "ALTER TABLE usage_est ADD COLUMN source TEXT NOT NULL DEFAULT 'qoder.est'")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_est_source_day ON usage_est(source, day)")
 
     def close(self):
         self.conn.close()
@@ -394,16 +404,17 @@ class SqliteStore:
         for row in estimates:
             self.conn.execute(
                 """INSERT INTO usage_est
-                (request_id,ts,day,project,model,session_id,est_input,est_output,
+                (request_id,source,ts,day,project,model,session_id,est_input,est_output,
                  chars_in,chars_out,ratio,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(request_id) DO UPDATE SET
-                 ts=excluded.ts, day=excluded.day, project=excluded.project,
-                 model=excluded.model, session_id=excluded.session_id,
+                 source=excluded.source, ts=excluded.ts, day=excluded.day,
+                 project=excluded.project, model=excluded.model,
+                 session_id=excluded.session_id,
                  est_input=excluded.est_input, est_output=excluded.est_output,
                  chars_in=excluded.chars_in, chars_out=excluded.chars_out,
                  ratio=excluded.ratio, updated_at=excluded.updated_at""",
-                (row.request_id, row.ts, row.day, row.project, row.model,
+                (row.request_id, row.source, row.ts, row.day, row.project, row.model,
                  row.session, row.est_input, row.est_output, row.chars_in,
                  row.chars_out, row.ratio, now))
         self.conn.commit()
@@ -480,20 +491,30 @@ class SqliteStore:
             "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_credit").fetchone()
         return (row[0], row[1], row[2]) if row else (None, None, None)
 
-    def est_count(self) -> int:
-        return self.conn.execute("SELECT COUNT(*) FROM usage_est").fetchone()[0]
+    def est_count(self, source: str | None = "qoder.est") -> int:
+        if source in (None, "*"):
+            return self.conn.execute("SELECT COUNT(*) FROM usage_est").fetchone()[0]
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM usage_est WHERE source=?", (source,)).fetchone()[0]
 
-    def est_bounds(self) -> tuple[str | None, str | None, float | None]:
+    def est_bounds(self, source: str | None = "qoder.est") -> tuple[str | None, str | None, float | None]:
+        where, params = "", []
+        if source not in (None, "*"):
+            where, params = " WHERE source=?", [source]
         row = self.conn.execute(
-            "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_est").fetchone()
+            "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_est" + where, params).fetchone()
         return (row[0], row[1], row[2]) if row else (None, None, None)
 
-    def est_missing_ratio(self) -> int:
+    def est_missing_ratio(self, source: str | None = "qoder.est") -> int:
+        where, params = "", []
+        if source not in (None, "*"):
+            where, params = " AND source=?", [source]
         return self.conn.execute(
-            "SELECT COUNT(*) FROM usage_est WHERE ratio IS NULL").fetchone()[0]
+            "SELECT COUNT(*) FROM usage_est WHERE ratio IS NULL" + where, params).fetchone()[0]
 
     def est_rows(self, since: str | None = None, until: str | None = None,
-                 dims: tuple[str, ...] = ("day", "model")) -> list[dict]:
+                 dims: tuple[str, ...] = ("day", "model"),
+                 source: str | None = "qoder.est") -> list[dict]:
         allowed = {"day", "project", "model", "session"}
         dims = tuple(dim for dim in dims if dim in allowed) or ("day",)
         clauses, params = [], []
@@ -503,8 +524,13 @@ class SqliteStore:
         if until:
             clauses.append("day <= ?")
             params.append(until)
+        if source not in (None, "*"):
+            clauses.append("source = ?")
+            params.append(source)
         where_sql = " AND ".join(clauses) if clauses else "1=1"
-        cols = ", ".join(dims)
+        col_map = {"day": "day", "project": "project", "model": "model",
+                   "session": "session_id"}
+        cols = ", ".join(col_map[dim] for dim in dims)
         rows = []
         for row in self.conn.execute(
                 """SELECT %s, SUM(est_input), SUM(est_output), COUNT(*),
@@ -523,7 +549,8 @@ class SqliteStore:
         return rows
 
     def est_totals(self, since: str | None = None,
-                   until: str | None = None) -> dict:
+                   until: str | None = None,
+                   source: str | None = "qoder.est") -> dict:
         clauses, params = [], []
         if since:
             clauses.append("day >= ?")
@@ -531,6 +558,9 @@ class SqliteStore:
         if until:
             clauses.append("day <= ?")
             params.append(until)
+        if source not in (None, "*"):
+            clauses.append("source = ?")
+            params.append(source)
         where_sql = " AND ".join(clauses) if clauses else "1=1"
         row = self.conn.execute(
             """SELECT COALESCE(SUM(est_input),0), COALESCE(SUM(est_output),0),

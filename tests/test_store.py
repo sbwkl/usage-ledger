@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import date, datetime
@@ -175,6 +176,61 @@ class StoreTest(unittest.TestCase):
                           totals["requests"], totals["missing_ratio"]),
                          (70000, 15, 2, 1))
         self.assertEqual(self.store.est_bounds()[0:2], ("2026-10-01", "2026-10-01"))
+
+    def test_est_source_migration_separates_trae(self):
+        path = os.path.join(self.dir.name, "legacy.db")
+        conn = sqlite3.connect(path)
+        conn.executescript("""
+        CREATE TABLE usage_est (
+          request_id TEXT PRIMARY KEY,
+          ts REAL NOT NULL,
+          day TEXT NOT NULL,
+          project TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL,
+          session_id TEXT,
+          est_input INTEGER NOT NULL DEFAULT 0,
+          est_output INTEGER NOT NULL DEFAULT 0,
+          chars_in INTEGER NOT NULL DEFAULT 0,
+          chars_out INTEGER NOT NULL DEFAULT 0,
+          ratio REAL,
+          updated_at REAL NOT NULL
+        );
+        INSERT INTO usage_est VALUES
+          ('q1', 1.0, '2026-10-01', '', 'gfmodel', 's1', 10, 2, 38, 8, 0.5, 1.0);
+        """)
+        conn.commit()
+        conn.close()
+
+        store = SqliteStore(path)
+        try:
+            columns = {row[1] for row in store.conn.execute("PRAGMA table_info(usage_est)")}
+            self.assertIn("source", columns)
+            indexes = {row[1] for row in store.conn.execute("PRAGMA index_list(usage_est)")}
+            self.assertIn("idx_est_source_day", indexes)
+            self.assertEqual(store.est_count(), 1)
+            self.assertEqual(store.est_count("trae-cn.est"), 0)
+            self.assertEqual(store.est_rows()[0]["model"], "gfmodel")
+
+            store.upsert_estimates([
+                Estimate(request_id="trae-cn:t1", ts=2.0, day="2026-10-30",
+                         project="proj", model="trae-cn", session="s2",
+                         est_input=53, est_output=32, chars_in=200, chars_out=120,
+                         ratio=None, source="trae-cn.est"),
+            ])
+            self.assertEqual(store.est_count(), 1)
+            self.assertEqual(store.est_count("trae-cn.est"), 1)
+            self.assertEqual(store.est_count("*"), 2)
+            self.assertEqual(store.est_totals()["requests"], 1)
+            trae = store.est_totals(source="trae-cn.est")
+            self.assertEqual((trae["est_input"], trae["est_output"], trae["requests"],
+                              trae["missing_ratio"]), (53, 32, 1, 1))
+            rows = store.est_rows(dims=("day",), source="trae-cn.est")
+            self.assertEqual([row["day"] for row in rows], ["2026-10-30"])
+            self.assertEqual(store.est_bounds()[0:2], ("2026-10-01", "2026-10-01"))
+            self.assertEqual(store.est_bounds(source="trae-cn.est")[0:2],
+                             ("2026-10-30", "2026-10-30"))
+        finally:
+            store.close()
 
     def test_source_state_roundtrip(self):
         self.store.update_source_state("claude", files=2, records=3, status="ok",

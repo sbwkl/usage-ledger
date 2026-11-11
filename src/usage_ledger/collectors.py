@@ -9,6 +9,8 @@ from urllib.parse import quote
 
 from .models import (Activity, Counts, Credit, Estimate, QuotaSnapshot, Record,
                      SourceResult)
+from .trae_hooks import event_files as trae_event_files
+from .trae_hooks import trae_event_dir
 
 
 def local_day(ts_seconds: float) -> str:
@@ -612,6 +614,160 @@ EST_FACTOR_VERSION = "v1"
 TRANSCRIPT_OVERLAP = 1 << 20
 _LOG_MARKER = "用量响应摘要"
 
+TRAE_EST_SOURCE = "trae-cn.est"
+TRAE_EST_VERSION = "trae-hook-v1"
+TRAE_EST_FACTOR = 3.8
+TRAE_EST_OVERHEAD = 0
+TRAE_CTX_WINDOW = 200_000
+TRAE_EST_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse",
+                   "PostToolUse", "Stop")
+
+
+def _env_number(name: str, default, kind=float, minimum: float = 0):
+    try:
+        value = kind(os.environ.get(name, ""))
+    except (TypeError, ValueError):
+        return default
+    return value if value >= minimum else default
+
+
+def trae_est_params() -> dict:
+    return {
+        "factor": _env_number("USAGE_LEDGER_TRAE_EST_FACTOR", TRAE_EST_FACTOR, float, 0.1),
+        "overhead": _env_number("USAGE_LEDGER_TRAE_EST_OVERHEAD", TRAE_EST_OVERHEAD, int, 0),
+        "window": _env_number("USAGE_LEDGER_TRAE_EST_WINDOW", TRAE_CTX_WINDOW, int, 1),
+    }
+
+
+def _event_chars(obj: dict, key: str) -> int:
+    value = obj.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return max(0, int(value))
+
+
+def scan_trae_cn_est(event_dir: str | None = None, home: str | None = None,
+                     result: SourceResult | None = None) -> SourceResult:
+    root = event_dir or trae_event_dir(home)
+    if result is None:
+        result = SourceResult(TRAE_EST_SOURCE)
+    if not os.path.isdir(root):
+        result.available = False
+        result.notes.append("Hooks 事件目录不存在：%s（先运行 usage hooks install trae-cn --scope global）" % root)
+        return result
+    files = trae_event_files(root)
+    result.files = len(files)
+    if not files:
+        result.notes.append("Hooks 事件目录为空：%s" % root)
+        return result
+
+    params = trae_est_params()
+    factor = params["factor"]
+    overhead = params["overhead"]
+    window = params["window"]
+    max_chars = int(window * factor)
+    parsed: list[tuple[float, int, int, dict]] = []
+    for file_index, path in enumerate(files):
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError as exc:
+            result.errors.append((path, str(exc)))
+            continue
+        with fh:
+            for line_index, line in enumerate(fh):
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    if len(result.errors) < 20:
+                        result.errors.append((path, "line %d: JSON 解析失败" % (line_index + 1)))
+                    continue
+                if not isinstance(obj, dict) or obj.get("v") != 1:
+                    result.key_kinds["skipped:shape"] += 1
+                    continue
+                event = obj.get("event")
+                ts = obj.get("ts")
+                if event not in TRAE_EST_EVENTS:
+                    result.key_kinds["skipped:event"] += 1
+                    continue
+                if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+                    result.key_kinds["skipped:ts"] += 1
+                    continue
+                parsed.append((float(ts), file_index, line_index, obj))
+
+    parsed.sort(key=lambda item: (item[0], item[1], item[2]))
+    estimates: dict[str, Estimate] = {}
+    states: dict[str, dict] = {}
+
+    def emit(obj: dict, state: dict, ts: float, chars_out: int, fallback: str):
+        session = str(obj.get("session") or "unknown")
+        uid = obj.get("uid")
+        if not isinstance(uid, str) or not uid:
+            uid = fallback
+        key = "trae-cn:" + uid
+        if key in estimates:
+            result.key_kinds["dup:uid"] += 1
+            return
+        ctx = min(state["ctx"], max_chars)
+        est_input = min(int(round(ctx / factor)) + overhead, window)
+        est_output = int(round(chars_out / factor))
+        estimates[key] = Estimate(
+            request_id=key, ts=ts, day=local_day(ts),
+            project=str(obj.get("project") or state.get("project") or ""),
+            model=str(obj.get("model") or state.get("model") or "trae-cn"),
+            session=session, est_input=est_input, est_output=est_output,
+            chars_in=ctx, chars_out=chars_out, ratio=None,
+            source=TRAE_EST_SOURCE)
+
+    def cap(value: int) -> int:
+        return min(max(value, 0), max_chars)
+
+    for ts, file_index, line_index, obj in parsed:
+        session = str(obj.get("session") or "unknown")
+        state = states.setdefault(session, {"ctx": 0, "project": "", "model": "trae-cn",
+                                            "started": False})
+        first_event = not state["started"]
+        state["started"] = True
+        project = obj.get("project")
+        if isinstance(project, str) and project:
+            state["project"] = project
+        model = obj.get("model")
+        if isinstance(model, str) and model:
+            state["model"] = model
+        event = obj["event"]
+        chars_in = _event_chars(obj, "chars_in")
+        chars_out = _event_chars(obj, "chars_out")
+        fallback = "%s:%d:%s:%s:%d" % (session, int(ts * 1_000_000), event,
+                                       file_index, line_index)
+        if event == "SessionStart":
+            if first_event:
+                state["ctx"] = 0
+            continue
+        if event == "UserPromptSubmit":
+            state["ctx"] = cap(state["ctx"] + chars_in)
+            continue
+        if event == "PreToolUse":
+            emit(obj, state, ts, chars_out, fallback)
+            state["ctx"] = cap(state["ctx"] + chars_out)
+            continue
+        if event == "PostToolUse":
+            state["ctx"] = cap(state["ctx"] + chars_in)
+            continue
+        if event == "Stop":
+            emit(obj, state, ts, chars_out, fallback)
+            state["ctx"] = cap(state["ctx"] + chars_out)
+
+    result.estimates = sorted(estimates.values(), key=lambda row: (row.ts, row.request_id))
+    result.key_kinds["events"] = len(parsed)
+    result.key_kinds["sessions"] = len(states)
+    result.key_kinds["estimates"] = len(result.estimates)
+    result.notes.append(
+        "Trae CN 弱估算（%s）：factor=%s，overhead=%s，window=%s；仅 hook 可见内容，"
+        "不含系统提示/工具定义，不可与真值/额度相加" %
+        (TRAE_EST_VERSION, factor, overhead, window))
+    result.notes.append("覆盖 %d 个会话 / %d 个事件（仅 hook 安装后的会话）" %
+                        (len(states), len(parsed)))
+    return result
+
 
 def qoder_transcript_root(home: str | None = None) -> str:
     home = home or os.path.expanduser("~")
@@ -899,7 +1055,7 @@ def scan_qoder_credit_sources(home: str | None = None,
 def source_signatures(home: str | None = None,
                       sources: list[str] | None = None) -> dict[str, int | None]:
     home = home or os.path.expanduser("~")
-    wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder"))
+    wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn"))
     signatures = {}
     for source in wanted:
         if source == "claude":
@@ -938,6 +1094,10 @@ def source_signatures(home: str | None = None,
                     if os.path.isdir(log_root) else [])
             signatures["qoder.credits"] = _latest_mtime_us(transcripts + logs)
             signatures["qoder.est"] = _latest_mtime_us(transcripts)
+        elif source == "trae-cn":
+            signature = _latest_mtime_us(trae_event_files(trae_event_dir(home)))
+            signatures["trae-cn"] = signature
+            signatures["trae-cn.est"] = signature
     return signatures
 
 
@@ -946,7 +1106,7 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
                 activity_cursor_ms: int | None = None,
                 transcript_state: dict | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
-    wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder"])
+    wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn"])
     results = []
     if "claude" in wanted:
         results.append(scan_claude(os.path.join(home, ".claude", "projects")))
@@ -970,4 +1130,6 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
             results.append(scan_qoder_tokens(token_db))
         results.append(scan_qoder_activity(activity_db, cursor_ms=activity_cursor_ms))
         results.append(scan_qoder_credit_sources(home, transcript_state))
+    if "trae-cn" in wanted:
+        results.append(scan_trae_cn_est(home=home))
     return results
