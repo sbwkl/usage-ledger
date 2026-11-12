@@ -270,9 +270,11 @@ try {
 
   <p id="coverage" class="coverage" hidden></p>
 
+  <p id="token-empty" class="muted" hidden></p>
+
   <section class="kpis" id="kpis" aria-label="汇总指标"></section>
 
-  <section class="grid">
+  <section class="grid" id="token-grid">
     <div class="card chart-card">
       <div class="card-head">
         <h2>每日用量</h2>
@@ -304,7 +306,7 @@ try {
     </div>
   </section>
 
-  <section class="card table-card">
+  <section class="card table-card" id="token-table">
     <div class="card-head">
       <h2>明细</h2>
       <span class="muted" id="rowinfo"></span>
@@ -541,10 +543,17 @@ try {
   if ((CREDITS.length || EST.length) && PRESENT.indexOf("qoder") < 0) PRESENT.push("qoder");
   var SOURCES = KNOWN_ORDER.filter(function (name) { return PRESENT.indexOf(name) >= 0; })
     .concat(PRESENT.filter(function (name) { return KNOWN_ORDER.indexOf(name) < 0; }).sort());
+  var AGENT_PRESENT = PRESENT.slice();
+  if (TRAE_EST.length && AGENT_PRESENT.indexOf("trae-cn") < 0) AGENT_PRESENT.push("trae-cn");
+  var AGENTS = KNOWN_ORDER.filter(function (name) { return AGENT_PRESENT.indexOf(name) >= 0; })
+    .concat(AGENT_PRESENT.filter(function (name) { return KNOWN_ORDER.indexOf(name) < 0; }).sort());
   var COLORS = {};
-  SOURCES.forEach(function (name, index) {
+  AGENTS.forEach(function (name, index) {
     COLORS[name] = KNOWN_COLORS[name] || PALETTE[index % PALETTE.length];
   });
+  var TRAE_EST_TOTAL = TRAE_EST.reduce(function (acc, row) {
+    return acc + row.est_input + row.est_output;
+  }, 0);
 
   function minMaxDay(rows) {
     var min = "", max = "";
@@ -589,7 +598,7 @@ try {
   var state = {
     start: DATA_SINCE,
     end: DATA_UNTIL,
-    sources: new Set(SOURCES),
+    sources: new Set(AGENTS),
     model: "",
     project: "",
     q: "",
@@ -608,6 +617,7 @@ try {
     sources: $("#sources"), model: $("#model"), project: $("#project"), q: $("#q"),
     kpis: $("#kpis"), metric: $("#metric"), legend: $("#legend"), chart: $("#chart"),
     tooltip: $("#tooltip"), hint: $("#hint"), models: $("#models"), projects: $("#projects"),
+    tokenGrid: $("#token-grid"), tokenTable: $("#token-table"), tokenEmpty: $("#token-empty"),
     thead: $("#thead"), tbody: $("#tbody"), rowinfo: $("#rowinfo"),
     pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
     coverage: $("#coverage"), activityKpis: $("#activity-kpis"),
@@ -688,6 +698,22 @@ try {
 
   function hasCoverage() {
     return hasQoderData() || hasTraeData();
+  }
+
+  function hasTokenSelection() {
+    return SOURCES.some(function (name) { return state.sources.has(name); });
+  }
+
+  function syncTokenSections() {
+    var showToken = hasTokenSelection() || !AGENTS.length;
+    el.kpis.hidden = !showToken;
+    el.tokenGrid.hidden = !showToken;
+    el.tokenTable.hidden = !showToken;
+    el.tokenEmpty.hidden = showToken;
+    if (showToken) return;
+    el.tokenEmpty.textContent = hasTraeData()
+      ? "Trae CN 没有 token 真值；下方为 hook 弱估算（非 token，不可与 token 真值相加）。"
+      : "Trae CN 没有 token 真值，所选范围内也没有弱估算数据。";
   }
 
   function renderCoverage() {
@@ -808,19 +834,23 @@ try {
 
   function buildChips() {
     el.sources.textContent = "";
-    SOURCES.forEach(function (source) {
+    AGENTS.forEach(function (source) {
       var button = document.createElement("button");
       button.type = "button";
       button.className = "chip";
       button.dataset.source = source;
-      button.title = "单击只看 " + source + "，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
+      button.title = source === "trae-cn"
+        ? "Trae CN 无 token 真值，显示 hook 弱估算；单击只看，再次单击恢复全部"
+        : "单击只看 " + source + "，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
       var dot = document.createElement("span");
       dot.className = "dot";
       dot.style.background = COLORS[source];
       var name = document.createElement("span");
       name.textContent = source;
       var total = document.createElement("small");
-      total.textContent = fmtCompact(SOURCE_TOTALS[source] || 0);
+      total.textContent = source === "trae-cn"
+        ? fmtCompact(TRAE_EST_TOTAL) + " est"
+        : fmtCompact(SOURCE_TOTALS[source] || 0);
       button.appendChild(dot);
       button.appendChild(name);
       button.appendChild(total);
@@ -834,7 +864,7 @@ try {
             state.sources.add(source);
           }
         } else if (state.sources.size === 1 && state.sources.has(source)) {
-          state.sources = new Set(SOURCES);
+          state.sources = new Set(AGENTS);
         } else {
           state.sources = new Set([source]);
         }
@@ -844,7 +874,7 @@ try {
       });
       el.sources.appendChild(button);
     });
-    if (SOURCES.length > 1) {
+    if (AGENTS.length > 1) {
       var tip = document.createElement("span");
       tip.className = "chip-tip";
       tip.textContent = navigator.platform.indexOf("Mac") >= 0
@@ -991,7 +1021,7 @@ try {
   function resetFilters() {
     state.start = DATA_SINCE;
     state.end = DATA_UNTIL;
-    state.sources = new Set(SOURCES);
+    state.sources = new Set(AGENTS);
     state.model = "";
     state.project = "";
     state.q = "";
@@ -1067,7 +1097,7 @@ try {
   }
 
   function traeSourceActive() {
-    return state.sources.size === SOURCES.length;
+    return state.sources.has("trae-cn");
   }
 
   function filteredTraeEstimates() {
@@ -2495,6 +2525,7 @@ try {
 
   function render() {
     var rows = filteredRows();
+    syncTokenSections();
     renderKpis(rows);
     renderActivity();
     renderCredits();
