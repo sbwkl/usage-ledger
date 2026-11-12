@@ -677,12 +677,17 @@ try {
   }
 
   function hasQoderData() {
-    return ROWS.some(function (row) { return row.source === "qoder"; }) ||
-      ACTIVITY.length > 0 || CREDITS.length > 0 || EST.length > 0;
+    return state.sources.has("qoder") &&
+      (ROWS.some(function (row) { return row.source === "qoder"; }) ||
+       ACTIVITY.length > 0 || CREDITS.length > 0 || EST.length > 0);
+  }
+
+  function hasTraeData() {
+    return filteredTraeEstimates().length > 0;
   }
 
   function hasCoverage() {
-    return hasQoderData() || TRAE_EST.length > 0;
+    return hasQoderData() || hasTraeData();
   }
 
   function renderCoverage() {
@@ -710,8 +715,10 @@ try {
     }
     var textParts = [];
     if (qoderParts.length) textParts.push("Qoder 覆盖：" + qoderParts.join(" · "));
-    if (traeEstBounds[0]) {
-      textParts.push("Trae CN 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1]);
+    var traeRows = filteredTraeEstimates();
+    if (traeRows.length) {
+      var traeBounds = minMaxDay(traeRows);
+      textParts.push("Trae CN 弱估算 " + traeBounds[0] + " ~ " + traeBounds[1]);
     }
     var text = textParts.join("；") + (qoderParts.length
       ? " —— 活动 / 额度 / 估算与 token 口径不同，不可相加"
@@ -1059,8 +1066,12 @@ try {
     });
   }
 
+  function traeSourceActive() {
+    return state.sources.size === SOURCES.length;
+  }
+
   function filteredTraeEstimates() {
-    if (!TRAE_EST.length) return [];
+    if (!TRAE_EST.length || !traeSourceActive()) return [];
     return TRAE_EST.filter(function (row) {
       if (state.start && row.day < state.start) return false;
       if (state.end && row.day > state.end) return false;
