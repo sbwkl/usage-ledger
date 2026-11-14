@@ -200,8 +200,11 @@ class TraeCliTest(unittest.TestCase):
         self.assertEqual((rows[0]["day"], rows[0]["est_input"], rows[0]["est_output"]),
                          ("2026-10-30", 2242, 111))
         self.assertIn("Trae CN 弱估算", html)
-        self.assertIn('data-supp-source="trae-cn"', html)
-        self.assertIn("trae-est-tbody", html)
+        self.assertNotIn('data-supp-source="trae-cn"', html)
+        self.assertIn('id="agent-nav"', html)
+        self.assertIn('id="shadow-switch"', html)
+        self.assertIn("仅估算", html)
+        self.assertEqual(payload["agents"]["trae-cn"], "estimate")
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 
         code, _, _ = self.run_cli(["html", "--source", "claude", "--output", output])

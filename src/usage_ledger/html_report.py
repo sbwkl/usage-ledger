@@ -7,9 +7,22 @@ from .models import ACTIVITY_FIELDS, FIELDS
 
 PLACEHOLDER = "__USAGE_LEDGER_PAYLOAD__"
 
+# token：源日志里逐调用 token 真值；credits：服务端逐请求计费真值（token 仅可估算）；
+# estimate：本地无真值，仅 hook 可见字符弱估算。
+AGENT_KINDS = {
+    "claude": "token",
+    "codex": "token",
+    "opencode": "token",
+    "kilo": "token",
+    "cline": "token",
+    "qoder": "credits",
+    "trae-cn": "estimate",
+}
+
 
 def build_payload(rows, dims, since, until, notices, generated_at=None,
                   activity=None, coverage=None, credits=None, quota=None,
+                  credit_rows=None,
                   est_rows=None, est_totals=None, factor_version=None,
                   trae_est_rows=None, trae_est_totals=None,
                   trae_factor_version=None) -> dict:
@@ -36,9 +49,11 @@ def build_payload(rows, dims, since, until, notices, generated_at=None,
         "generated_at": generated_at or datetime.now().astimezone().isoformat(timespec="seconds"),
         "range": {"since": since, "until": until},
         "rows": payload_rows,
+        "agents": dict(AGENT_KINDS),
         "activity": activity_rows,
         "credits": {
             "days": list(credit_data.get("days") or []),
+            "rows": list(credit_rows or credit_data.get("rows") or []),
             "totals": credit_data.get("totals") or {},
             "quota": quota or {},
         },
@@ -134,58 +149,76 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .chip small{opacity:.62;font-variant-numeric:tabular-nums}
 .chip-tip{font-size:11.5px;color:var(--muted);align-self:center;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+
+.agent-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:10px 14px}
+.nav-group{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.nav-group+.nav-group{padding-left:16px;border-left:1px solid var(--border)}
+.nav-group-label{font-size:10.5px;letter-spacing:.4px;color:var(--muted);margin-right:2px;white-space:nowrap}
+.agent-tab{display:inline-flex;align-items:center;gap:7px;border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:5px 9px;font:inherit;font-size:12.5px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.agent-tab:hover{color:var(--text);border-color:var(--border)}
+.agent-tab.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
+.agent-tab small{opacity:.62;font-variant-numeric:tabular-nums}
+
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);min-width:0}
 .kpi.primary{grid-column:span 2;background:linear-gradient(135deg,var(--accent-soft),var(--surface) 72%);border-color:var(--accent)}
+.kpi.shadow{border-style:dashed;background:transparent;box-shadow:none}
 .kpi-label{font-size:12px;color:var(--muted)}
 .kpi-value{font-size:clamp(20px,2.1vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .coverage{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
-.coverage-jump{color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap}
-.coverage-jump:hover{text-decoration:underline}
-.section-tag{font-size:11px;font-weight:600;color:#fff;background:var(--accent);border-radius:999px;padding:2px 8px;margin-left:8px;vertical-align:2px}
-.section-tag.quiet{background:var(--surface-2);border:1px solid var(--border);color:var(--muted);font-weight:500}
-.qoder-extra{display:flex;flex-direction:column;gap:16px}
-.qoder-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:0 4px}
-.qoder-head h2{font-size:15px;margin:0;letter-spacing:.2px}
-.qoder-head p{margin:3px 0 0}
-.qoder-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tabs{display:inline-flex;gap:3px;padding:3px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px}
-.tab{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;padding:5px 13px;border-radius:7px;cursor:pointer;transition:background .15s,color .15s}
-.tab:hover:not(:disabled){color:var(--text)}
-.tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)}
-.tab:disabled{opacity:.35;cursor:default}
-.qoder-panel{display:flex;flex-direction:column;gap:16px}
-.quota-kpi .kpi-sub{white-space:normal;overflow:visible}
-.quota-track{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:9px}
-.quota-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c1a4)}
-.quota-fill.warn{background:linear-gradient(90deg,#f59e0b,#ef4444)}
+
+.agent-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.agent-title-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.agent-title-row h2{font-size:17px;margin:0;letter-spacing:.2px}
+.agent-head p{margin:4px 0 0}
+.kind-badge{border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.kind-badge.token{color:#0f766e;background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.4)}
+.kind-badge.credits{color:#be123c;background:rgba(225,29,72,.08);border-color:rgba(225,29,72,.4)}
+.kind-badge.estimate{color:#b45309;background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.45)}
+.agent-head-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.unit-tag{font-size:10.5px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:1px 7px;font-weight:500;white-space:nowrap}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch-track{width:30px;height:17px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);position:relative;transition:border-color .15s,background .15s;flex:none}
+.switch-track::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--muted);transition:left .15s,background .15s}
+.switch input:checked+.switch-track{background:var(--accent-soft);border-color:var(--accent)}
+.switch input:checked+.switch-track::after{left:15px;background:var(--accent)}
+.switch input:focus-visible+.switch-track{outline:2px solid var(--accent);outline-offset:2px}
+
 .grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.85fr);gap:16px}
 .chart-card{grid-column:1/-1}
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
 .card-head h2{font-size:14px;margin:0;letter-spacing:.2px}
+.card-head .head-tags{display:inline-flex;align-items:center;gap:8px}
 .muted{color:var(--muted);font-size:12px}
 .legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 4px;padding-left:2px}
 .legend-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .legend-item b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
 .legend-dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+.legend-line{width:16px;height:0;border-top:2px dashed var(--muted);display:inline-block;opacity:.75}
 .chart-wrap{position:relative;width:100%}
-#chart{width:100%;min-height:300px}
+#chart,#agent-chart{width:100%;min-height:300px}
 .chart-wrap svg{display:block;width:100%;height:auto}
 .chart-wrap svg text{fill:var(--muted);font-size:11px;font-family:inherit}
 .chart-wrap .grid-line{stroke:var(--border);stroke-width:1;shape-rendering:crispEdges}
 .chart-wrap .seg{stroke:var(--surface);stroke-width:.6}
 .chart-wrap .hit{fill:transparent;cursor:crosshair}
 .chart-wrap .hover-line{stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:.45;pointer-events:none}
+.chart-wrap .shadow-line{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 4;opacity:.55;pointer-events:none}
+.chart-wrap .shadow-dot{fill:var(--muted);opacity:.55;pointer-events:none}
+.chart-wrap .axis-right text{fill:var(--muted);font-size:10.5px;opacity:.85}
 .empty{display:grid;place-items:center;min-height:200px;color:var(--muted);font-size:13px}
-.tooltip{position:absolute;z-index:5;top:8px;left:0;transform:translateX(-50%);min-width:190px;max-width:280px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:9px 11px;pointer-events:none;display:none}
+.tooltip{position:absolute;z-index:5;top:8px;left:0;transform:translateX(-50%);min-width:190px;max-width:290px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:9px 11px;pointer-events:none;display:none}
 .tt-head{font-size:12px;font-weight:650;margin-bottom:2px}
 .tt-meta{font-size:11px;color:var(--muted);margin-bottom:6px}
 .tt-row{display:flex;justify-content:space-between;gap:14px;font-size:12px;padding:1.5px 0}
 .tt-name{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
 .tt-name i{width:7px;height:7px;border-radius:2px;display:inline-block}
+.tt-name i.dash{height:0;border-top:2px dashed var(--muted);border-radius:0;background:transparent}
 .tt-val{font-variant-numeric:tabular-nums;color:var(--text)}
 .tt-total{border-top:1px solid var(--border);margin-top:5px;padding-top:5px;font-weight:600}
+.tt-shadow{color:var(--muted);font-style:italic}
 .bars{display:flex;flex-direction:column;gap:11px;min-height:120px}
 .bar-row{display:block;width:100%;border:0;background:transparent;padding:0;margin:0;text-align:left;cursor:pointer;border-radius:8px;font:inherit;color:inherit}
 .bar-row:hover .bar-name{color:var(--accent)}
@@ -195,6 +228,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .bar-top{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px}
 .bar-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%;font-family:var(--mono);font-size:11.5px}
 .bar-value{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bar-shadow{font-size:10.5px;color:var(--muted);opacity:.8;margin:-1px 0 4px;font-variant-numeric:tabular-nums}
 .bar-track{height:7px;border-radius:999px;background:var(--surface-2);overflow:hidden}
 .bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c1a4);min-width:2px}
 .table-card{padding-bottom:10px}
@@ -211,11 +245,24 @@ tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:var(--surface-2)}
 td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12px}
 td.zero{color:var(--muted);opacity:.55}
+th.shadow-col .th-btn{font-style:italic;font-weight:500}
+td.shadow-col{color:var(--muted)}
+.shadow-note{margin:8px 0 0}
 .pager{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding-top:10px}
 .pager button{border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
 .pager button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
 .pager button:disabled{opacity:.42;cursor:default}
-#pageinfo{font-variant-numeric:tabular-nums}
+#pageinfo,#agent-pageinfo{font-variant-numeric:tabular-nums}
+.activity-block{padding:0}
+.activity-block summary{cursor:pointer;padding:14px 16px;font-size:13.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
+.activity-block summary::-webkit-details-marker{display:none}
+.activity-block summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+.activity-block[open] summary::before{transform:rotate(90deg)}
+.activity-body{display:flex;flex-direction:column;gap:14px;padding:0 16px 16px}
+.quota-kpi .kpi-sub{white-space:normal;overflow:visible}
+.quota-track{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:9px}
+.quota-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c1a4)}
+.quota-fill.warn{background:linear-gradient(90deg,#f59e0b,#ef4444)}
 footer{padding:4px 4px 0;color:var(--muted);font-size:11.5px}
 footer p{margin:3px 0}
 @media (max-width:940px){
@@ -227,6 +274,7 @@ footer p{margin:3px 0}
   .topbar{padding:16px 14px 8px}
   .kpi.primary{grid-column:span 1}
   .kpis{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+  .nav-group+.nav-group{padding-left:0;border-left:0}
 }
 </style>
 <script>
@@ -243,7 +291,7 @@ try {
     <div class="logo">UL</div>
     <div>
       <h1>Usage Ledger</h1>
-      <p class="sub">本地 AI 编码工具 token 用量 · 离线单文件</p>
+      <p class="sub">本地 AI 编码工具用量 · 按 Agent 分类 · 离线单文件</p>
     </div>
   </div>
   <div class="top-actions">
@@ -268,18 +316,76 @@ try {
     </div>
   </section>
 
+  <nav class="card agent-nav" id="agent-nav" aria-label="Agent 报告"></nav>
+
   <p id="coverage" class="coverage" hidden></p>
 
-  <p id="token-empty" class="muted" hidden></p>
+  <section class="agent-page" id="overview-page" aria-label="总览">
+    <p id="token-empty" class="muted" hidden></p>
+    <section class="kpis" id="kpis" aria-label="汇总指标"></section>
+    <section class="grid" style="margin-top:16px">
+      <div class="card chart-card">
+        <div class="card-head">
+          <div class="head-tags"><h2>每日用量</h2><span class="unit-tag">tokens</span></div>
+          <label class="field">指标
+            <select id="metric">
+              <option value="total">总量</option>
+              <option value="input">输入</option>
+              <option value="output">输出</option>
+              <option value="cache_read">缓存读</option>
+              <option value="cache_write">缓存写</option>
+              <option value="reasoning">推理</option>
+            </select>
+          </label>
+        </div>
+        <div class="legend" id="legend"></div>
+        <div class="chart-wrap">
+          <div id="chart"></div>
+          <div id="tooltip" class="tooltip"></div>
+        </div>
+        <p class="muted" id="hint" style="margin:8px 0 0"></p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>模型 Top 8</h2><span class="muted">点击筛选 / 再点取消</span></div>
+        <div class="bars" id="models"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>项目 Top 8</h2><span class="muted">点击筛选 / 再点取消</span></div>
+        <div class="bars" id="projects"></div>
+      </div>
+    </section>
 
-  <section class="kpis" id="kpis" aria-label="汇总指标"></section>
-
-  <section class="grid" id="token-grid">
-    <div class="card chart-card">
+    <section class="card table-card" id="token-table" style="margin-top:16px">
       <div class="card-head">
-        <h2>每日用量</h2>
-        <label class="field">指标
-          <select id="metric">
+        <h2>明细</h2>
+        <span class="muted" id="rowinfo"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="prev" type="button">上一页</button>
+        <span id="pageinfo" class="muted"></span>
+        <button id="next" type="button">下一页</button>
+      </div>
+    </section>
+  </section>
+
+  <section class="agent-page" id="agent-page" aria-label="Agent 报告" hidden>
+    <section class="card agent-head">
+      <div>
+        <div class="agent-title-row">
+          <h2 id="agent-title"></h2>
+          <span class="kind-badge" id="agent-badge"></span>
+        </div>
+        <p class="muted" id="agent-note"></p>
+      </div>
+      <div class="agent-head-actions">
+        <label class="field" id="agent-metric-field">指标
+          <select id="agent-metric">
             <option value="total">总量</option>
             <option value="input">输入</option>
             <option value="output">输出</option>
@@ -288,64 +394,66 @@ try {
             <option value="reasoning">推理</option>
           </select>
         </label>
+        <label class="switch" id="shadow-switch" hidden>
+          <input type="checkbox" id="shadow">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span>影子：估算 token</span>
+        </label>
       </div>
-      <div class="legend" id="legend"></div>
-      <div class="chart-wrap">
-        <div id="chart"></div>
-        <div id="tooltip" class="tooltip"></div>
-      </div>
-      <p class="muted" id="hint" style="margin:8px 0 0"></p>
-    </div>
-    <div class="card">
-      <div class="card-head"><h2>模型 Top 8</h2><span class="muted">点击筛选 / 再点取消</span></div>
-      <div class="bars" id="models"></div>
-    </div>
-    <div class="card">
-      <div class="card-head"><h2>项目 Top 8</h2><span class="muted">点击筛选 / 再点取消</span></div>
-      <div class="bars" id="projects"></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="card table-card" id="token-table">
-    <div class="card-head">
-      <h2>明细</h2>
-      <span class="muted" id="rowinfo"></span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead id="thead"></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-    <div class="pager">
-      <button id="prev" type="button">上一页</button>
-      <span id="pageinfo" class="muted"></span>
-      <button id="next" type="button">下一页</button>
-    </div>
-  </section>
+    <section class="kpis" id="agent-kpis" aria-label="Agent 汇总指标" style="margin-top:16px"></section>
 
-  <section class="qoder-extra" id="qoder-extra" aria-label="补充口径" hidden>
-    <div class="qoder-head">
-      <div>
-        <h2>补充口径<span class="section-tag quiet">非 token</span></h2>
-        <p class="muted">Qoder 活动、额度、估算与 token 真值口径不同，不可相加；Trae CN 为 hook 弱估算，同样不可相加。</p>
-      </div>
-      <div class="qoder-head-actions">
-        <div class="tabs" id="supp-source-tabs" role="tablist" aria-label="补充口径来源" hidden>
-          <button type="button" class="tab active" data-supp-source="qoder" role="tab" aria-selected="true">Qoder</button>
-          <button type="button" class="tab" data-supp-source="trae-cn" role="tab" aria-selected="false">Trae CN</button>
+    <section class="grid" style="margin-top:16px">
+      <div class="card chart-card">
+        <div class="card-head">
+          <div class="head-tags"><h2>每日用量</h2><span class="unit-tag" id="chart-unit"></span></div>
         </div>
-        <div class="tabs" id="qoder-tabs" role="tablist" aria-label="Qoder 补充指标">
-          <button type="button" class="tab active" data-qoder-tab="activity" role="tab" aria-selected="true">活动</button>
-          <button type="button" class="tab" data-qoder-tab="credits" role="tab" aria-selected="false">额度</button>
-          <button type="button" class="tab" data-qoder-tab="est" role="tab" aria-selected="false">估算</button>
+        <div class="legend" id="agent-legend"></div>
+        <div class="chart-wrap">
+          <div id="agent-chart"></div>
+          <div id="agent-tooltip" class="tooltip"></div>
         </div>
+        <p class="muted" id="agent-hint" style="margin:8px 0 0"></p>
       </div>
-    </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="head-tags"><h2>模型 Top 8</h2><span class="unit-tag" id="model-unit"></span></div>
+          <span class="muted">点击筛选 / 再点取消</span>
+        </div>
+        <div class="bars" id="agent-models"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="head-tags"><h2>项目 Top 8</h2><span class="unit-tag" id="project-unit"></span></div>
+          <span class="muted">点击筛选 / 再点取消</span>
+        </div>
+        <div class="bars" id="agent-projects"></div>
+      </div>
+    </section>
 
-    <div class="qoder-panel" data-qoder-panel="activity">
-      <section class="kpis" id="activity-kpis" aria-label="Qoder 活动指标" hidden></section>
-      <section class="card chart-card" id="activity-chart-card" hidden>
+    <section class="card table-card" style="margin-top:16px">
+      <div class="card-head">
+        <h2>明细</h2>
+        <span class="muted" id="agent-rowinfo"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead id="agent-thead"></thead>
+          <tbody id="agent-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="agent-prev" type="button">上一页</button>
+        <span id="agent-pageinfo" class="muted"></span>
+        <button id="agent-next" type="button">下一页</button>
+      </div>
+      <p class="muted shadow-note" id="shadow-note" hidden></p>
+    </section>
+
+    <details class="card activity-block" id="activity-block" style="margin-top:16px" hidden>
+      <summary>补充：活动指标（非 token，不可与任何用量相加）</summary>
+      <div class="activity-body">
         <div class="card-head">
           <h2>活动指标</h2>
           <label class="field">指标
@@ -357,88 +465,22 @@ try {
             </select>
           </label>
         </div>
+        <section class="kpis" id="activity-kpis" aria-label="Qoder 活动指标"></section>
         <div class="legend" id="activity-legend"></div>
         <div class="chart-wrap">
           <div id="activity-chart"></div>
           <div id="activity-tooltip" class="tooltip"></div>
         </div>
-        <p class="muted" id="activity-hint" style="margin:8px 0 0"></p>
-      </section>
-      <section class="card table-card" id="activity-table-card" hidden>
-        <div class="card-head">
-          <h2>活动明细</h2>
-          <span class="muted" id="activity-rowinfo"></span>
-        </div>
+        <p class="muted" id="activity-hint" style="margin:0"></p>
         <div class="table-wrap">
           <table>
             <thead id="activity-thead"></thead>
             <tbody id="activity-tbody"></tbody>
           </table>
         </div>
-      </section>
-    </div>
-
-    <div class="qoder-panel" data-qoder-panel="credits" hidden>
-      <section class="kpis" id="credit-kpis" aria-label="Qoder 额度指标" hidden></section>
-      <section class="card chart-card" id="credit-chart-card" hidden>
-        <div class="card-head">
-          <h2>额度消耗（credits）</h2>
-          <span class="muted" id="credit-range"></span>
-        </div>
-        <div class="legend" id="credit-legend"></div>
-        <div class="chart-wrap">
-          <div id="credit-chart"></div>
-          <div id="credit-tooltip" class="tooltip"></div>
-        </div>
-        <p class="muted" id="credit-hint" style="margin:8px 0 0"></p>
-      </section>
-      <section class="card table-card" id="credit-table-card" hidden>
-        <div class="card-head">
-          <h2>额度明细</h2>
-          <span class="muted" id="credit-rowinfo"></span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead id="credit-thead"></thead>
-            <tbody id="credit-tbody"></tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <div class="qoder-panel" data-qoder-panel="est" hidden>
-      <section class="kpis" id="est-kpis" aria-label="Qoder 估算 token" hidden></section>
-      <section class="card table-card" id="est-table-card" hidden>
-        <div class="card-head">
-          <h2>估算 token（est）</h2>
-          <span class="muted" id="est-rowinfo"></span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead id="est-thead"></thead>
-            <tbody id="est-tbody"></tbody>
-          </table>
-        </div>
-        <p class="muted" id="est-hint" style="margin:8px 0 0"></p>
-      </section>
-    </div>
-
-    <div class="qoder-panel" data-trae-panel hidden>
-      <section class="kpis" id="trae-est-kpis" aria-label="Trae CN 弱估算 token" hidden></section>
-      <section class="card table-card" id="trae-est-table-card" hidden>
-        <div class="card-head">
-          <h2>Trae CN 弱估算（est）</h2>
-          <span class="muted" id="trae-est-rowinfo"></span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead id="trae-est-thead"></thead>
-            <tbody id="trae-est-tbody"></tbody>
-          </table>
-        </div>
-        <p class="muted" id="trae-est-hint" style="margin:8px 0 0"></p>
-      </section>
-    </div>
+        <p class="muted" id="activity-rowinfo" style="margin:0;text-align:right"></p>
+      </div>
+    </details>
   </section>
 
   <footer id="footer"></footer>
@@ -451,7 +493,8 @@ try {
 
   var DATA = JSON.parse(document.getElementById("data").textContent || "{}");
   var FIELDS = ["input", "output", "cache_read", "cache_write", "reasoning"];
-  var FIELD_LABELS = { input: "输入", output: "输出", cache_read: "缓存读", cache_write: "缓存写", reasoning: "推理" };
+  var FIELD_LABELS = { input: "输入", output: "输出", cache_read: "缓存读",
+                       cache_write: "缓存写", reasoning: "推理" };
   var ACTIVITY_FIELDS = ["sessions", "prompts", "assistant_calls", "assistant_with_metrics",
                          "turns", "tool_calls", "duration_ms"];
   var ACTIVITY_LABELS = { sessions: "活跃会话", prompts: "提示数", assistant_calls: "assistant 调用",
@@ -461,12 +504,27 @@ try {
                        kilo: "#10b981", cline: "#65a30d", qoder: "#e11d48", "trae-cn": "#0d9488" };
   var PALETTE = ["#ef4444", "#f59e0b", "#14b8a6", "#6366f1"];
   var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn"];
+  var AGENT_KINDS = DATA.agents || {};
+  var KIND_LABELS = { token: "精确 Token", credits: "精确 Credits", estimate: "仅估算" };
+  var KIND_NOTES = {
+    token: "Token 为本地日志逐调用真值；输入、输出、缓存、推理互不重叠。",
+    credits: "credits 为服务端逐请求计费真值，是本页主指标；token 无法精确获取，估算值仅作为影子指标（默认隐藏，不可相加）。",
+    estimate: "本地无 token / credits 真值；以下为 hook 可见内容的弱估算，误差可能数倍，只适合看趋势。"
+  };
+  var CREDIT_BILLABLE_COLOR = "#e11d48";
+  var CREDIT_FREE_COLOR = "#f59e0b";
+  var EST_INPUT_COLOR = "#3b6cf6";
+  var EST_OUTPUT_COLOR = "#14b8a6";
   var numberFormat = new Intl.NumberFormat("en-US");
   var $ = function (selector) { return document.querySelector(selector); };
 
+  function agentKind(name) { return AGENT_KINDS[name] || "token"; }
   function number(value) {
     var parsed = Number(value);
     return isFinite(parsed) ? parsed : 0;
+  }
+  function sumField(rows, field) {
+    return rows.reduce(function (acc, row) { return acc + number(row[field]); }, 0);
   }
 
   var ROWS = (Array.isArray(DATA.rows) ? DATA.rows : []).map(function (row) {
@@ -479,6 +537,8 @@ try {
     copy.project = row.project || "-";
     return copy;
   });
+  var TOKEN_ROWS = ROWS.filter(function (row) { return agentKind(row.source) === "token"; });
+  var QODER_TOKEN_ROWS = ROWS.filter(function (row) { return row.source === "qoder"; });
 
   var ACTIVITY = (Array.isArray(DATA.activity) ? DATA.activity : []).map(function (row) {
     var copy = {};
@@ -489,71 +549,62 @@ try {
   });
 
   var CREDIT_DATA = DATA.credits || {};
-  var CREDITS = (Array.isArray(CREDIT_DATA.days) ? CREDIT_DATA.days : []).map(function (row) {
+  var CREDIT_ROWS = (Array.isArray(CREDIT_DATA.rows) ? CREDIT_DATA.rows : []).map(function (row) {
+    var credits = number(row.credits);
     return {
-      day: row.day,
-      credits: number(row.credits),
-      requests: number(row.requests),
-      free_credits: number(row.free_credits),
-      snapshots: number(row.snapshots)
+      day: row.day, source: "qoder", model: row.model || "unknown",
+      project: row.project || "-", credits: credits,
+      free_credits: number(row.free_credits), requests: number(row.requests),
+      free_requests: number(row.free_requests), total: credits
     };
   });
-  var CREDIT_TOTALS = CREDIT_DATA.totals || {};
   var QUOTA = CREDIT_DATA.quota || {};
 
   var EST_DATA = DATA.est || {};
   var EST = (Array.isArray(EST_DATA.rows) ? EST_DATA.rows : []).map(function (row) {
+    var input = number(row.est_input);
+    var output = number(row.est_output);
     return {
-      day: row.day,
-      model: row.model || "unknown",
-      est_input: number(row.est_input),
-      est_output: number(row.est_output),
-      requests: number(row.requests),
-      chars_in: number(row.chars_in),
-      chars_out: number(row.chars_out),
-      missing_ratio: number(row.missing_ratio)
+      day: row.day, source: "qoder", model: row.model || "unknown",
+      project: row.project || "-", est_input: input, est_output: output,
+      requests: number(row.requests), chars_in: number(row.chars_in),
+      chars_out: number(row.chars_out), missing_ratio: number(row.missing_ratio),
+      total: input + output
     };
   });
-  var EST_TOTALS = EST_DATA.totals || {};
   var EST_FACTOR = EST_DATA.factor_version || "v1";
 
-  var TRAE_EST_DATA = DATA.trae_est || {};
-  var TRAE_EST = (Array.isArray(TRAE_EST_DATA.rows) ? TRAE_EST_DATA.rows : []).map(function (row) {
+  var TRAE_DATA = DATA.trae_est || {};
+  var TRAE_EST = (Array.isArray(TRAE_DATA.rows) ? TRAE_DATA.rows : []).map(function (row) {
+    var input = number(row.est_input);
+    var output = number(row.est_output);
     return {
-      day: row.day,
-      model: row.model || "trae-cn",
-      est_input: number(row.est_input),
-      est_output: number(row.est_output),
-      requests: number(row.requests),
-      chars_in: number(row.chars_in),
-      chars_out: number(row.chars_out)
+      day: row.day, source: "trae-cn", model: row.model || "trae-cn",
+      project: row.project || "-", est_input: input, est_output: output,
+      requests: number(row.requests), chars_in: number(row.chars_in),
+      chars_out: number(row.chars_out), total: input + output
     };
   });
-  var TRAE_EST_FACTOR = TRAE_EST_DATA.factor_version || "trae-hook-v1";
-  var TRAE_EST_NOTE = "Trae CN 弱估算（hook 可见内容，不含系统提示/工具定义）";
+  var TRAE_FACTOR = TRAE_DATA.factor_version || "trae-hook-v1";
+  var TRAE_NOTE = "Trae CN 弱估算（hook 可见内容，不含系统提示/工具定义）";
   var COVERAGE = DATA.coverage || {};
 
-  var PRESENT = [];
-  ROWS.forEach(function (row) {
-    if (PRESENT.indexOf(row.source) < 0) PRESENT.push(row.source);
-  });
-  ACTIVITY.forEach(function (row) {
-    if (PRESENT.indexOf(row.source) < 0) PRESENT.push(row.source);
-  });
-  if ((CREDITS.length || EST.length) && PRESENT.indexOf("qoder") < 0) PRESENT.push("qoder");
-  var SOURCES = KNOWN_ORDER.filter(function (name) { return PRESENT.indexOf(name) >= 0; })
-    .concat(PRESENT.filter(function (name) { return KNOWN_ORDER.indexOf(name) < 0; }).sort());
-  var AGENT_PRESENT = PRESENT.slice();
-  if (TRAE_EST.length && AGENT_PRESENT.indexOf("trae-cn") < 0) AGENT_PRESENT.push("trae-cn");
-  var AGENTS = KNOWN_ORDER.filter(function (name) { return AGENT_PRESENT.indexOf(name) >= 0; })
-    .concat(AGENT_PRESENT.filter(function (name) { return KNOWN_ORDER.indexOf(name) < 0; }).sort());
+  var present = {};
+  TOKEN_ROWS.forEach(function (row) { present[row.source] = true; });
+  if (CREDIT_ROWS.length || EST.length || ACTIVITY.length) present.qoder = true;
+  if (TRAE_EST.length) present["trae-cn"] = true;
+  var AGENTS = KNOWN_ORDER.filter(function (name) { return present[name]; })
+    .concat(Object.keys(present).filter(function (name) {
+      return KNOWN_ORDER.indexOf(name) < 0;
+    }).sort());
+  var TOKEN_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "token"; });
+  var CREDIT_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "credits"; });
+  var ESTIMATE_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "estimate"; });
+  var HAS_OVERVIEW = TOKEN_AGENTS.length > 0 || AGENTS.length === 0;
   var COLORS = {};
   AGENTS.forEach(function (name, index) {
     COLORS[name] = KNOWN_COLORS[name] || PALETTE[index % PALETTE.length];
   });
-  var TRAE_EST_TOTAL = TRAE_EST.reduce(function (acc, row) {
-    return acc + row.est_input + row.est_output;
-  }, 0);
 
   function minMaxDay(rows) {
     var min = "", max = "";
@@ -576,36 +627,55 @@ try {
     return a > b ? a : b;
   }
 
-  var tokenBounds = minMaxDay(ROWS);
+  var tokenBounds = minMaxDay(TOKEN_ROWS);
+  var qoderTokenBounds = minMaxDay(QODER_TOKEN_ROWS);
   var activityBounds = minMaxDay(ACTIVITY);
-  var creditBounds = minMaxDay(CREDITS);
+  var creditBounds = minMaxDay(CREDIT_ROWS);
   var estBounds = minMaxDay(EST);
   var traeEstBounds = minMaxDay(TRAE_EST);
   var RANGE = DATA.range || {};
   var DATA_SINCE = RANGE.since || earliestDay(
-    earliestDay(tokenBounds[0], activityBounds[0]),
-    earliestDay(creditBounds[0], earliestDay(estBounds[0], traeEstBounds[0])));
+    earliestDay(tokenBounds[0], qoderTokenBounds[0]),
+    earliestDay(earliestDay(activityBounds[0], creditBounds[0]),
+                earliestDay(estBounds[0], traeEstBounds[0])));
   var DATA_UNTIL = RANGE.until || latestDay(
-    latestDay(tokenBounds[1], activityBounds[1]),
-    latestDay(creditBounds[1], latestDay(estBounds[1], traeEstBounds[1])));
-  var DATA_DAYS = new Set(ROWS.map(function (row) { return row.day; }));
-  CREDITS.forEach(function (row) { DATA_DAYS.add(row.day); });
-  EST.forEach(function (row) { DATA_DAYS.add(row.day); });
-  TRAE_EST.forEach(function (row) { DATA_DAYS.add(row.day); });
+    latestDay(tokenBounds[1], qoderTokenBounds[1]),
+    latestDay(latestDay(activityBounds[1], creditBounds[1]),
+              latestDay(estBounds[1], traeEstBounds[1])));
   var TODAY = localToday();
   var PICK_MAX = DATA_UNTIL > TODAY ? DATA_UNTIL : TODAY;
 
+  var initialState = HAS_OVERVIEW ? "all" : (AGENTS[0] || "all");
+
+  function defaultRange(agent) {
+    var bounds;
+    if (agent === "all") {
+      bounds = tokenBounds;
+    } else if (agentKind(agent) === "credits") {
+      bounds = creditBounds[0] ? creditBounds : estBounds;
+    } else if (agentKind(agent) === "estimate") {
+      bounds = traeEstBounds;
+    } else {
+      bounds = minMaxDay(TOKEN_ROWS.filter(function (row) { return row.source === agent; }));
+    }
+    if (!bounds || !bounds[0]) return { start: DATA_SINCE, end: DATA_UNTIL };
+    return { start: bounds[0], end: bounds[1] };
+  }
+
+  var pageRanges = {};
+  var initialRange = defaultRange(initialState);
+  pageRanges[initialState] = initialRange;
   var state = {
-    start: DATA_SINCE,
-    end: DATA_UNTIL,
-    sources: new Set(AGENTS),
+    agent: initialState,
+    start: initialRange.start,
+    end: initialRange.end,
+    sources: new Set(TOKEN_AGENTS),
     model: "",
     project: "",
     q: "",
     metric: "total",
     activityMetric: "tool_calls",
-    qoderTab: "activity",
-    suppSource: "qoder",
+    shadow: false,
     sortKey: "day",
     sortDir: "desc",
     page: 0,
@@ -615,37 +685,31 @@ try {
   var el = {
     start: $("#start"), end: $("#end"), presets: $("#presets"), reset: $("#reset"),
     sources: $("#sources"), model: $("#model"), project: $("#project"), q: $("#q"),
+    nav: $("#agent-nav"), coverage: $("#coverage"),
+    overviewPage: $("#overview-page"), tokenEmpty: $("#token-empty"),
     kpis: $("#kpis"), metric: $("#metric"), legend: $("#legend"), chart: $("#chart"),
     tooltip: $("#tooltip"), hint: $("#hint"), models: $("#models"), projects: $("#projects"),
-    tokenGrid: $("#token-grid"), tokenTable: $("#token-table"), tokenEmpty: $("#token-empty"),
-    thead: $("#thead"), tbody: $("#tbody"), rowinfo: $("#rowinfo"),
-    pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
-    coverage: $("#coverage"), activityKpis: $("#activity-kpis"),
-    activityChart: $("#activity-chart"), activityChartCard: $("#activity-chart-card"),
-    activityLegend: $("#activity-legend"), activityMetric: $("#activity-metric"),
-    activityTooltip: $("#activity-tooltip"), activityHint: $("#activity-hint"),
-    activityTableCard: $("#activity-table-card"), activityThead: $("#activity-thead"),
+    tokenTable: $("#token-table"), thead: $("#thead"), tbody: $("#tbody"),
+    rowinfo: $("#rowinfo"), pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
+    agentPage: $("#agent-page"), agentTitle: $("#agent-title"), agentBadge: $("#agent-badge"),
+    agentNote: $("#agent-note"), agentMetricField: $("#agent-metric-field"),
+    agentMetric: $("#agent-metric"), shadowSwitch: $("#shadow-switch"), shadow: $("#shadow"),
+    chartUnit: $("#chart-unit"), modelUnit: $("#model-unit"), projectUnit: $("#project-unit"),
+    agentKpis: $("#agent-kpis"), agentLegend: $("#agent-legend"), agentChart: $("#agent-chart"),
+    agentTooltip: $("#agent-tooltip"), agentHint: $("#agent-hint"),
+    agentModels: $("#agent-models"), agentProjects: $("#agent-projects"),
+    agentThead: $("#agent-thead"), agentTbody: $("#agent-tbody"),
+    agentRowinfo: $("#agent-rowinfo"), agentPageinfo: $("#agent-pageinfo"),
+    agentPrev: $("#agent-prev"), agentNext: $("#agent-next"), shadowNote: $("#shadow-note"),
+    activityBlock: $("#activity-block"), activityKpis: $("#activity-kpis"),
+    activityMetric: $("#activity-metric"), activityLegend: $("#activity-legend"),
+    activityChart: $("#activity-chart"), activityTooltip: $("#activity-tooltip"),
+    activityHint: $("#activity-hint"), activityThead: $("#activity-thead"),
     activityTbody: $("#activity-tbody"), activityRowinfo: $("#activity-rowinfo"),
-    creditKpis: $("#credit-kpis"), creditChartCard: $("#credit-chart-card"),
-    creditChart: $("#credit-chart"), creditLegend: $("#credit-legend"),
-    creditTooltip: $("#credit-tooltip"), creditHint: $("#credit-hint"),
-    creditRange: $("#credit-range"), creditTableCard: $("#credit-table-card"),
-    creditThead: $("#credit-thead"), creditTbody: $("#credit-tbody"),
-    creditRowinfo: $("#credit-rowinfo"),
-    estKpis: $("#est-kpis"), estTableCard: $("#est-table-card"),
-    estThead: $("#est-thead"), estTbody: $("#est-tbody"),
-    estRowinfo: $("#est-rowinfo"), estHint: $("#est-hint"),
-    traeEstKpis: $("#trae-est-kpis"), traeEstTableCard: $("#trae-est-table-card"),
-    traeEstThead: $("#trae-est-thead"), traeEstTbody: $("#trae-est-tbody"),
-    traeEstRowinfo: $("#trae-est-rowinfo"), traeEstHint: $("#trae-est-hint"),
-    traePanel: $("[data-trae-panel]"), suppSourceTabs: $("#supp-source-tabs"),
-    qoderExtra: $("#qoder-extra"), qoderTabs: $("#qoder-tabs"),
     generated: $("#generated"), footer: $("#footer"), theme: $("#theme")
   };
 
-  function fmtInt(value) {
-    return numberFormat.format(Math.round(number(value)));
-  }
+  function fmtInt(value) { return numberFormat.format(Math.round(number(value))); }
 
   function fmtCompact(value) {
     value = number(value);
@@ -670,6 +734,17 @@ try {
     return "$" + number(value).toFixed(4);
   }
 
+  function fmtCredits(value) {
+    var parsed = number(value);
+    return Math.abs(parsed - Math.round(parsed)) < 0.005
+      ? fmtInt(parsed) : parsed.toFixed(2);
+  }
+
+  function fmtQuota(value) {
+    var parsed = number(value);
+    return Math.abs(parsed - Math.round(parsed)) < 0.005 ? fmtInt(parsed) : parsed.toFixed(2);
+  }
+
   function fmtDuration(ms) {
     var seconds = Math.round(number(ms) / 1000);
     if (seconds >= 3600) {
@@ -680,93 +755,6 @@ try {
     return seconds + "s";
   }
 
-  function emptyActivityTotals() {
-    var totals = {};
-    ACTIVITY_FIELDS.forEach(function (field) { totals[field] = 0; });
-    return totals;
-  }
-
-  function hasQoderData() {
-    return state.sources.has("qoder") &&
-      (ROWS.some(function (row) { return row.source === "qoder"; }) ||
-       ACTIVITY.length > 0 || CREDITS.length > 0 || EST.length > 0);
-  }
-
-  function hasTraeData() {
-    return filteredTraeEstimates().length > 0;
-  }
-
-  function hasCoverage() {
-    return hasQoderData() || hasTraeData();
-  }
-
-  function hasTokenSelection() {
-    return SOURCES.some(function (name) { return state.sources.has(name); });
-  }
-
-  function syncTokenSections() {
-    var showToken = hasTokenSelection() || !AGENTS.length;
-    el.kpis.hidden = !showToken;
-    el.tokenGrid.hidden = !showToken;
-    el.tokenTable.hidden = !showToken;
-    el.tokenEmpty.hidden = showToken;
-    if (showToken) return;
-    el.tokenEmpty.textContent = hasTraeData()
-      ? "Trae CN 没有 token 真值；下方为 hook 弱估算（非 token，不可与 token 真值相加）。"
-      : "Trae CN 没有 token 真值，所选范围内也没有弱估算数据。";
-  }
-
-  function renderCoverage() {
-    var qoder = (COVERAGE && COVERAGE.qoder) || {};
-    if (!hasCoverage()) {
-      el.coverage.hidden = true;
-      return;
-    }
-    var qoderParts = [];
-    if (hasQoderData()) {
-      if (qoder.token_since) {
-        qoderParts.push("token " + qoder.token_since + " ~ " + qoder.token_until);
-      } else {
-        qoderParts.push("本地无 token 真值");
-      }
-      if (qoder.activity_since) {
-        qoderParts.push("活动 " + qoder.activity_since + " ~ " + qoder.activity_until);
-      }
-      if (creditBounds[0]) {
-        qoderParts.push("额度 " + creditBounds[0] + " ~ " + creditBounds[1]);
-      }
-      if (estBounds[0]) {
-        qoderParts.push("估算 " + estBounds[0] + " ~ " + estBounds[1]);
-      }
-    }
-    var textParts = [];
-    if (qoderParts.length) textParts.push("Qoder 覆盖：" + qoderParts.join(" · "));
-    var traeRows = filteredTraeEstimates();
-    if (traeRows.length) {
-      var traeBounds = minMaxDay(traeRows);
-      textParts.push("Trae CN 弱估算 " + traeBounds[0] + " ~ " + traeBounds[1]);
-    }
-    var text = textParts.join("；") + (qoderParts.length
-      ? " —— 活动 / 额度 / 估算与 token 口径不同，不可相加"
-      : " —— 弱估算不可与 token 真值相加");
-    if (qoderParts.length && qoder.token_until) {
-      text += "；" + qoder.token_until + " 之后本地无 token 数据";
-    }
-    el.coverage.textContent = "";
-    var span = document.createElement("span");
-    span.textContent = text;
-    el.coverage.appendChild(span);
-    if (filteredActivity().length || filteredCredits().length ||
-        filteredEstimates().length || filteredTraeEstimates().length) {
-      var jump = document.createElement("a");
-      jump.className = "coverage-jump";
-      jump.href = "#qoder-extra";
-      jump.textContent = "查看补充 ↓";
-      el.coverage.appendChild(jump);
-    }
-    el.coverage.hidden = false;
-  }
-
   function fmtDateTime(iso) {
     if (!iso) return "";
     var parsed = new Date(iso);
@@ -775,9 +763,7 @@ try {
   }
 
   function parseDay(day) { return new Date(day + "T00:00:00Z"); }
-
   function dayString(date) { return date.toISOString().slice(0, 10); }
-
   function pad2(value) { return (value < 10 ? "0" : "") + value; }
 
   function localToday() {
@@ -811,46 +797,215 @@ try {
     return dayString(date);
   }
 
+  function setAttrs(node, attrs) {
+    Object.keys(attrs).forEach(function (key) {
+      var value = attrs[key];
+      if (value !== null && value !== undefined) node.setAttribute(key, String(value));
+    });
+    return node;
+  }
+
+  function svgEl(tag, attrs) {
+    return setAttrs(document.createElementNS("http://www.w3.org/2000/svg", tag), attrs);
+  }
+
+  function niceScale(maximum, tickCount) {
+    if (maximum <= 0) maximum = 1;
+    var rough = maximum / tickCount;
+    var power = Math.pow(10, Math.floor(Math.log10(rough)));
+    var fraction = rough / power;
+    var niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+    var step = niceFraction * power;
+    var max = Math.ceil(maximum / step) * step;
+    var ticks = [];
+    for (var value = 0; value <= max + step * 0.5; value += step) ticks.push(value);
+    return { max: max, ticks: ticks };
+  }
+
   function groupTotals(rows, key) {
     var map = new Map();
     rows.forEach(function (row) {
       var name = row[key] || "-";
       if (!map.has(name)) map.set(name, { key: name, total: 0, turns: 0 });
       var entry = map.get(name);
-      entry.total += row.total;
-      entry.turns += row.turns;
+      entry.total += number(row.total);
+      entry.turns += number(row.turns);
     });
     return Array.from(map.values());
   }
 
   function byTotal(a, b) { return b.total - a.total; }
 
-  var MODEL_OPTIONS = groupTotals(ROWS, "model").sort(byTotal);
-  var PROJECT_OPTIONS = groupTotals(ROWS, "project").sort(byTotal);
-  var SOURCE_TOTALS = {};
-  ROWS.forEach(function (row) {
-    SOURCE_TOTALS[row.source] = (SOURCE_TOTALS[row.source] || 0) + row.total;
-  });
+  function matchesQuery(row) {
+    if (!state.q) return true;
+    var haystack = (row.day + " " + row.source + " " + row.model + " " + row.project).toLowerCase();
+    return haystack.indexOf(state.q) >= 0;
+  }
+
+  function pageBaseRows(agent) {
+    if (agent === "all") return TOKEN_ROWS;
+    var kind = agentKind(agent);
+    if (kind === "credits") return CREDIT_ROWS;
+    if (kind === "estimate") return TRAE_EST;
+    return TOKEN_ROWS.filter(function (row) { return row.source === agent; });
+  }
+
+  function pageRowsFiltered(agent, ignore) {
+    return pageBaseRows(agent).filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (ignore !== "model" && state.model && row.model !== state.model) return false;
+      if (ignore !== "project" && state.project && row.project !== state.project) return false;
+      return matchesQuery(row);
+    });
+  }
+
+  function overviewRows(ignore) {
+    return TOKEN_ROWS.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (!state.sources.has(row.source)) return false;
+      if (ignore !== "model" && state.model && row.model !== state.model) return false;
+      if (ignore !== "project" && state.project && row.project !== state.project) return false;
+      return matchesQuery(row);
+    });
+  }
+
+  function activeRows(ignore) {
+    return state.agent === "all" ? overviewRows(ignore) : pageRowsFiltered(state.agent, ignore);
+  }
+
+  function pageMetric(row) {
+    if (state.metric === "total") return number(row.total);
+    return number(row[state.metric]);
+  }
+
+  function navTotal(agent) {
+    if (agent === "all") return sumField(TOKEN_ROWS, "total");
+    var kind = agentKind(agent);
+    if (kind === "credits") return sumField(CREDIT_ROWS, "credits");
+    if (kind === "estimate") return sumField(TRAE_EST, "total");
+    return TOKEN_ROWS.reduce(function (acc, row) {
+      return acc + (row.source === agent ? number(row.total) : 0);
+    }, 0);
+  }
+
+  function navTotalText(agent) {
+    var value = navTotal(agent);
+    var kind = agent === "all" ? "token" : agentKind(agent);
+    if (kind === "credits") return fmtCompact(value) + " cr";
+    if (kind === "estimate") return fmtCompact(value) + " est";
+    return fmtCompact(value);
+  }
+
+  function addKpiTo(host, label, value, sub, primary, className) {
+    var card = document.createElement("div");
+    card.className = "kpi" + (primary ? " primary" : "") + (className ? " " + className : "");
+    var labelNode = document.createElement("div");
+    labelNode.className = "kpi-label";
+    labelNode.textContent = label;
+    var valueNode = document.createElement("div");
+    valueNode.className = "kpi-value";
+    valueNode.textContent = value;
+    valueNode.title = sub;
+    var subNode = document.createElement("div");
+    subNode.className = "kpi-sub";
+    subNode.textContent = sub;
+    card.appendChild(labelNode);
+    card.appendChild(valueNode);
+    card.appendChild(subNode);
+    host.appendChild(card);
+  }
+
+  function buildAgentNav() {
+    el.nav.textContent = "";
+    function tab(agent, label) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "agent-tab";
+      button.dataset.agent = agent;
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = agent === "all"
+        ? "linear-gradient(135deg,var(--accent),#22c1a4)" : COLORS[agent];
+      var name = document.createElement("span");
+      name.textContent = label;
+      var total = document.createElement("small");
+      total.textContent = navTotalText(agent);
+      button.appendChild(dot);
+      button.appendChild(name);
+      button.appendChild(total);
+      button.title = (agent === "all" ? "精确 Token 总览" : agent + " · " +
+        KIND_LABELS[agentKind(agent)]) + "，单击切换报告页";
+      button.addEventListener("click", function () { setAgent(agent); });
+      return button;
+    }
+    if (HAS_OVERVIEW) el.nav.appendChild(tab("all", "总览"));
+    var groups = [
+      { label: "精确 Token", agents: TOKEN_AGENTS },
+      { label: "精确 Credits", agents: CREDIT_AGENTS },
+      { label: "仅估算", agents: ESTIMATE_AGENTS }
+    ];
+    groups.forEach(function (group) {
+      if (!group.agents.length) return;
+      var wrap = document.createElement("div");
+      wrap.className = "nav-group";
+      var label = document.createElement("span");
+      label.className = "nav-group-label";
+      label.textContent = group.label;
+      wrap.appendChild(label);
+      group.agents.forEach(function (agent) { wrap.appendChild(tab(agent, agent)); });
+      el.nav.appendChild(wrap);
+    });
+    syncAgentNav();
+  }
+
+  function syncAgentNav() {
+    Array.prototype.forEach.call(el.nav.querySelectorAll("[data-agent]"), function (button) {
+      var active = button.dataset.agent === state.agent;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+    });
+  }
+
+  function setAgent(agent) {
+    if (agent !== "all" && !present[agent]) return;
+    if (agent === "all" && !HAS_OVERVIEW) return;
+    pageRanges[state.agent] = { start: state.start, end: state.end };
+    state.agent = agent;
+    var range = pageRanges[agent] || defaultRange(agent);
+    pageRanges[agent] = range;
+    state.start = range.start;
+    state.end = range.end;
+    syncDateInputs();
+    state.model = "";
+    state.project = "";
+    state.shadow = false;
+    state.sortKey = "day";
+    state.sortDir = "desc";
+    state.page = 0;
+    el.shadow.checked = false;
+    if (agent === "all") state.sources = new Set(TOKEN_AGENTS);
+    rebuildDimensionSelects();
+    syncAgentNav();
+    renderAll();
+  }
 
   function buildChips() {
     el.sources.textContent = "";
-    AGENTS.forEach(function (source) {
+    TOKEN_AGENTS.forEach(function (source) {
       var button = document.createElement("button");
       button.type = "button";
       button.className = "chip";
       button.dataset.source = source;
-      button.title = source === "trae-cn"
-        ? "Trae CN 无 token 真值，显示 hook 弱估算；单击只看，再次单击恢复全部"
-        : "单击只看 " + source + "，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
+      button.title = "单击只看 " + source + "，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
       var dot = document.createElement("span");
       dot.className = "dot";
       dot.style.background = COLORS[source];
       var name = document.createElement("span");
       name.textContent = source;
       var total = document.createElement("small");
-      total.textContent = source === "trae-cn"
-        ? fmtCompact(TRAE_EST_TOTAL) + " est"
-        : fmtCompact(SOURCE_TOTALS[source] || 0);
+      total.textContent = fmtCompact(navTotal(source));
       button.appendChild(dot);
       button.appendChild(name);
       button.appendChild(total);
@@ -864,17 +1019,17 @@ try {
             state.sources.add(source);
           }
         } else if (state.sources.size === 1 && state.sources.has(source)) {
-          state.sources = new Set(AGENTS);
+          state.sources = new Set(TOKEN_AGENTS);
         } else {
           state.sources = new Set([source]);
         }
         state.page = 0;
         syncChips();
-        render();
+        renderAll();
       });
       el.sources.appendChild(button);
     });
-    if (AGENTS.length > 1) {
+    if (TOKEN_AGENTS.length > 1) {
       var tip = document.createElement("span");
       tip.className = "chip-tip";
       tip.textContent = navigator.platform.indexOf("Mac") >= 0
@@ -906,18 +1061,31 @@ try {
     });
   }
 
-  function buildControls() {
-    fillSelect(el.model, MODEL_OPTIONS, "全部模型", function (key) { return key; });
-    fillSelect(el.project, PROJECT_OPTIONS, "全部项目", function (key) {
+  function rebuildDimensionSelects() {
+    var rows = pageBaseRows(state.agent);
+    var models = groupTotals(rows, "model").sort(byTotal);
+    var projects = groupTotals(rows, "project").sort(byTotal);
+    fillSelect(el.model, models, "全部模型", function (key) { return key; });
+    fillSelect(el.project, projects, "全部项目", function (key) {
       return key === "-" ? "（未标注）" : key;
     });
+    if (!models.some(function (item) { return item.key === state.model; })) state.model = "";
+    if (!projects.some(function (item) { return item.key === state.project; })) state.project = "";
+    el.model.value = state.model;
+    el.project.value = state.project;
+  }
 
+  function syncDateInputs() {
+    el.start.value = state.start || "";
+    el.end.value = state.end || "";
+  }
+
+  function buildControls() {
     el.start.min = DATA_SINCE || "";
     el.start.max = PICK_MAX;
     el.end.min = DATA_SINCE || "";
     el.end.max = PICK_MAX;
-    el.start.value = state.start;
-    el.end.value = state.end;
+    syncDateInputs();
 
     [{ label: "今日", kind: "today" }, { label: "全部", kind: "all" },
      { label: "近 7 天", days: 7 },
@@ -927,16 +1095,19 @@ try {
       button.className = "btn ghost small";
       button.textContent = preset.label;
       button.addEventListener("click", function () {
-        var end = preset.kind === "all" ? DATA_UNTIL : TODAY;
+        var bounds = defaultRange(state.agent);
+        var end = preset.kind === "all" ? (bounds.end || DATA_UNTIL) : TODAY;
         var start = preset.kind === "today" ? TODAY
-                  : preset.kind === "all" ? DATA_SINCE
+                  : preset.kind === "all" ? (bounds.start || DATA_SINCE)
                   : addDays(end, -(preset.days - 1));
-        state.start = start < DATA_SINCE ? DATA_SINCE : start;
+        var minDay = bounds.start || DATA_SINCE;
+        if (start < minDay) start = minDay;
+        state.start = start;
         state.end = end;
-        el.start.value = state.start;
-        el.end.value = state.end;
+        pageRanges[state.agent] = { start: start, end: end };
+        syncDateInputs();
         state.page = 0;
-        render();
+        renderAll();
       });
       el.presets.appendChild(button);
     });
@@ -946,12 +1117,12 @@ try {
     el.model.addEventListener("change", function () {
       state.model = el.model.value;
       state.page = 0;
-      render();
+      renderAll();
     });
     el.project.addEventListener("change", function () {
       state.project = el.project.value;
       state.page = 0;
-      render();
+      renderAll();
     });
 
     var searchTimer;
@@ -960,45 +1131,42 @@ try {
       searchTimer = setTimeout(function () {
         state.q = el.q.value.trim().toLowerCase();
         state.page = 0;
-        render();
+        renderAll();
       }, 120);
     });
 
     el.metric.addEventListener("change", function () {
       state.metric = el.metric.value;
-      renderChart(filteredRows());
+      el.agentMetric.value = state.metric;
+      renderAll();
     });
-
-    if (el.activityMetric) {
-      el.activityMetric.addEventListener("change", function () {
-        state.activityMetric = el.activityMetric.value;
-        renderActivity();
-      });
-    }
-
-    if (el.qoderTabs) {
-      el.qoderTabs.addEventListener("click", function (event) {
-        var button = event.target.closest("[data-qoder-tab]");
-        if (!button || button.disabled) return;
-        state.qoderTab = button.getAttribute("data-qoder-tab");
-        syncSupplement(true);
-      });
-    }
-
-    if (el.suppSourceTabs) {
-      el.suppSourceTabs.addEventListener("click", function (event) {
-        var button = event.target.closest("[data-supp-source]");
-        if (!button || button.disabled) return;
-        state.suppSource = button.getAttribute("data-supp-source");
-        syncSupplement(true);
-      });
-    }
+    el.agentMetric.addEventListener("change", function () {
+      state.metric = el.agentMetric.value;
+      el.metric.value = state.metric;
+      renderAll();
+    });
+    el.shadow.addEventListener("change", function () {
+      state.shadow = el.shadow.checked;
+      state.page = 0;
+      renderAll();
+    });
+    el.activityMetric.addEventListener("change", function () {
+      state.activityMetric = el.activityMetric.value;
+      renderActivity();
+    });
+    el.activityBlock.addEventListener("toggle", function () {
+      if (el.activityBlock.open) renderActivity();
+    });
 
     el.reset.addEventListener("click", resetFilters);
     el.prev.addEventListener("click", function () {
-      if (state.page > 0) { state.page -= 1; render(); }
+      if (state.page > 0) { state.page -= 1; renderAll(); }
     });
-    el.next.addEventListener("click", function () { state.page += 1; render(); });
+    el.next.addEventListener("click", function () { state.page += 1; renderAll(); });
+    el.agentPrev.addEventListener("click", function () {
+      if (state.page > 0) { state.page -= 1; renderAll(); }
+    });
+    el.agentNext.addEventListener("click", function () { state.page += 1; renderAll(); });
   }
 
   function onDateChange(event) {
@@ -1014,129 +1182,111 @@ try {
     el.end.value = end;
     state.start = start;
     state.end = end;
+    pageRanges[state.agent] = { start: start, end: end };
     state.page = 0;
-    render();
+    renderAll();
   }
 
   function resetFilters() {
-    state.start = DATA_SINCE;
-    state.end = DATA_UNTIL;
-    state.sources = new Set(AGENTS);
+    pageRanges = {};
+    var range = defaultRange(state.agent);
+    pageRanges[state.agent] = range;
+    state.start = range.start;
+    state.end = range.end;
+    state.sources = new Set(TOKEN_AGENTS);
     state.model = "";
     state.project = "";
     state.q = "";
     state.metric = "total";
+    state.shadow = false;
     state.sortKey = "day";
     state.sortDir = "desc";
     state.page = 0;
-    el.start.value = state.start;
-    el.end.value = state.end;
+    syncDateInputs();
     el.model.value = "";
     el.project.value = "";
     el.q.value = "";
     el.metric.value = "total";
+    el.agentMetric.value = "total";
+    el.shadow.checked = false;
     syncChips();
-    render();
+    rebuildDimensionSelects();
+    renderAll();
   }
 
-  function matchesQuery(row) {
-    if (!state.q) return true;
-    var haystack = (row.day + " " + row.source + " " + row.model + " " + row.project).toLowerCase();
-    return haystack.indexOf(state.q) >= 0;
+  function syncPageShell() {
+    var overview = state.agent === "all";
+    el.overviewPage.hidden = !overview;
+    el.agentPage.hidden = overview;
+    el.sources.hidden = !overview;
+    el.metric.parentElement.hidden = !overview;
+    var kind = overview ? "token" : agentKind(state.agent);
+    el.agentMetricField.hidden = kind !== "token";
+    el.shadowSwitch.hidden = kind !== "credits";
+    el.shadow.checked = state.shadow;
+    el.metric.value = state.metric;
+    el.agentMetric.value = state.metric;
+    if (!overview) {
+      el.agentTitle.textContent = state.agent;
+      el.agentBadge.textContent = KIND_LABELS[kind];
+      el.agentBadge.className = "kind-badge " + kind;
+      el.agentNote.textContent = KIND_NOTES[kind] || "";
+      var unit = kind === "credits" ? "credits" : kind === "estimate" ? "est tokens" : "tokens";
+      el.chartUnit.textContent = unit;
+      el.modelUnit.textContent = unit;
+      el.projectUnit.textContent = unit;
+    }
+    el.activityBlock.hidden = state.agent !== "qoder" || !ACTIVITY.length;
   }
 
-  function filteredRows(ignore) {
-    return ROWS.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (!state.sources.has(row.source)) return false;
-      if (ignore !== "model" && state.model && row.model !== state.model) return false;
-      if (ignore !== "project" && state.project && row.project !== state.project) return false;
-      return matchesQuery(row);
-    });
-  }
-
-  function filteredActivity() {
-    if (!ACTIVITY.length || !state.sources.has("qoder")) return [];
-    return ACTIVITY.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (state.project && row.project !== state.project) return false;
-      if (state.q) {
-        var haystack = (row.day + " qoder " + row.project).toLowerCase();
-        if (haystack.indexOf(state.q) < 0) return false;
+  function renderCoverage() {
+    var parts = [];
+    var qoder = COVERAGE.qoder || {};
+    var qoderToken = qoderTokenBounds[0]
+      ? qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1] : "";
+    if (state.agent === "all") {
+      if (TOKEN_AGENTS.length) {
+        parts.push("精确 Token：" + TOKEN_AGENTS.join(" / "));
       }
-      return true;
-    });
-  }
-
-  function filteredCredits() {
-    if (!CREDITS.length || !state.sources.has("qoder")) return [];
-    return CREDITS.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (state.q) {
-        var haystack = (row.day + " qoder credits").toLowerCase();
-        if (haystack.indexOf(state.q) < 0) return false;
+      if (CREDIT_ROWS.length || EST.length) parts.push("Qoder 采用 credits 口径，见 Qoder 页");
+      if (qoderToken) parts.push("Qoder 历史 token 真值 " + qoderToken + "，不计入本页");
+    } else if (state.agent === "qoder") {
+      if (creditBounds[0]) {
+        parts.push("credits " + creditBounds[0] + " ~ " + creditBounds[1]);
+      } else {
+        parts.push("本地无 credits 数据");
       }
-      return true;
-    });
-  }
-
-  function filteredEstimates() {
-    if (!EST.length || !state.sources.has("qoder")) return [];
-    return EST.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (state.q) {
-        var haystack = (row.day + " " + row.model + " qoder est").toLowerCase();
-        if (haystack.indexOf(state.q) < 0) return false;
+      if (estBounds[0]) parts.push("估算 " + estBounds[0] + " ~ " + estBounds[1]);
+      var since = qoder.token_since || qoderTokenBounds[0];
+      var until = qoder.token_until || qoderTokenBounds[1];
+      if (since) parts.push("历史 token " + since + " ~ " + until + "（不计入本页）");
+      if (ACTIVITY.length) {
+        var actBounds = minMaxDay(ACTIVITY);
+        parts.push("活动 " + actBounds[0] + " ~ " + actBounds[1]);
       }
-      return true;
-    });
-  }
-
-  function traeSourceActive() {
-    return state.sources.has("trae-cn");
-  }
-
-  function filteredTraeEstimates() {
-    if (!TRAE_EST.length || !traeSourceActive()) return [];
-    return TRAE_EST.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (state.q) {
-        var haystack = (row.day + " " + row.model + " trae cn").toLowerCase();
-        if (haystack.indexOf(state.q) < 0) return false;
+      parts.push("credits、估算与活动口径不同，不可相加");
+    } else if (state.agent === "trae-cn") {
+      if (traeEstBounds[0]) {
+        parts.push("弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
+          "（仅覆盖安装 hook 后的请求）");
       }
-      return true;
-    });
+      parts.push("无 token / credits 真值，弱估算不可与任何真值或额度相加");
+    }
+    if (!parts.length) {
+      el.coverage.hidden = true;
+      return;
+    }
+    el.coverage.textContent = parts.join("；");
+    el.coverage.hidden = false;
   }
 
-  function addKpiTo(host, label, value, sub, primary) {
-    var card = document.createElement("div");
-    card.className = "kpi" + (primary ? " primary" : "");
-    var labelNode = document.createElement("div");
-    labelNode.className = "kpi-label";
-    labelNode.textContent = label;
-    var valueNode = document.createElement("div");
-    valueNode.className = "kpi-value";
-    valueNode.textContent = value;
-    valueNode.title = sub;
-    var subNode = document.createElement("div");
-    subNode.className = "kpi-sub";
-    subNode.textContent = sub;
-    card.appendChild(labelNode);
-    card.appendChild(valueNode);
-    card.appendChild(subNode);
-    host.appendChild(card);
+  function emptyActivityTotals() {
+    var totals = {};
+    ACTIVITY_FIELDS.forEach(function (field) { totals[field] = 0; });
+    return totals;
   }
 
-  function addKpi(label, value, sub, primary) {
-    addKpiTo(el.kpis, label, value, sub, primary);
-  }
-
-  function renderKpis(rows) {
+  function renderTokenKpis(host, rows) {
     var sums = {};
     FIELDS.forEach(function (field) { sums[field] = 0; });
     var turns = 0;
@@ -1152,24 +1302,941 @@ try {
     });
     var total = FIELDS.reduce(function (acc, field) { return acc + sums[field]; }, 0);
 
-    el.kpis.textContent = "";
-    addKpi("总 Token", fmtCompact(total), fmtInt(total), true);
+    host.textContent = "";
+    addKpiTo(host, "总 Token", fmtCompact(total), fmtInt(total), true);
     FIELDS.forEach(function (field) {
-      addKpi(FIELD_LABELS[field], fmtCompact(sums[field]), fmtInt(sums[field]));
+      addKpiTo(host, FIELD_LABELS[field], fmtCompact(sums[field]), fmtInt(sums[field]));
     });
-    addKpi("缓存占比", total ? pct(sums.cache_read / total) : "—", "cache_read / 总量");
-    addKpi("轮次", fmtCompact(turns), fmtInt(turns));
-    if (costKnown) addKpi("等价成本", "$" + cost.toFixed(2), "按 API 价折算，非实付");
+    addKpiTo(host, "缓存占比", total ? pct(sums.cache_read / total) : "—", "cache_read / 总量");
+    addKpiTo(host, "轮次", fmtCompact(turns), fmtInt(turns));
+    if (costKnown) addKpiTo(host, "等价成本", "$" + cost.toFixed(2), "按 API 价折算，非实付");
+  }
+
+  function quotaSummary() {
+    var addOn = QUOTA.add_on;
+    if (addOn && (number(addOn.total) > 0 || number(addOn.remaining) > 0)) return addOn;
+    var user = QUOTA.user;
+    if (user && (number(user.total) > 0 || number(user.remaining) > 0)) return user;
+    return null;
+  }
+
+  function addQuotaKpi(host, quota) {
+    var card = document.createElement("div");
+    card.className = "kpi primary quota-kpi";
+    var label = document.createElement("div");
+    label.className = "kpi-label";
+    label.textContent = "最新额度余额";
+    var value = document.createElement("div");
+    value.className = "kpi-value";
+    var sub = document.createElement("div");
+    sub.className = "kpi-sub";
+    card.appendChild(label);
+    card.appendChild(value);
+    card.appendChild(sub);
+    if (quota) {
+      var total = number(quota.total);
+      var used = number(quota.used);
+      var remaining = number(quota.remaining);
+      var ratio = typeof quota.pct === "number" && quota.pct >= 0
+        ? quota.pct : (total > 0 ? used / total : 0);
+      value.textContent = fmtQuota(remaining) + " credits";
+      sub.textContent = "used " + fmtQuota(used) + " / " + fmtQuota(total) +
+        " · 已用 " + pct(ratio) + " · 快照 " + (quota.day || "—");
+      value.title = sub.textContent;
+      var track = document.createElement("div");
+      track.className = "quota-track";
+      track.setAttribute("role", "progressbar");
+      track.setAttribute("aria-label", "Qoder 额度已用比例");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+      track.setAttribute("aria-valuenow", String(Math.round(Math.max(0, Math.min(1, ratio)) * 100)));
+      var fill = document.createElement("div");
+      fill.className = "quota-fill" + (ratio >= 0.8 ? " warn" : "");
+      fill.style.width = Math.max(0, Math.min(100, ratio * 100)) + "%";
+      track.appendChild(fill);
+      card.appendChild(track);
+    } else {
+      value.textContent = "—";
+      sub.textContent = "本地日志无额度快照";
+    }
+    host.appendChild(card);
+  }
+
+  function filteredEstimates(ignore) {
+    return EST.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (ignore !== "model" && state.model && row.model !== state.model) return false;
+      if (ignore !== "project" && state.project && row.project !== state.project) return false;
+      return matchesQuery(row);
+    });
+  }
+
+  function renderCreditKpis(rows) {
+    var billable = 0;
+    var free = 0;
+    var requests = 0;
+    var freeRequests = 0;
+    var days = {};
+    rows.forEach(function (row) {
+      billable += row.credits;
+      free += row.free_credits;
+      requests += row.requests;
+      freeRequests += row.free_requests;
+      days[row.day] = true;
+    });
+    var dayCount = Object.keys(days).length;
+    el.agentKpis.textContent = "";
+    addQuotaKpi(el.agentKpis, quotaSummary());
+    addKpiTo(el.agentKpis, "区间 billable", fmtCredits(billable),
+      fmtInt(requests) + " billable 请求 · 服务端计费真值");
+    addKpiTo(el.agentKpis, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求");
+    addKpiTo(el.agentKpis, "区间日均", fmtCredits(dayCount ? billable / dayCount : 0),
+      fmtInt(dayCount) + " 天有数据");
+    if (state.shadow) {
+      var estRows = filteredEstimates();
+      addKpiTo(el.agentKpis, "影子 est Token",
+        fmtCompact(sumField(estRows, "total")),
+        fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
+        false, "shadow");
+    }
+  }
+
+  function renderEstimateKpis(rows, kind) {
+    var input = sumField(rows, "est_input");
+    var output = sumField(rows, "est_output");
+    var requests = sumField(rows, "requests");
+    var days = {};
+    var models = {};
+    rows.forEach(function (row) {
+      days[row.day] = true;
+      models[row.model] = true;
+    });
+    el.agentKpis.textContent = "";
+    addKpiTo(el.agentKpis, "est 总 Token", fmtCompact(input + output),
+      fmtInt(input + output), true);
+    addKpiTo(el.agentKpis, "est 输入", fmtCompact(input),
+      kind === "estimate" ? "hook 上下文累积字符 ÷ 系数" : "context_usage_ratio × 200K");
+    addKpiTo(el.agentKpis, "est 输出", fmtCompact(output),
+      kind === "estimate" ? "输出字符 ÷ 系数" : "字符数 ÷ 模型系数");
+    addKpiTo(el.agentKpis, "覆盖请求", fmtCompact(requests),
+      fmtInt(Object.keys(days).length) + " 天 · " + fmtInt(Object.keys(models).length) + " 模型");
+  }
+
+  function renderOverviewKpis(rows) {
+    renderTokenKpis(el.kpis, rows);
+  }
+
+  function buildStackBuckets(rows, seriesDefs, shadowDefs, shadowRows) {
+    var days = enumerateDays(state.start, state.end);
+    if (!days.length) return [];
+    var weekly = days.length > 200;
+    var buckets = [];
+    var index = new Map();
+    days.forEach(function (day) {
+      var key = weekly ? weekStart(day) : day;
+      if (!index.has(key)) {
+        var bucket = { key: key, start: day, end: day };
+        index.set(key, bucket);
+        buckets.push(bucket);
+      } else {
+        index.get(key).end = day;
+      }
+    });
+    buckets.forEach(function (bucket) {
+      bucket.label = weekly ? bucket.start.slice(5) : bucket.start.slice(5);
+      bucket.tooltip = weekly ? bucket.start + " ~ " + bucket.end : bucket.start;
+      bucket.values = seriesDefs.map(function () { return 0; });
+      bucket.shadowValue = 0;
+    });
+    rows.forEach(function (row) {
+      var key = weekly ? weekStart(row.day) : row.day;
+      var bucket = index.get(key);
+      if (!bucket) return;
+      seriesDefs.forEach(function (def, i) {
+        bucket.values[i] += number(def.value(row));
+      });
+    });
+    (shadowDefs || []).forEach(function (def) {
+      (shadowRows || rows).forEach(function (row) {
+        var key = weekly ? weekStart(row.day) : row.day;
+        var bucket = index.get(key);
+        if (bucket) bucket.shadowValue += number(def.value(row));
+      });
+    });
+    buckets.forEach(function (bucket) {
+      bucket.total = bucket.values.reduce(function (acc, value) { return acc + value; }, 0);
+    });
+    return buckets;
+  }
+
+  function renderStackChart(config) {
+    var host = config.host;
+    var tooltip = config.tooltip;
+    var legend = config.legend;
+    host.textContent = "";
+    legend.textContent = "";
+    tooltip.style.display = "none";
+    var buckets = config.buckets;
+    if (!buckets.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "所选范围内没有数据";
+      host.appendChild(empty);
+      return;
+    }
+    var series = config.series;
+    var shadowLabel = config.shadowLabel || "";
+    var hasShadow = !!shadowLabel;
+    var width = Math.max(host.clientWidth || 900, 320);
+    var height = 300;
+    var margin = { top: 14, right: hasShadow ? 66 : 14, bottom: 28, left: 62 };
+    var plotW = Math.max(width - margin.left - margin.right, 10);
+    var plotH = height - margin.top - margin.bottom;
+    var maximum = buckets.reduce(function (acc, bucket) {
+      return Math.max(acc, bucket.total);
+    }, 0);
+    var scale = niceScale(maximum, 4);
+    var shadowScale = hasShadow ? niceScale(buckets.reduce(function (acc, bucket) {
+      return Math.max(acc, bucket.shadowValue);
+    }, 0), 4) : null;
+    var svg = svgEl("svg", {
+      viewBox: "0 0 " + width + " " + height,
+      role: "img",
+      "aria-label": config.ariaLabel || "每日用量"
+    });
+
+    scale.ticks.forEach(function (value) {
+      var y = margin.top + plotH - (value / scale.max) * plotH;
+      svg.appendChild(svgEl("line", {
+        x1: margin.left, x2: width - margin.right, y1: y, y2: y, class: "grid-line"
+      }));
+      var text = svgEl("text", {
+        x: margin.left - 8, y: y + 3.5, "text-anchor": "end"
+      });
+      text.textContent = fmtCompact(value);
+      svg.appendChild(text);
+    });
+    if (shadowScale) {
+      var rightGroup = svgEl("g", { class: "axis-right" });
+      shadowScale.ticks.forEach(function (value) {
+        var y = margin.top + plotH - (value / shadowScale.max) * plotH;
+        var text = svgEl("text", {
+          x: width - margin.right + 8, y: y + 3.5, "text-anchor": "start"
+        });
+        text.textContent = fmtCompact(value);
+        rightGroup.appendChild(text);
+      });
+      svg.appendChild(rightGroup);
+    }
+
+    var band = plotW / buckets.length;
+    var barW = Math.max(1.5, Math.min(26, band * 0.66));
+    var hoverLine = svgEl("line", {
+      x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
+    });
+
+    function moveHover(index) {
+      if (index < 0) {
+        hoverLine.setAttribute("x1", 0);
+        hoverLine.setAttribute("x2", 0);
+        return;
+      }
+      var center = margin.left + band * index + band / 2;
+      hoverLine.setAttribute("x1", center);
+      hoverLine.setAttribute("x2", center);
+    }
+
+    buckets.forEach(function (bucket, index) {
+      var x = margin.left + band * index + (band - barW) / 2;
+      var y = margin.top + plotH;
+      series.forEach(function (def, i) {
+        var value = bucket.values[i] || 0;
+        if (value <= 0) return;
+        var slice = (value / scale.max) * plotH;
+        y -= slice;
+        svg.appendChild(svgEl("rect", {
+          x: x, y: y, width: barW, height: slice,
+          fill: def.color, class: "seg", rx: barW > 4 ? 1.5 : 0
+        }));
+      });
+      var hit = svgEl("rect", {
+        x: margin.left + band * index, y: margin.top,
+        width: Math.max(band, 1), height: plotH, class: "hit"
+      });
+      hit.addEventListener("mouseenter", function (event) {
+        moveHover(index);
+        showTooltip(bucket, event);
+      });
+      hit.addEventListener("mousemove", positionTooltip);
+      hit.addEventListener("mouseleave", function () {
+        moveHover(-1);
+        tooltip.style.display = "none";
+      });
+      svg.appendChild(hit);
+    });
+
+    if (shadowScale) {
+      var points = [];
+      buckets.forEach(function (bucket, index) {
+        var x = margin.left + band * index + band / 2;
+        var value = bucket.shadowValue;
+        var y = margin.top + plotH - (value / shadowScale.max) * plotH;
+        points.push([x, y]);
+        svg.appendChild(svgEl("circle", {
+          cx: x, cy: y, r: 2.4, class: "shadow-dot"
+        }));
+      });
+      if (points.length > 1) {
+        svg.appendChild(svgEl("polyline", {
+          points: points.map(function (p) { return p[0] + "," + p[1]; }).join(" "),
+          class: "shadow-line"
+        }));
+      }
+    }
+    svg.appendChild(hoverLine);
+
+    var labelCount = Math.min(buckets.length, Math.max(2, Math.floor(plotW / 90)));
+    var step = labelCount <= 1 ? 1 : (buckets.length - 1) / (labelCount - 1);
+    var used = new Set();
+    for (var k = 0; k < labelCount; k += 1) {
+      var idx = Math.round(k * step);
+      if (used.has(idx)) continue;
+      used.add(idx);
+      var label = svgEl("text", {
+        x: margin.left + band * idx + band / 2,
+        y: height - 8,
+        "text-anchor": "middle"
+      });
+      label.textContent = buckets[idx].label;
+      svg.appendChild(label);
+    }
+    host.appendChild(svg);
+
+    var legendFmt = config.legendFormat || fmtCompact;
+    series.forEach(function (def, i) {
+      var total = buckets.reduce(function (acc, bucket) {
+        return acc + (bucket.values[i] || 0);
+      }, 0);
+      var item = document.createElement("span");
+      item.className = "legend-item";
+      var dot = document.createElement("i");
+      dot.className = "legend-dot";
+      dot.style.background = def.color;
+      var name = document.createElement("span");
+      name.textContent = def.label;
+      var amount = document.createElement("b");
+      amount.textContent = legendFmt(total);
+      item.appendChild(dot);
+      item.appendChild(name);
+      item.appendChild(amount);
+      legend.appendChild(item);
+    });
+    if (shadowScale) {
+      var shadowItem = document.createElement("span");
+      shadowItem.className = "legend-item";
+      var dash = document.createElement("i");
+      dash.className = "legend-line";
+      var shadowName = document.createElement("span");
+      shadowName.textContent = shadowLabel + "（右轴）";
+      var shadowAmount = document.createElement("b");
+      shadowAmount.textContent = fmtCompact(buckets.reduce(function (acc, bucket) {
+        return acc + bucket.shadowValue;
+      }, 0));
+      shadowItem.appendChild(dash);
+      shadowItem.appendChild(shadowName);
+      shadowItem.appendChild(shadowAmount);
+      legend.appendChild(shadowItem);
+    }
+
+    if (config.hint) config.hint.textContent = "";
+
+    function showTooltip(bucket, event) {
+      tooltip.textContent = "";
+      var head = document.createElement("div");
+      head.className = "tt-head";
+      head.textContent = bucket.tooltip;
+      tooltip.appendChild(head);
+      if (config.metaText) {
+        var meta = document.createElement("div");
+        meta.className = "tt-meta";
+        meta.textContent = config.metaText;
+        tooltip.appendChild(meta);
+      }
+      series.forEach(function (def, i) {
+        var row = document.createElement("div");
+        row.className = "tt-row";
+        var name = document.createElement("span");
+        name.className = "tt-name";
+        var dot = document.createElement("i");
+        dot.style.background = def.color;
+        name.appendChild(dot);
+        name.appendChild(document.createTextNode(def.label));
+        var value = document.createElement("span");
+        value.className = "tt-val";
+        value.textContent = (config.tooltipFormat || fmtInt)(bucket.values[i] || 0);
+        row.appendChild(name);
+        row.appendChild(value);
+        tooltip.appendChild(row);
+      });
+      var totalRow = document.createElement("div");
+      totalRow.className = "tt-row tt-total";
+      var totalName = document.createElement("span");
+      totalName.className = "tt-name";
+      totalName.textContent = "合计";
+      var totalValue = document.createElement("span");
+      totalValue.className = "tt-val";
+      totalValue.textContent = (config.tooltipFormat || fmtInt)(bucket.total);
+      totalRow.appendChild(totalName);
+      totalRow.appendChild(totalValue);
+      tooltip.appendChild(totalRow);
+      if (shadowScale) {
+        var shadowRow = document.createElement("div");
+        shadowRow.className = "tt-row tt-shadow";
+        var shadowName = document.createElement("span");
+        shadowName.className = "tt-name";
+        var dash = document.createElement("i");
+        dash.className = "dash";
+        shadowName.appendChild(dash);
+        shadowName.appendChild(document.createTextNode("影子：" + shadowLabel));
+        var shadowValue = document.createElement("span");
+        shadowValue.className = "tt-val";
+        shadowValue.textContent = fmtInt(bucket.shadowValue);
+        shadowRow.appendChild(shadowName);
+        shadowRow.appendChild(shadowValue);
+        tooltip.appendChild(shadowRow);
+      }
+      if (config.extraTooltip) {
+        config.extraTooltip(tooltip, bucket);
+      }
+      tooltip.style.display = "block";
+      positionTooltip(event);
+    }
+
+    function positionTooltip(event) {
+      var rect = host.parentElement.getBoundingClientRect();
+      var x = event.clientX - rect.left;
+      var half = 110;
+      x = Math.max(half, Math.min(x, rect.width - half));
+      tooltip.style.left = x + "px";
+    }
+  }
+
+  function renderOverviewChart(rows) {
+    var sources = TOKEN_AGENTS.filter(function (name) { return state.sources.has(name); });
+    var buckets = buildStackBuckets(rows, sources.map(function (source) {
+      return {
+        label: source, color: COLORS[source],
+        value: function (row) { return row.source === source ? pageMetric(row) : 0; }
+      };
+    }));
+    renderStackChart({
+      host: el.chart, tooltip: el.tooltip, legend: el.legend,
+      buckets: buckets,
+      series: sources.map(function (source) {
+        return { label: source, color: COLORS[source] };
+      }),
+      metaText: "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]),
+      ariaLabel: "按来源堆叠的每日 token 用量",
+      tooltipFormat: fmtInt
+    });
+    renderMissingHint(el.hint, rows);
+  }
+
+  function renderAgentChart(agent, kind, rows) {
+    var defs;
+    var shadowDefs = [];
+    var metaText;
+    var ariaLabel;
+    var legendFormat = fmtCompact;
+    var tooltipFormat = fmtInt;
+    if (kind === "token") {
+      defs = [{
+        label: agent, color: COLORS[agent] || "var(--accent)",
+        value: function (row) { return pageMetric(row); }
+      }];
+      metaText = "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]);
+      ariaLabel = agent + " 每日 token 用量";
+    } else if (kind === "credits") {
+      defs = [
+        { label: "billable（计入配额）", color: CREDIT_BILLABLE_COLOR,
+          value: function (row) { return row.credits; } },
+        { label: "免费（不计配额）", color: CREDIT_FREE_COLOR,
+          value: function (row) { return row.free_credits; } }
+      ];
+      metaText = "Qoder credits（服务端计费真值，非 token）";
+      ariaLabel = "Qoder 每日 credits 用量";
+      legendFormat = fmtCredits;
+      tooltipFormat = fmtCredits;
+      if (state.shadow) {
+        shadowDefs = [{ value: function (row) { return row.total; } }];
+      }
+    } else {
+      defs = [
+        { label: "est 输入", color: EST_INPUT_COLOR,
+          value: function (row) { return row.est_input; } },
+        { label: "est 输出", color: EST_OUTPUT_COLOR,
+          value: function (row) { return row.est_output; } }
+      ];
+      metaText = TRAE_NOTE + " · 非 token 真值";
+      ariaLabel = "Trae CN 每日弱估算 token";
+    }
+    var sourceRows = rows;
+    var shadowRows = state.shadow && kind === "credits" ? filteredEstimates() : null;
+    var buckets = buildStackBuckets(sourceRows, defs, shadowDefs, shadowRows);
+    renderStackChart({
+      host: el.agentChart, tooltip: el.agentTooltip, legend: el.agentLegend,
+      buckets: buckets,
+      series: defs,
+      shadowLabel: state.shadow && kind === "credits" ? "est token" : "",
+      metaText: metaText,
+      ariaLabel: ariaLabel,
+      legendFormat: legendFormat,
+      tooltipFormat: tooltipFormat
+    });
+    renderMissingHint(el.agentHint, rows);
+  }
+
+  function renderMissingHint(hintEl, rows) {
+    if (!state.start || !state.end) {
+      hintEl.textContent = "";
+      return;
+    }
+    var seen = {};
+    rows.forEach(function (row) { seen[row.day] = true; });
+    var days = enumerateDays(state.start, state.end);
+    var missing = days.filter(function (day) { return !seen[day]; });
+    if (!missing.length) {
+      hintEl.textContent = "";
+      return;
+    }
+    var shown = missing.slice(0, 10).join("、");
+    hintEl.textContent = "范围内 " + missing.length + " 天无本页数据（图表按 0 显示）：" +
+      shown + (missing.length > 10 ? " …" : "");
+  }
+
+  function estTotalsBy(dimension, ignore) {
+    var map = {};
+    filteredEstimates(ignore).forEach(function (row) {
+      var key = row[dimension] || "-";
+      map[key] = (map[key] || 0) + row.total;
+    });
+    return map;
+  }
+
+  function renderBarList(host, items, grandTotal, selected, onPick, opts) {
+    opts = opts || {};
+    var format = opts.format || fmtCompact;
+    host.textContent = "";
+    if (!items.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "无数据";
+      host.appendChild(empty);
+      return;
+    }
+    var maximum = Math.max(items[0].total, 1);
+    items.forEach(function (item) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "bar-row" + (item.key === selected ? " selected" : "");
+      button.setAttribute("aria-pressed", item.key === selected ? "true" : "false");
+      var top = document.createElement("div");
+      top.className = "bar-top";
+      var name = document.createElement("span");
+      name.className = "bar-name";
+      name.textContent = item.key === "-" ? "（未标注）" : item.key;
+      name.title = item.key;
+      var value = document.createElement("span");
+      value.className = "bar-value";
+      value.textContent = format(item.total) + " · " +
+        pct(grandTotal ? item.total / grandTotal : 0);
+      top.appendChild(name);
+      top.appendChild(value);
+      button.appendChild(top);
+      if (opts.shadowMap && opts.shadowMap[item.key] > 0) {
+        var shadow = document.createElement("div");
+        shadow.className = "bar-shadow";
+        shadow.textContent = "影子 est " + fmtCompact(opts.shadowMap[item.key]);
+        button.appendChild(shadow);
+      }
+      var track = document.createElement("div");
+      track.className = "bar-track";
+      var fill = document.createElement("div");
+      fill.className = "bar-fill";
+      fill.style.width = item.total > 0
+        ? Math.max(item.total / maximum * 100, 1.5).toFixed(1) + "%" : "0%";
+      track.appendChild(fill);
+      button.appendChild(track);
+      button.title = "筛选：" + item.key;
+      button.addEventListener("click", function () { onPick(item.key); });
+      host.appendChild(button);
+    });
+  }
+
+  function renderOverviewBars(modelRows, projectRows) {
+    var modelTotal = modelRows.reduce(function (acc, row) { return acc + pageMetric(row); }, 0);
+    var modelItems = metricItems(modelRows, "model", pageMetric);
+    renderBarList(el.models, modelItems, modelTotal, state.model, function (key) {
+      state.model = state.model === key ? "" : key;
+      el.model.value = state.model;
+      state.page = 0;
+      renderAll();
+    });
+    var projectTotal = projectRows.reduce(function (acc, row) { return acc + pageMetric(row); }, 0);
+    var projectItems = metricItems(projectRows, "project", pageMetric);
+    renderBarList(el.projects, projectItems, projectTotal, state.project, function (key) {
+      state.project = state.project === key ? "" : key;
+      el.project.value = state.project;
+      state.page = 0;
+      renderAll();
+    });
+  }
+
+  function metricItems(rows, key, valueFn) {
+    var map = new Map();
+    rows.forEach(function (row) {
+      var name = row[key] || "-";
+      if (!map.has(name)) map.set(name, { key: name, total: 0 });
+      map.get(name).total += number(valueFn ? valueFn(row) : row.total);
+    });
+    return Array.from(map.values()).sort(byTotal).slice(0, 8);
+  }
+
+  function renderAgentBars(agent, kind, modelRows, projectRows) {
+    var shadowByModel = kind === "credits" && state.shadow
+      ? estTotalsBy("model", "model") : null;
+    var shadowByProject = kind === "credits" && state.shadow
+      ? estTotalsBy("project", "project") : null;
+    var format = kind === "credits" ? fmtCredits : fmtCompact;
+    var valueFn = kind === "token" ? pageMetric : function (row) { return number(row.total); };
+    var modelItems = metricItems(modelRows, "model", valueFn);
+    var projectItems = metricItems(projectRows, "project", valueFn);
+    var modelTotal = modelRows.reduce(function (acc, row) { return acc + number(valueFn(row)); }, 0);
+    var projectTotal = projectRows.reduce(function (acc, row) { return acc + number(valueFn(row)); }, 0);
+    renderBarList(el.agentModels, modelItems, modelTotal, state.model, function (key) {
+      state.model = state.model === key ? "" : key;
+      el.model.value = state.model;
+      state.page = 0;
+      renderAll();
+    }, { format: format, shadowMap: shadowByModel });
+    renderBarList(el.agentProjects, projectItems, projectTotal, state.project, function (key) {
+      state.project = state.project === key ? "" : key;
+      el.project.value = state.project;
+      state.page = 0;
+      renderAll();
+    }, { format: format, shadowMap: shadowByProject });
+  }
+
+  function columnFmt(column, value) {
+    if (column.fmt) return column.fmt(value);
+    return fmtInt(value);
+  }
+
+  function renderDataTable(config) {
+    var columns = config.columns;
+    var rows = config.rows;
+    var numericKeys = {};
+    columns.forEach(function (column) {
+      if (column.type === "num") numericKeys[column.key] = true;
+    });
+    if (!columns.some(function (column) { return column.key === state.sortKey; })) {
+      state.sortKey = "day";
+      state.sortDir = "desc";
+    }
+    var sorted = rows.slice().sort(function (a, b) {
+      var av = a[state.sortKey];
+      var bv = b[state.sortKey];
+      var cmp;
+      if (numericKeys[state.sortKey]) cmp = number(av) - number(bv);
+      else cmp = String(av).localeCompare(String(bv), "zh-CN");
+      if (cmp === 0 && state.sortKey !== "total") cmp = number(a.total) - number(b.total);
+      return state.sortDir === "asc" ? cmp : -cmp;
+    });
+    var pages = Math.max(1, Math.ceil(sorted.length / state.pageSize));
+    if (state.page >= pages) state.page = pages - 1;
+    if (state.page < 0) state.page = 0;
+    var start = state.page * state.pageSize;
+    var slice = sorted.slice(start, start + state.pageSize);
+
+    var focusedKey = null;
+    if (document.activeElement && document.activeElement.classList.contains("th-btn")) {
+      focusedKey = document.activeElement.dataset.key;
+    }
+
+    config.thead.textContent = "";
+    var headerRow = document.createElement("tr");
+    columns.forEach(function (column) {
+      var th = document.createElement("th");
+      if (column.type === "num") th.className = "num";
+      if (column.shadow) th.classList.add("shadow-col");
+      th.setAttribute("aria-sort", state.sortKey === column.key
+        ? (state.sortDir === "asc" ? "ascending" : "descending") : "none");
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "th-btn";
+      button.dataset.key = column.key;
+      button.appendChild(document.createTextNode(column.label));
+      if (state.sortKey === column.key) {
+        var arrow = document.createElement("span");
+        arrow.className = "arrow";
+        arrow.textContent = state.sortDir === "asc" ? "▲" : "▼";
+        button.appendChild(arrow);
+      }
+      button.addEventListener("click", function () {
+        if (state.sortKey === column.key) {
+          state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+        } else {
+          state.sortKey = column.key;
+          state.sortDir = column.type === "num" ? "desc" : "asc";
+        }
+        state.page = 0;
+        renderAll();
+      });
+      th.appendChild(button);
+      headerRow.appendChild(th);
+    });
+    config.thead.appendChild(headerRow);
+
+    if (focusedKey) {
+      var restored = config.thead.querySelector('.th-btn[data-key="' + focusedKey + '"]');
+      if (restored) restored.focus({ preventScroll: true });
+    }
+
+    config.tbody.textContent = "";
+    if (!slice.length) {
+      var emptyRow = document.createElement("tr");
+      var cell = document.createElement("td");
+      cell.colSpan = columns.length;
+      cell.className = "muted";
+      cell.style.padding = "24px 10px";
+      cell.style.textAlign = "center";
+      cell.textContent = config.emptyText || "无匹配数据";
+      emptyRow.appendChild(cell);
+      config.tbody.appendChild(emptyRow);
+    } else {
+      slice.forEach(function (row) {
+        var tr = document.createElement("tr");
+        columns.forEach(function (column) {
+          var td = document.createElement("td");
+          var value = row[column.key];
+          if (column.type === "num") td.className = "num";
+          if (column.shadow) td.classList.add("shadow-col");
+          if (column.key === "project") {
+            td.textContent = value === "-" ? "（未标注）" : value;
+            td.title = value;
+          } else if (column.key === "model") {
+            td.textContent = value;
+            td.title = value;
+          } else if (column.key === "cost_equiv_usd") {
+            td.textContent = fmtCost(value);
+          } else if (column.type === "num") {
+            td.textContent = columnFmt(column, value);
+            if (!number(value)) td.classList.add("zero");
+          } else {
+            td.textContent = value;
+          }
+          tr.appendChild(td);
+        });
+        config.tbody.appendChild(tr);
+      });
+    }
+
+    config.rowinfo.textContent = config.info(sorted);
+    config.pageinfo.textContent = slice.length
+      ? (start + 1) + "–" + (start + slice.length) + " / " + fmtInt(sorted.length)
+      : "0 / 0";
+    config.prev.disabled = state.page <= 0;
+    config.next.disabled = state.page >= pages - 1;
+  }
+
+  var COST_KNOWN = ROWS.some(function (row) {
+    return row.cost_equiv_usd !== null && row.cost_equiv_usd !== undefined;
+  });
+
+  function tokenColumns(includeSource) {
+    var columns = [{ key: "day", label: "日期", type: "text" }];
+    if (includeSource) columns.push({ key: "source", label: "来源", type: "text" });
+    columns.push({ key: "model", label: "模型", type: "text" });
+    columns.push({ key: "project", label: "项目", type: "text" });
+    FIELDS.forEach(function (field) {
+      columns.push({ key: field, label: FIELD_LABELS[field], type: "num" });
+    });
+    columns.push({ key: "total", label: "合计", type: "num" });
+    columns.push({ key: "turns", label: "轮次", type: "num" });
+    if (COST_KNOWN) columns.push({ key: "cost_equiv_usd", label: "等价成本", type: "num" });
+    return columns;
+  }
+
+  function creditColumns(shadow) {
+    var columns = [
+      { key: "day", label: "日期", type: "text" },
+      { key: "model", label: "模型", type: "text" },
+      { key: "project", label: "项目", type: "text" },
+      { key: "credits", label: "billable", type: "num", fmt: fmtCredits },
+      { key: "requests", label: "请求", type: "num" },
+      { key: "free_credits", label: "免费 credits", type: "num", fmt: fmtCredits },
+      { key: "free_requests", label: "免费请求", type: "num" }
+    ];
+    if (shadow) {
+      columns.push({ key: "est_input", label: "影子 est 输入", type: "num", shadow: true });
+      columns.push({ key: "est_output", label: "影子 est 输出", type: "num", shadow: true });
+      columns.push({ key: "est_total", label: "影子 est 合计", type: "num", shadow: true });
+      columns.push({ key: "est_requests", label: "影子请求", type: "num", shadow: true });
+    }
+    return columns;
+  }
+
+  function estimateColumns() {
+    return [
+      { key: "day", label: "日期", type: "text" },
+      { key: "model", label: "模型", type: "text" },
+      { key: "project", label: "项目", type: "text" },
+      { key: "est_input", label: "est 输入", type: "num" },
+      { key: "est_output", label: "est 输出", type: "num" },
+      { key: "total", label: "est 合计", type: "num" },
+      { key: "requests", label: "请求", type: "num" },
+      { key: "chars_in", label: "上下文字符", type: "num" },
+      { key: "chars_out", label: "输出字符", type: "num" }
+    ];
+  }
+
+  function creditDetailRows(rows) {
+    var map = new Map();
+    rows.forEach(function (row) {
+      var key = row.day + "|" + row.model + "|" + row.project;
+      map.set(key, {
+        day: row.day, model: row.model, project: row.project,
+        credits: row.credits, requests: row.requests,
+        free_credits: row.free_credits, free_requests: row.free_requests,
+        est_input: 0, est_output: 0, est_total: 0, est_requests: 0,
+        total: row.credits
+      });
+    });
+    if (state.shadow) {
+      filteredEstimates().forEach(function (row) {
+        var key = row.day + "|" + row.model + "|" + row.project;
+        var item = map.get(key);
+        if (!item) {
+          item = {
+            day: row.day, model: row.model, project: row.project,
+            credits: 0, requests: 0, free_credits: 0, free_requests: 0,
+            est_input: 0, est_output: 0, est_total: 0, est_requests: 0, total: 0
+          };
+          map.set(key, item);
+        }
+        item.est_input += row.est_input;
+        item.est_output += row.est_output;
+        item.est_total += row.total;
+        item.est_requests += row.requests;
+      });
+    }
+    return Array.from(map.values());
+  }
+
+  function renderOverview() {
+    var rows = overviewRows();
+    el.tokenEmpty.hidden = true;
+    renderOverviewKpis(rows);
+    renderOverviewChart(rows);
+    renderOverviewBars(overviewRows("model"), overviewRows("project"));
+    renderDataTable({
+      thead: el.thead, tbody: el.tbody, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
+      prev: el.prev, next: el.next, columns: tokenColumns(true), rows: rows,
+      emptyText: "无匹配数据",
+      info: function (all) {
+        return fmtInt(all.length) + " 行 · 共 " +
+          fmtInt(all.reduce(function (acc, row) { return acc + row.total; }, 0)) + " tokens";
+      }
+    });
+  }
+
+  function renderAgentPage() {
+    var agent = state.agent;
+    var kind = agentKind(agent);
+    var rows = pageRowsFiltered(agent);
+    if (kind === "token") {
+      renderTokenKpis(el.agentKpis, rows);
+      renderAgentChart(agent, kind, rows);
+      renderAgentBars(agent, kind, pageRowsFiltered(agent, "model"),
+                      pageRowsFiltered(agent, "project"));
+      renderDataTable({
+        thead: el.agentThead, tbody: el.agentTbody, rowinfo: el.agentRowinfo,
+        pageinfo: el.agentPageinfo, prev: el.agentPrev, next: el.agentNext,
+        columns: tokenColumns(false), rows: rows, emptyText: "无匹配数据",
+        info: function (all) {
+          return fmtInt(all.length) + " 行 · 共 " +
+            fmtInt(all.reduce(function (acc, row) { return acc + row.total; }, 0)) + " tokens";
+        }
+      });
+      el.shadowNote.hidden = true;
+    } else if (kind === "credits") {
+      renderCreditKpis(rows);
+      renderAgentChart(agent, kind, rows);
+      renderAgentBars(agent, kind, pageRowsFiltered(agent, "model"),
+                      pageRowsFiltered(agent, "project"));
+      var tableRows = creditDetailRows(rows);
+      renderDataTable({
+        thead: el.agentThead, tbody: el.agentTbody, rowinfo: el.agentRowinfo,
+        pageinfo: el.agentPageinfo, prev: el.agentPrev, next: el.agentNext,
+        columns: creditColumns(state.shadow), rows: tableRows, emptyText: "无匹配数据",
+        info: function (all) {
+          var billable = 0;
+          var free = 0;
+          var requests = 0;
+          all.forEach(function (row) {
+            billable += number(row.credits);
+            free += number(row.free_credits);
+            requests += number(row.requests);
+          });
+          return fmtInt(all.length) + " 行 · billable " + fmtCredits(billable) +
+            " · 免费 " + fmtCredits(free) + " · " + fmtInt(requests) + " 请求" +
+            (state.shadow ? " · 含影子" : "");
+        }
+      });
+      el.shadowNote.hidden = !state.shadow;
+      if (state.shadow) {
+        el.shadowNote.textContent = "影子 est 由转录文本与 context_usage_ratio 推算（" +
+          EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 与 credits 对齐；" +
+          "仅覆盖带 ratio 的请求，明细会补出只有估算、没有 billable 的行，不可与 credits 相加。";
+      }
+    } else {
+      renderEstimateKpis(rows, kind);
+      renderAgentChart(agent, kind, rows);
+      renderAgentBars(agent, kind, pageRowsFiltered(agent, "model"),
+                      pageRowsFiltered(agent, "project"));
+      renderDataTable({
+        thead: el.agentThead, tbody: el.agentTbody, rowinfo: el.agentRowinfo,
+        pageinfo: el.agentPageinfo, prev: el.agentPrev, next: el.agentNext,
+        columns: estimateColumns(), rows: rows, emptyText: "无匹配数据",
+        info: function (all) {
+          return fmtInt(all.length) + " 行 · est 总 Token " +
+            fmtInt(all.reduce(function (acc, row) { return acc + row.total; }, 0)) +
+            " · " + fmtInt(all.reduce(function (acc, row) { return acc + row.requests; }, 0)) +
+            " 请求";
+        }
+      });
+      el.shadowNote.hidden = true;
+    }
+    renderActivity();
+  }
+
+  function filteredActivity() {
+    return ACTIVITY.filter(function (row) {
+      if (state.start && row.day < state.start) return false;
+      if (state.end && row.day > state.end) return false;
+      if (state.project && row.project !== state.project) return false;
+      if (state.q) {
+        var haystack = (row.day + " qoder " + row.project).toLowerCase();
+        if (haystack.indexOf(state.q) < 0) return false;
+      }
+      return true;
+    });
   }
 
   function renderActivity() {
+    if (state.agent !== "qoder" || !ACTIVITY.length) return;
     var rows = filteredActivity();
-    var visible = rows.length > 0;
-    el.activityKpis.hidden = !visible;
-    el.activityChartCard.hidden = !visible;
-    el.activityTableCard.hidden = !visible;
-    if (!visible) return;
-
     var totals = emptyActivityTotals();
     rows.forEach(function (row) {
       ACTIVITY_FIELDS.forEach(function (field) { totals[field] += number(row[field]); });
@@ -1315,15 +2382,15 @@ try {
     var step = labelCount <= 1 ? 1 : (days.length - 1) / (labelCount - 1);
     var used = new Set();
     for (var k = 0; k < labelCount; k += 1) {
-      var index = Math.round(k * step);
-      if (used.has(index)) continue;
-      used.add(index);
+      var idx = Math.round(k * step);
+      if (used.has(idx)) continue;
+      used.add(idx);
       var label = svgEl("text", {
-        x: margin.left + band * index + band / 2,
+        x: margin.left + band * idx + band / 2,
         y: height - 8,
         "text-anchor": "middle"
       });
-      label.textContent = days[index].slice(5);
+      label.textContent = days[idx].slice(5);
       svg.appendChild(label);
     }
     el.activityChart.appendChild(svg);
@@ -1353,7 +2420,7 @@ try {
     }, 0);
     el.activityHint.textContent = "turnMetrics 覆盖 " +
       (assistant ? pct(withMetrics / assistant) : "—") +
-      "；未带 metrics 的 assistant 其 turns/时长为 0，不代表没使用";
+      "；未带 metrics 的 assistant 其 turns/时长为 0，不代表没使用；活动与 credits 口径不同，不可相加。";
   }
 
   var ACTIVITY_COLUMNS = [
@@ -1416,1042 +2483,6 @@ try {
       fmtInt(toolTotal) + " · 会话按天去重";
   }
 
-  function fmtCredits(value) {
-    return number(value).toFixed(2);
-  }
-
-  function fmtQuota(value) {
-    var parsed = number(value);
-    return Math.abs(parsed - Math.round(parsed)) < 0.005 ? fmtInt(parsed) : parsed.toFixed(2);
-  }
-
-  var CREDIT_BILLABLE_COLOR = "#e11d48";
-  var CREDIT_FREE_COLOR = "#f59e0b";
-
-  function quotaSummary() {
-    var addOn = QUOTA.add_on;
-    if (addOn && (number(addOn.total) > 0 || number(addOn.remaining) > 0)) return addOn;
-    var user = QUOTA.user;
-    if (user && (number(user.total) > 0 || number(user.remaining) > 0)) return user;
-    return null;
-  }
-
-  function addQuotaKpi(host, quota) {
-    var card = document.createElement("div");
-    card.className = "kpi primary quota-kpi";
-    var label = document.createElement("div");
-    label.className = "kpi-label";
-    label.textContent = "最新额度余额";
-    var value = document.createElement("div");
-    value.className = "kpi-value";
-    var sub = document.createElement("div");
-    sub.className = "kpi-sub";
-    card.appendChild(label);
-    card.appendChild(value);
-    card.appendChild(sub);
-    if (quota) {
-      var total = number(quota.total);
-      var used = number(quota.used);
-      var remaining = number(quota.remaining);
-      var ratio = typeof quota.pct === "number" && quota.pct >= 0
-        ? quota.pct : (total > 0 ? used / total : 0);
-      value.textContent = fmtQuota(remaining) + " credits";
-      sub.textContent = "used " + fmtQuota(used) + " / " + fmtQuota(total) +
-        " · 已用 " + pct(ratio) + " · 快照 " + (quota.day || "—");
-      value.title = sub.textContent;
-      var track = document.createElement("div");
-      track.className = "quota-track";
-      track.setAttribute("role", "progressbar");
-      track.setAttribute("aria-label", "Qoder 额度已用比例");
-      track.setAttribute("aria-valuemin", "0");
-      track.setAttribute("aria-valuemax", "100");
-      track.setAttribute("aria-valuenow", String(Math.round(Math.max(0, Math.min(1, ratio)) * 100)));
-      var fill = document.createElement("div");
-      fill.className = "quota-fill" + (ratio >= 0.8 ? " warn" : "");
-      fill.style.width = Math.max(0, Math.min(100, ratio * 100)) + "%";
-      track.appendChild(fill);
-      card.appendChild(track);
-    } else {
-      value.textContent = "—";
-      sub.textContent = "本地日志无额度快照";
-    }
-    host.appendChild(card);
-  }
-
-  function renderCredits() {
-    var rows = filteredCredits();
-    var visible = rows.length > 0;
-    el.creditKpis.hidden = !visible;
-    el.creditChartCard.hidden = !visible;
-    el.creditTableCard.hidden = !visible;
-    if (!visible) return;
-
-    var billable = 0;
-    var free = 0;
-    var requests = 0;
-    rows.forEach(function (row) {
-      billable += row.credits;
-      free += row.free_credits;
-      requests += row.requests;
-    });
-    var quota = quotaSummary();
-
-    el.creditKpis.textContent = "";
-    addQuotaKpi(el.creditKpis, quota);
-    addKpiTo(el.creditKpis, "区间 billable", fmtCredits(billable),
-      fmtInt(requests) + " billable 请求 · 服务端计费真值");
-    addKpiTo(el.creditKpis, "免费 credits", fmtCredits(free), "不计入配额");
-    addKpiTo(el.creditKpis, "区间日均", fmtCredits(rows.length ? billable / rows.length : 0),
-      fmtInt(rows.length) + " 天有数据");
-    el.creditRange.textContent = "区间合计 " + fmtCredits(billable) + " credits";
-    renderCreditChart(rows);
-    renderCreditTable(rows);
-  }
-
-  function renderCreditChart(rows) {
-    el.creditChart.textContent = "";
-    el.creditTooltip.style.display = "none";
-    el.creditLegend.textContent = "";
-    if (!rows.length) {
-      var empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "所选范围内没有额度数据";
-      el.creditChart.appendChild(empty);
-      return;
-    }
-
-    var width = Math.max(el.creditChart.clientWidth || 900, 320);
-    var height = 230;
-    var margin = { top: 14, right: 14, bottom: 28, left: 62 };
-    var plotW = Math.max(width - margin.left - margin.right, 10);
-    var plotH = height - margin.top - margin.bottom;
-    var maximum = rows.reduce(function (acc, row) {
-      return Math.max(acc, row.credits + row.free_credits);
-    }, 0);
-    var scale = niceScale(maximum, 4);
-    var svg = svgEl("svg", {
-      viewBox: "0 0 " + width + " " + height,
-      role: "img",
-      "aria-label": "Qoder 每日配额消耗（credits）"
-    });
-
-    scale.ticks.forEach(function (value) {
-      var y = margin.top + plotH - (value / scale.max) * plotH;
-      svg.appendChild(svgEl("line", {
-        x1: margin.left, x2: width - margin.right, y1: y, y2: y, class: "grid-line"
-      }));
-      var text = svgEl("text", {
-        x: margin.left - 8, y: y + 3.5, "text-anchor": "end"
-      });
-      text.textContent = fmtCompact(value);
-      svg.appendChild(text);
-    });
-
-    var band = plotW / rows.length;
-    var barW = Math.max(1.5, Math.min(26, band * 0.66));
-    var hoverLine = svgEl("line", {
-      x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
-    });
-
-    function showTooltip(row, event) {
-      var tip = el.creditTooltip;
-      tip.textContent = "";
-      var head = document.createElement("div");
-      head.className = "tt-head";
-      head.textContent = row.day;
-      tip.appendChild(head);
-      var meta = document.createElement("div");
-      meta.className = "tt-meta";
-      meta.textContent = "Qoder 配额（credits，非 token）";
-      tip.appendChild(meta);
-      [["billable", row.credits], ["免费", row.free_credits]].forEach(function (pair) {
-        var line = document.createElement("div");
-        line.className = "tt-row";
-        var name = document.createElement("span");
-        name.className = "tt-name";
-        var dot = document.createElement("i");
-        dot.style.background = pair[0] === "billable" ? CREDIT_BILLABLE_COLOR : CREDIT_FREE_COLOR;
-        name.appendChild(dot);
-        name.appendChild(document.createTextNode(pair[0]));
-        var value = document.createElement("span");
-        value.className = "tt-val";
-        value.textContent = fmtCredits(pair[1]);
-        line.appendChild(name);
-        line.appendChild(value);
-        tip.appendChild(line);
-      });
-      var total = document.createElement("div");
-      total.className = "tt-row tt-total";
-      var totalName = document.createElement("span");
-      totalName.className = "tt-name";
-      totalName.textContent = "合计";
-      var totalValue = document.createElement("span");
-      totalValue.className = "tt-val";
-      totalValue.textContent = fmtCredits(row.credits + row.free_credits);
-      total.appendChild(totalName);
-      total.appendChild(totalValue);
-      tip.appendChild(total);
-      var meta2 = document.createElement("div");
-      meta2.className = "tt-meta";
-      meta2.style.margin = "5px 0 0";
-      meta2.textContent = fmtInt(row.requests) + " 请求 · " +
-        fmtInt(row.snapshots) + " 次额度快照";
-      tip.appendChild(meta2);
-      tip.style.display = "block";
-      positionTooltip(event);
-    }
-
-    function positionTooltip(event) {
-      var rect = el.creditChart.parentElement.getBoundingClientRect();
-      var x = event.clientX - rect.left;
-      var half = 110;
-      x = Math.max(half, Math.min(x, rect.width - half));
-      el.creditTooltip.style.left = x + "px";
-    }
-
-    rows.forEach(function (row, index) {
-      var x = margin.left + band * index + (band - barW) / 2;
-      var baseY = margin.top + plotH;
-      var freeH = (row.free_credits / scale.max) * plotH;
-      var billableH = (row.credits / scale.max) * plotH;
-      if (freeH > 0) {
-        svg.appendChild(svgEl("rect", {
-          x: x, y: baseY - freeH, width: barW, height: freeH,
-          fill: CREDIT_FREE_COLOR, class: "seg", rx: barW > 4 ? 1.5 : 0
-        }));
-      }
-      if (billableH > 0) {
-        svg.appendChild(svgEl("rect", {
-          x: x, y: baseY - freeH - billableH, width: barW, height: billableH,
-          fill: CREDIT_BILLABLE_COLOR, class: "seg", rx: barW > 4 ? 1.5 : 0
-        }));
-      }
-      var hit = svgEl("rect", {
-        x: margin.left + band * index, y: margin.top,
-        width: Math.max(band, 1), height: plotH, class: "hit"
-      });
-      hit.addEventListener("mouseenter", function (event) {
-        var center = margin.left + band * index + band / 2;
-        hoverLine.setAttribute("x1", center);
-        hoverLine.setAttribute("x2", center);
-        showTooltip(row, event);
-      });
-      hit.addEventListener("mousemove", positionTooltip);
-      hit.addEventListener("mouseleave", function () {
-        hoverLine.setAttribute("x1", 0);
-        hoverLine.setAttribute("x2", 0);
-        el.creditTooltip.style.display = "none";
-      });
-      svg.appendChild(hit);
-    });
-    svg.appendChild(hoverLine);
-
-    var labelCount = Math.min(rows.length, Math.max(2, Math.floor(plotW / 90)));
-    var step = labelCount <= 1 ? 1 : (rows.length - 1) / (labelCount - 1);
-    var used = new Set();
-    for (var k = 0; k < labelCount; k += 1) {
-      var index = Math.round(k * step);
-      if (used.has(index)) continue;
-      used.add(index);
-      var label = svgEl("text", {
-        x: margin.left + band * index + band / 2,
-        y: height - 8,
-        "text-anchor": "middle"
-      });
-      label.textContent = rows[index].day.slice(5);
-      svg.appendChild(label);
-    }
-    el.creditChart.appendChild(svg);
-
-    var billableTotal = rows.reduce(function (acc, row) { return acc + row.credits; }, 0);
-    var freeTotal = rows.reduce(function (acc, row) { return acc + row.free_credits; }, 0);
-    [
-      ["billable（计入配额）", billableTotal, CREDIT_BILLABLE_COLOR],
-      ["免费（不计配额）", freeTotal, CREDIT_FREE_COLOR]
-    ].forEach(function (pair) {
-      var item = document.createElement("span");
-      item.className = "legend-item";
-      var dot = document.createElement("i");
-      dot.className = "legend-dot";
-      dot.style.background = pair[2];
-      var name = document.createElement("span");
-      name.textContent = pair[0];
-      var amount = document.createElement("b");
-      amount.textContent = fmtCredits(pair[1]);
-      item.appendChild(dot);
-      item.appendChild(name);
-      item.appendChild(amount);
-      el.creditLegend.appendChild(item);
-    });
-
-    el.creditHint.textContent = "credits 为服务端每请求计费真值；免费 credits 不计配额；" +
-      "余额来自最新日志快照。额度按天汇总，不受模型/项目筛选影响。";
-  }
-
-  var CREDIT_COLUMNS = [
-    { key: "day", label: "日期", type: "text" },
-    { key: "credits", label: "billable", type: "num" },
-    { key: "requests", label: "请求", type: "num" },
-    { key: "free_credits", label: "免费", type: "num" },
-    { key: "snapshots", label: "快照", type: "num" }
-  ];
-
-  function renderCreditTable(rows) {
-    var sorted = rows.slice().sort(function (a, b) {
-      return a.day < b.day ? 1 : a.day > b.day ? -1 : 0;
-    });
-    el.creditThead.textContent = "";
-    var headerRow = document.createElement("tr");
-    CREDIT_COLUMNS.forEach(function (column) {
-      var th = document.createElement("th");
-      if (column.type === "num") th.className = "num";
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "th-btn";
-      button.appendChild(document.createTextNode(column.label));
-      th.appendChild(button);
-      headerRow.appendChild(th);
-    });
-    el.creditThead.appendChild(headerRow);
-
-    el.creditTbody.textContent = "";
-    var billable = 0;
-    var free = 0;
-    var requests = 0;
-    sorted.forEach(function (row) {
-      billable += row.credits;
-      free += row.free_credits;
-      requests += row.requests;
-      var tr = document.createElement("tr");
-      CREDIT_COLUMNS.forEach(function (column) {
-        var td = document.createElement("td");
-        if (column.type === "num") td.className = "num";
-        if (column.type === "num") {
-          td.textContent = fmtCredits(row[column.key]);
-          if (column.key === "requests" || column.key === "snapshots") {
-            td.textContent = fmtInt(row[column.key]);
-          }
-          if (!number(row[column.key])) td.classList.add("zero");
-        } else {
-          td.textContent = row[column.key];
-        }
-        tr.appendChild(td);
-      });
-      el.creditTbody.appendChild(tr);
-    });
-    el.creditRowinfo.textContent = fmtInt(sorted.length) + " 天 · billable " +
-      fmtCredits(billable) + " · 免费 " + fmtCredits(free) + " · " + fmtInt(requests) + " 请求";
-  }
-
-  function renderEstimates() {
-    var rows = filteredEstimates();
-    var visible = rows.length > 0;
-    el.estKpis.hidden = !visible;
-    el.estTableCard.hidden = !visible;
-    if (!visible) return;
-
-    var input = 0;
-    var output = 0;
-    var requests = 0;
-    var missing = 0;
-    var models = new Set();
-    rows.forEach(function (row) {
-      input += row.est_input;
-      output += row.est_output;
-      requests += row.requests;
-      missing += row.missing_ratio;
-      models.add(row.model);
-    });
-
-    el.estKpis.textContent = "";
-    addKpiTo(el.estKpis, "est 总 Token", fmtCompact(input + output),
-      fmtInt(input + output), true);
-    addKpiTo(el.estKpis, "est 输入", fmtCompact(input), "context_usage_ratio × 200K");
-    addKpiTo(el.estKpis, "est 输出", fmtCompact(output), "字符数 ÷ 模型系数");
-    addKpiTo(el.estKpis, "覆盖请求", fmtCompact(requests),
-      "ratio 缺失 " + fmtInt(missing) + " · 模型 " + fmtInt(models.size));
-    renderEstTable(rows);
-  }
-
-  var EST_COLUMNS = [
-    { key: "day", label: "日期", type: "text" },
-    { key: "model", label: "模型", type: "text" },
-    { key: "est_input", label: "est 输入", type: "num" },
-    { key: "est_output", label: "est 输出", type: "num" },
-    { key: "requests", label: "请求", type: "num" },
-    { key: "missing_ratio", label: "ratio 缺失", type: "num" }
-  ];
-
-  function renderEstTable(rows) {
-    var sorted = rows.slice().sort(function (a, b) {
-      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
-      return String(a.model).localeCompare(String(b.model), "zh-CN");
-    });
-    el.estThead.textContent = "";
-    var headerRow = document.createElement("tr");
-    EST_COLUMNS.forEach(function (column) {
-      var th = document.createElement("th");
-      if (column.type === "num") th.className = "num";
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "th-btn";
-      button.appendChild(document.createTextNode(column.label));
-      th.appendChild(button);
-      headerRow.appendChild(th);
-    });
-    el.estThead.appendChild(headerRow);
-
-    el.estTbody.textContent = "";
-    var input = 0;
-    var output = 0;
-    var requests = 0;
-    sorted.forEach(function (row) {
-      input += row.est_input;
-      output += row.est_output;
-      requests += row.requests;
-      var tr = document.createElement("tr");
-      EST_COLUMNS.forEach(function (column) {
-        var td = document.createElement("td");
-        if (column.type === "num") td.className = "num";
-        if (column.type === "num") {
-          td.textContent = fmtInt(row[column.key]);
-          if (!number(row[column.key])) td.classList.add("zero");
-        } else if (column.key === "model") {
-          td.textContent = row.model;
-          td.title = row.model;
-        } else {
-          td.textContent = row[column.key];
-        }
-        tr.appendChild(td);
-      });
-      el.estTbody.appendChild(tr);
-    });
-    el.estRowinfo.textContent = fmtInt(sorted.length) + " 行 · est 总 Token " +
-      fmtInt(input + output) + " · " + fmtInt(requests) + " 请求";
-    el.estHint.textContent = "由转录文本 + context_usage_ratio × 200K 估算（系数 " + EST_FACTOR +
-      "）；±30~40% 误差，仅覆盖带 ratio 的新客户端转录。";
-  }
-
-  function renderTraeEstimates() {
-    var rows = filteredTraeEstimates();
-    var visible = rows.length > 0;
-    el.traeEstKpis.hidden = !visible;
-    el.traeEstTableCard.hidden = !visible;
-    if (!visible) return;
-
-    var input = 0;
-    var output = 0;
-    var requests = 0;
-    var models = new Set();
-    rows.forEach(function (row) {
-      input += row.est_input;
-      output += row.est_output;
-      requests += row.requests;
-      models.add(row.model);
-    });
-
-    el.traeEstKpis.textContent = "";
-    addKpiTo(el.traeEstKpis, "est 总 Token", fmtCompact(input + output),
-      fmtInt(input + output), true);
-    addKpiTo(el.traeEstKpis, "est 输入", fmtCompact(input), "hook 字符累积 ÷ 系数");
-    addKpiTo(el.traeEstKpis, "est 输出", fmtCompact(output), "assistant / 工具响应字符 ÷ 系数");
-    addKpiTo(el.traeEstKpis, "覆盖请求", fmtCompact(requests),
-      "弱估算 · 模型 " + fmtInt(models.size));
-    renderTraeEstTable(rows);
-  }
-
-  var TRAE_EST_COLUMNS = [
-    { key: "day", label: "日期", type: "text" },
-    { key: "model", label: "模型", type: "text" },
-    { key: "est_input", label: "est 输入", type: "num" },
-    { key: "est_output", label: "est 输出", type: "num" },
-    { key: "chars_in", label: "上下文字符", type: "num" },
-    { key: "chars_out", label: "输出字符", type: "num" },
-    { key: "requests", label: "请求", type: "num" }
-  ];
-
-  function renderTraeEstTable(rows) {
-    var sorted = rows.slice().sort(function (a, b) {
-      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
-      return String(a.model).localeCompare(String(b.model), "zh-CN");
-    });
-    el.traeEstThead.textContent = "";
-    var headerRow = document.createElement("tr");
-    TRAE_EST_COLUMNS.forEach(function (column) {
-      var th = document.createElement("th");
-      if (column.type === "num") th.className = "num";
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "th-btn";
-      button.appendChild(document.createTextNode(column.label));
-      th.appendChild(button);
-      headerRow.appendChild(th);
-    });
-    el.traeEstThead.appendChild(headerRow);
-
-    el.traeEstTbody.textContent = "";
-    var input = 0;
-    var output = 0;
-    var requests = 0;
-    sorted.forEach(function (row) {
-      input += row.est_input;
-      output += row.est_output;
-      requests += row.requests;
-      var tr = document.createElement("tr");
-      TRAE_EST_COLUMNS.forEach(function (column) {
-        var td = document.createElement("td");
-        if (column.type === "num") td.className = "num";
-        if (column.type === "num") {
-          td.textContent = fmtInt(row[column.key]);
-          if (!number(row[column.key])) td.classList.add("zero");
-        } else if (column.key === "model") {
-          td.textContent = row.model;
-          td.title = row.model;
-        } else {
-          td.textContent = row[column.key];
-        }
-        tr.appendChild(td);
-      });
-      el.traeEstTbody.appendChild(tr);
-    });
-    el.traeEstRowinfo.textContent = fmtInt(sorted.length) + " 行 · est 总 Token " +
-      fmtInt(input + output) + " · " + fmtInt(requests) + " 请求";
-    el.traeEstHint.textContent = TRAE_EST_NOTE + "；由 hook 事件字符数重放估算（" +
-      TRAE_EST_FACTOR + "），仅覆盖安装 hook 后的请求，误差可能数倍且方向不定，" +
-      "不可与 token 真值或额度相加。";
-  }
-
-  var QODER_TABS = ["activity", "credits", "est"];
-
-  function qoderAvailability() {
-    return {
-      activity: filteredActivity().length > 0,
-      credits: filteredCredits().length > 0,
-      est: filteredEstimates().length > 0
-    };
-  }
-
-  function syncSupplement(rerenderCharts) {
-    var available = qoderAvailability();
-    var qoderAny = QODER_TABS.some(function (name) { return available[name]; });
-    var traeAny = filteredTraeEstimates().length > 0;
-    var any = qoderAny || traeAny;
-    el.qoderExtra.hidden = !any;
-    if (!any) return;
-
-    el.suppSourceTabs.hidden = !(qoderAny && traeAny);
-    if (!qoderAny) state.suppSource = "trae-cn";
-    else if (!traeAny) state.suppSource = "qoder";
-    else if (state.suppSource !== "qoder" && state.suppSource !== "trae-cn") {
-      state.suppSource = "qoder";
-    }
-
-    Array.prototype.forEach.call(el.suppSourceTabs.querySelectorAll("[data-supp-source]"), function (button) {
-      var name = button.getAttribute("data-supp-source");
-      var active = name === state.suppSource;
-      button.disabled = name === "qoder" ? !qoderAny : !traeAny;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", active ? "true" : "false");
-    });
-    el.qoderTabs.hidden = state.suppSource !== "qoder";
-    el.traePanel.hidden = state.suppSource !== "trae-cn";
-
-    if (qoderAny && !available[state.qoderTab]) {
-      state.qoderTab = QODER_TABS.filter(function (name) { return available[name]; })[0];
-    }
-    Array.prototype.forEach.call(el.qoderTabs.querySelectorAll("[data-qoder-tab]"), function (button) {
-      var name = button.getAttribute("data-qoder-tab");
-      var active = name === state.qoderTab && state.suppSource === "qoder";
-      button.disabled = !available[name];
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", active ? "true" : "false");
-    });
-    Array.prototype.forEach.call(el.qoderExtra.querySelectorAll("[data-qoder-panel]"), function (panel) {
-      panel.hidden = state.suppSource !== "qoder" ||
-        panel.getAttribute("data-qoder-panel") !== state.qoderTab;
-    });
-    if (rerenderCharts && state.suppSource === "qoder") {
-      if (state.qoderTab === "activity") renderActivityChart(filteredActivity());
-      if (state.qoderTab === "credits") renderCreditChart(filteredCredits());
-    }
-  }
-
-  function metricOf(values) {
-    if (!values) return 0;
-    if (state.metric === "total") {
-      return FIELDS.reduce(function (acc, field) { return acc + number(values[field]); }, 0);
-    }
-    return number(values[state.metric]);
-  }
-
-  function rowMetric(row) {
-    if (state.metric === "total") return row.total;
-    return number(row[state.metric]);
-  }
-
-  function setAttrs(node, attrs) {
-    Object.keys(attrs).forEach(function (key) {
-      var value = attrs[key];
-      if (value !== null && value !== undefined) node.setAttribute(key, String(value));
-    });
-    return node;
-  }
-
-  function svgEl(tag, attrs) {
-    return setAttrs(document.createElementNS("http://www.w3.org/2000/svg", tag), attrs);
-  }
-
-  function niceScale(maximum, tickCount) {
-    if (maximum <= 0) maximum = 1;
-    var rough = maximum / tickCount;
-    var power = Math.pow(10, Math.floor(Math.log10(rough)));
-    var fraction = rough / power;
-    var niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
-    var step = niceFraction * power;
-    var max = Math.ceil(maximum / step) * step;
-    var ticks = [];
-    for (var value = 0; value <= max + step * 0.5; value += step) ticks.push(value);
-    return { max: max, ticks: ticks };
-  }
-
-  function buildBuckets(rows) {
-    var days = enumerateDays(state.start, state.end);
-    if (!days.length) return [];
-    var weekly = days.length > 200;
-    var buckets = [];
-    var index = new Map();
-    days.forEach(function (day) {
-      var key = weekly ? weekStart(day) : day;
-      if (!index.has(key)) {
-        var bucket = { key: key, start: day, end: day, bySource: {} };
-        index.set(key, bucket);
-        buckets.push(bucket);
-      } else {
-        index.get(key).end = day;
-      }
-    });
-    buckets.forEach(function (bucket) {
-      bucket.label = bucket.start.slice(5);
-      bucket.tooltip = weekly ? bucket.start + " ~ " + bucket.end : bucket.start;
-    });
-    rows.forEach(function (row) {
-      var key = weekly ? weekStart(row.day) : row.day;
-      var bucket = index.get(key);
-      if (!bucket) return;
-      if (!bucket.bySource[row.source]) {
-        bucket.bySource[row.source] = {};
-        FIELDS.forEach(function (field) { bucket.bySource[row.source][field] = 0; });
-      }
-      FIELDS.forEach(function (field) {
-        bucket.bySource[row.source][field] += number(row[field]);
-      });
-    });
-    buckets.forEach(function (bucket) {
-      bucket.metricTotal = 0;
-      bucket.metricBySource = {};
-      SOURCES.forEach(function (source) {
-        var value = metricOf(bucket.bySource[source]);
-        bucket.metricBySource[source] = value;
-        bucket.metricTotal += value;
-      });
-    });
-    return buckets;
-  }
-
-  function renderLegend(rows) {
-    el.legend.textContent = "";
-    var totals = {};
-    rows.forEach(function (row) {
-      totals[row.source] = (totals[row.source] || 0) + rowMetric(row);
-    });
-    SOURCES.forEach(function (source) {
-      if (!state.sources.has(source)) return;
-      var item = document.createElement("span");
-      item.className = "legend-item";
-      var dot = document.createElement("i");
-      dot.className = "legend-dot";
-      dot.style.background = COLORS[source];
-      var name = document.createElement("span");
-      name.textContent = source;
-      var value = document.createElement("b");
-      value.textContent = fmtCompact(totals[source] || 0);
-      item.appendChild(dot);
-      item.appendChild(name);
-      item.appendChild(value);
-      el.legend.appendChild(item);
-    });
-  }
-
-  function tooltipRow(source, value, strong) {
-    var row = document.createElement("div");
-    row.className = "tt-row" + (strong ? " tt-total" : "");
-    var name = document.createElement("span");
-    name.className = "tt-name";
-    if (!strong) {
-      var dot = document.createElement("i");
-      dot.style.background = COLORS[source] || "var(--accent)";
-      name.appendChild(dot);
-    }
-    var label = document.createElement("span");
-    label.textContent = strong ? "合计" : source;
-    name.appendChild(label);
-    var amount = document.createElement("span");
-    amount.className = "tt-val";
-    amount.textContent = fmtInt(value);
-    row.appendChild(name);
-    row.appendChild(amount);
-    return row;
-  }
-
-  function renderChart(rows) {
-    var buckets = buildBuckets(rows);
-    el.chart.textContent = "";
-    el.legend.textContent = "";
-    el.tooltip.style.display = "none";
-    if (!buckets.length) {
-      var empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = ROWS.length ? "所选范围内没有数据" : "暂无数据";
-      el.chart.appendChild(empty);
-      return;
-    }
-
-    var width = Math.max(el.chart.clientWidth || 900, 320);
-    var height = 300;
-    var margin = { top: 14, right: 14, bottom: 28, left: 62 };
-    var plotW = Math.max(width - margin.left - margin.right, 10);
-    var plotH = height - margin.top - margin.bottom;
-    var maximum = buckets.reduce(function (acc, bucket) {
-      return Math.max(acc, bucket.metricTotal);
-    }, 0);
-    var scale = niceScale(maximum, 4);
-    var svg = svgEl("svg", {
-      viewBox: "0 0 " + width + " " + height,
-      role: "img",
-      "aria-label": "按来源堆叠的每日 token 用量"
-    });
-
-    scale.ticks.forEach(function (value) {
-      var y = margin.top + plotH - (value / scale.max) * plotH;
-      svg.appendChild(svgEl("line", {
-        x1: margin.left, x2: width - margin.right, y1: y, y2: y,
-        class: "grid-line"
-      }));
-      var text = svgEl("text", {
-        x: margin.left - 8, y: y + 3.5, "text-anchor": "end"
-      });
-      text.textContent = fmtCompact(value);
-      svg.appendChild(text);
-    });
-
-    var band = plotW / buckets.length;
-    var barW = Math.max(1.5, Math.min(26, band * 0.66));
-    var hoverLine = svgEl("line", {
-      x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
-    });
-
-    function moveHover(index) {
-      if (index < 0) {
-        hoverLine.setAttribute("x1", 0);
-        hoverLine.setAttribute("x2", 0);
-        return;
-      }
-      var center = margin.left + band * index + band / 2;
-      hoverLine.setAttribute("x1", center);
-      hoverLine.setAttribute("x2", center);
-    }
-
-    buckets.forEach(function (bucket, index) {
-      var x = margin.left + band * index + (band - barW) / 2;
-      var y = margin.top + plotH;
-      SOURCES.forEach(function (source) {
-        if (!state.sources.has(source)) return;
-        var value = bucket.metricBySource[source] || 0;
-        if (value <= 0) return;
-        var slice = (value / scale.max) * plotH;
-        y -= slice;
-        svg.appendChild(svgEl("rect", {
-          x: x, y: y, width: barW, height: slice,
-          fill: COLORS[source], class: "seg", rx: barW > 4 ? 1.5 : 0
-        }));
-      });
-
-      var hit = svgEl("rect", {
-        x: margin.left + band * index, y: margin.top,
-        width: Math.max(band, 1), height: plotH, class: "hit"
-      });
-      hit.addEventListener("mouseenter", function (event) {
-        moveHover(index);
-        showTooltip(bucket, event);
-      });
-      hit.addEventListener("mousemove", positionTooltip);
-      hit.addEventListener("mouseleave", function () {
-        moveHover(-1);
-        el.tooltip.style.display = "none";
-      });
-      svg.appendChild(hit);
-    });
-    svg.appendChild(hoverLine);
-
-    var labelCount = Math.min(buckets.length, Math.max(2, Math.floor(plotW / 90)));
-    var step = labelCount <= 1 ? 1 : (buckets.length - 1) / (labelCount - 1);
-    var used = new Set();
-    for (var k = 0; k < labelCount; k += 1) {
-      var index = Math.round(k * step);
-      if (used.has(index)) continue;
-      used.add(index);
-      var label = svgEl("text", {
-        x: margin.left + band * index + band / 2,
-        y: height - 8,
-        "text-anchor": "middle"
-      });
-      label.textContent = buckets[index].label;
-      svg.appendChild(label);
-    }
-
-    el.chart.appendChild(svg);
-    renderLegend(rows);
-
-    function showTooltip(bucket, event) {
-      el.tooltip.textContent = "";
-      var head = document.createElement("div");
-      head.className = "tt-head";
-      head.textContent = bucket.tooltip;
-      el.tooltip.appendChild(head);
-      var meta = document.createElement("div");
-      meta.className = "tt-meta";
-      meta.textContent = "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]);
-      el.tooltip.appendChild(meta);
-
-      var entries = [];
-      SOURCES.forEach(function (source) {
-        if (!state.sources.has(source)) return;
-        var value = bucket.metricBySource[source] || 0;
-        if (value > 0) entries.push({ source: source, value: value });
-      });
-      entries.sort(function (a, b) { return b.value - a.value; });
-      if (!entries.length) {
-        var none = document.createElement("div");
-        none.className = "tt-row";
-        none.textContent = "无数据";
-        el.tooltip.appendChild(none);
-      } else {
-        entries.forEach(function (entry) {
-          el.tooltip.appendChild(tooltipRow(entry.source, entry.value, false));
-        });
-        el.tooltip.appendChild(tooltipRow(null, bucket.metricTotal, true));
-      }
-      el.tooltip.style.display = "block";
-      positionTooltip(event);
-    }
-
-    function positionTooltip(event) {
-      var rect = el.chart.parentElement.getBoundingClientRect();
-      var x = event.clientX - rect.left;
-      var half = 110;
-      x = Math.max(half, Math.min(x, rect.width - half));
-      el.tooltip.style.left = x + "px";
-    }
-  }
-
-  function renderBarList(host, items, grandTotal, selected, onPick) {
-    host.textContent = "";
-    if (!items.length) {
-      var empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "无数据";
-      host.appendChild(empty);
-      return;
-    }
-    var maximum = Math.max(items[0].total, 1);
-    items.forEach(function (item) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "bar-row" + (item.key === selected ? " selected" : "");
-      button.setAttribute("aria-pressed", item.key === selected ? "true" : "false");
-      var top = document.createElement("div");
-      top.className = "bar-top";
-      var name = document.createElement("span");
-      name.className = "bar-name";
-      name.textContent = item.key === "-" ? "（未标注）" : item.key;
-      name.title = item.key;
-      var value = document.createElement("span");
-      value.className = "bar-value";
-      value.textContent = fmtCompact(item.total) + " · " + pct(grandTotal ? item.total / grandTotal : 0);
-      top.appendChild(name);
-      top.appendChild(value);
-      var track = document.createElement("div");
-      track.className = "bar-track";
-      var fill = document.createElement("div");
-      fill.className = "bar-fill";
-      fill.style.width = Math.max(item.total / maximum * 100, 1.5).toFixed(1) + "%";
-      track.appendChild(fill);
-      button.appendChild(top);
-      button.appendChild(track);
-      button.title = "筛选：" + item.key;
-      button.addEventListener("click", function () { onPick(item.key); });
-      host.appendChild(button);
-    });
-  }
-
-  function renderBars(modelRows, projectRows) {
-    var modelTotal = modelRows.reduce(function (acc, row) { return acc + row.total; }, 0);
-    renderBarList(el.models, groupTotals(modelRows, "model").sort(byTotal).slice(0, 8),
-      modelTotal, state.model, function (key) {
-        state.model = state.model === key ? "" : key;
-        el.model.value = state.model;
-        state.page = 0;
-        render();
-      });
-    var projectTotal = projectRows.reduce(function (acc, row) { return acc + row.total; }, 0);
-    renderBarList(el.projects, groupTotals(projectRows, "project").sort(byTotal).slice(0, 8),
-      projectTotal, state.project, function (key) {
-        state.project = state.project === key ? "" : key;
-        el.project.value = state.project;
-        state.page = 0;
-        render();
-      });
-  }
-
-  var NUMERIC_KEYS = new Set(FIELDS.concat(["total", "turns", "cost_equiv_usd"]));
-  var COST_KNOWN = ROWS.some(function (row) {
-    return row.cost_equiv_usd !== null && row.cost_equiv_usd !== undefined;
-  });
-  var COLUMNS = [
-    { key: "day", label: "日期", type: "text" },
-    { key: "source", label: "来源", type: "text" },
-    { key: "model", label: "模型", type: "text" },
-    { key: "project", label: "项目", type: "text" }
-  ];
-  FIELDS.forEach(function (field) {
-    COLUMNS.push({ key: field, label: FIELD_LABELS[field], type: "num" });
-  });
-  COLUMNS.push({ key: "total", label: "合计", type: "num" });
-  COLUMNS.push({ key: "turns", label: "轮次", type: "num" });
-  if (COST_KNOWN) COLUMNS.push({ key: "cost_equiv_usd", label: "等价成本", type: "num" });
-
-  function comparator(a, b) {
-    var av = a[state.sortKey];
-    var bv = b[state.sortKey];
-    var cmp;
-    if (NUMERIC_KEYS.has(state.sortKey)) cmp = number(av) - number(bv);
-    else cmp = String(av).localeCompare(String(bv), "zh-CN");
-    if (cmp === 0 && state.sortKey !== "total") cmp = a.total - b.total;
-    return state.sortDir === "asc" ? cmp : -cmp;
-  }
-
-  function renderTable(rows) {
-    var sorted = rows.slice().sort(comparator);
-    var pages = Math.max(1, Math.ceil(sorted.length / state.pageSize));
-    if (state.page >= pages) state.page = pages - 1;
-    if (state.page < 0) state.page = 0;
-    var start = state.page * state.pageSize;
-    var slice = sorted.slice(start, start + state.pageSize);
-
-    var focusedKey = null;
-    if (document.activeElement && document.activeElement.classList.contains("th-btn")) {
-      focusedKey = document.activeElement.dataset.key;
-    }
-
-    el.thead.textContent = "";
-    var headerRow = document.createElement("tr");
-    COLUMNS.forEach(function (column) {
-      var th = document.createElement("th");
-      if (column.type === "num") th.className = "num";
-      th.setAttribute("aria-sort", state.sortKey === column.key
-        ? (state.sortDir === "asc" ? "ascending" : "descending") : "none");
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "th-btn";
-      button.dataset.key = column.key;
-      button.appendChild(document.createTextNode(column.label));
-      if (state.sortKey === column.key) {
-        var arrow = document.createElement("span");
-        arrow.className = "arrow";
-        arrow.textContent = state.sortDir === "asc" ? "▲" : "▼";
-        button.appendChild(arrow);
-      }
-      button.addEventListener("click", function () {
-        if (state.sortKey === column.key) {
-          state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
-        } else {
-          state.sortKey = column.key;
-          state.sortDir = column.type === "num" ? "desc" : "asc";
-        }
-        state.page = 0;
-        render();
-      });
-      th.appendChild(button);
-      headerRow.appendChild(th);
-    });
-    el.thead.appendChild(headerRow);
-
-    if (focusedKey) {
-      var restored = el.thead.querySelector('.th-btn[data-key="' + focusedKey + '"]');
-      if (restored) restored.focus({ preventScroll: true });
-    }
-
-    el.tbody.textContent = "";
-    if (!slice.length) {
-      var emptyRow = document.createElement("tr");
-      var cell = document.createElement("td");
-      cell.colSpan = COLUMNS.length;
-      cell.className = "empty";
-      cell.textContent = ROWS.length ? "无匹配数据" : "暂无数据";
-      emptyRow.appendChild(cell);
-      el.tbody.appendChild(emptyRow);
-    } else {
-      slice.forEach(function (row) {
-        var tr = document.createElement("tr");
-        COLUMNS.forEach(function (column) {
-          var td = document.createElement("td");
-          var value = row[column.key];
-          if (column.type === "num") td.className = "num";
-          if (column.key === "project") {
-            td.textContent = value === "-" ? "（未标注）" : value;
-            td.title = value;
-          } else if (column.key === "model") {
-            td.textContent = value;
-            td.title = value;
-          } else if (column.key === "cost_equiv_usd") {
-            td.textContent = fmtCost(value);
-          } else if (column.type === "num") {
-            td.textContent = fmtInt(value);
-            if (!number(value)) td.classList.add("zero");
-          } else {
-            td.textContent = value;
-          }
-          tr.appendChild(td);
-        });
-        el.tbody.appendChild(tr);
-      });
-    }
-
-    var totalTokens = rows.reduce(function (acc, row) { return acc + row.total; }, 0);
-    el.rowinfo.textContent = fmtInt(rows.length) + " 行 · 共 " + fmtInt(totalTokens) + " tokens";
-    el.pageinfo.textContent = slice.length
-      ? (start + 1) + "–" + (start + slice.length) + " / " + fmtInt(sorted.length)
-      : "0 / 0";
-    el.prev.disabled = state.page <= 0;
-    el.next.disabled = state.page >= pages - 1;
-  }
-
-  function renderHint() {
-    if (!state.start || !state.end) {
-      el.hint.textContent = "";
-      return;
-    }
-    var days = enumerateDays(state.start, state.end);
-    var missing = days.filter(function (day) { return !DATA_DAYS.has(day); });
-    if (!missing.length) {
-      el.hint.textContent = "";
-      return;
-    }
-    var shown = missing.slice(0, 10).join("、");
-    el.hint.textContent = "范围内 " + missing.length + " 天无采集数据（图表按 0 显示）：" +
-      shown + (missing.length > 10 ? " …" : "");
-  }
-
   function renderFooter() {
     el.footer.textContent = "";
     (DATA.notices || []).forEach(function (notice) {
@@ -2459,12 +2490,20 @@ try {
       line.textContent = notice;
       el.footer.appendChild(line);
     });
-    if (ACTIVITY.length) {
-      var note = document.createElement("p");
-      note.textContent = "Qoder Agent 活动指标与 token 口径不同，不可相加；活动数据不参与等价成本计算。";
-      el.footer.appendChild(note);
+    var classify = document.createElement("p");
+    classify.textContent = "报告按 Agent 分两类精确口径：Token（" +
+      (TOKEN_AGENTS.length ? TOKEN_AGENTS.join(" / ") : "无数据") +
+      "）与 Credits（Qoder）；Qoder 的 token 与 Trae CN 的用量只有估算值，作为影子指标或独立弱估算页，不与真值相加。";
+    el.footer.appendChild(classify);
+    if (QODER_TOKEN_ROWS.length) {
+      var history = document.createElement("p");
+      history.textContent = "Qoder 历史 token 真值 " +
+        (qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1]) + "（" +
+        fmtInt(sumField(QODER_TOKEN_ROWS, "total")) +
+        " tokens）保留在库中，不计入总览与 Qoder credits 页；可用 usage report --source qoder 查询。";
+      el.footer.appendChild(history);
     }
-    if (CREDITS.length) {
+    if (CREDIT_ROWS.length) {
       var creditNote = document.createElement("p");
       creditNote.textContent = "Qoder credits 为服务端每请求计费真值；免费 credits 不计配额；" +
         "余额来自本地日志快照；非 token、不可与 token 相加。";
@@ -2478,15 +2517,15 @@ try {
     }
     if (TRAE_EST.length) {
       var traeNote = document.createElement("p");
-      traeNote.textContent = TRAE_EST_NOTE + "；仅覆盖安装 hook 后的请求，" +
+      traeNote.textContent = TRAE_NOTE + "；仅覆盖安装 hook 后的请求，" +
         "误差可能数倍且方向不定，只适合看趋势，不可与 token 真值或额度相加。";
       el.footer.appendChild(traeNote);
     }
     var scope = document.createElement("p");
     scope.textContent = "数据范围 " + (DATA_SINCE || "—") + " ~ " + (DATA_UNTIL || "—") +
-      " · " + fmtInt(ROWS.length) + " 行日/来源/模型/项目聚合" +
+      " · " + fmtInt(ROWS.length) + " 行 token 聚合" +
+      (CREDIT_ROWS.length ? " · " + fmtInt(CREDIT_ROWS.length) + " 行 credits 聚合" : "") +
       (ACTIVITY.length ? " · " + fmtInt(ACTIVITY.length) + " 行活动聚合" : "") +
-      (CREDITS.length ? " · " + fmtInt(CREDITS.length) + " 天额度" : "") +
       (EST.length ? " · " + fmtInt(EST.length) + " 行估算聚合" : "") +
       (TRAE_EST.length ? " · " + fmtInt(TRAE_EST.length) + " 行 Trae 弱估算聚合" : "") +
       " · 页面不发起任何网络请求";
@@ -2511,41 +2550,26 @@ try {
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      renderChart(filteredRows());
-      if (!el.qoderExtra.hidden && state.suppSource === "qoder" &&
-          state.qoderTab === "activity") {
-        renderActivityChart(filteredActivity());
-      }
-      if (!el.qoderExtra.hidden && state.suppSource === "qoder" &&
-          state.qoderTab === "credits") {
-        renderCreditChart(filteredCredits());
-      }
+      renderAll();
     }, 150);
   });
 
-  function render() {
-    var rows = filteredRows();
-    syncTokenSections();
-    renderKpis(rows);
-    renderActivity();
-    renderCredits();
-    renderEstimates();
-    renderTraeEstimates();
-    syncSupplement(false);
+  function renderAll() {
+    syncPageShell();
     renderCoverage();
-    renderChart(rows);
-    renderBars(filteredRows("model"), filteredRows("project"));
-    renderTable(rows);
-    renderHint();
+    if (state.agent === "all") renderOverview();
+    else renderAgentPage();
   }
 
+  buildAgentNav();
   buildChips();
   buildControls();
+  rebuildDimensionSelects();
   applyTheme(document.documentElement.dataset.theme || "light");
-  if (el.activityMetric) el.activityMetric.value = state.activityMetric;
+  el.activityMetric.value = state.activityMetric;
   el.generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
   renderFooter();
-  render();
+  renderAll();
 })();
 </script>
 </body>

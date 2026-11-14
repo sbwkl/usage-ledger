@@ -890,6 +890,34 @@ def _credit_totals_from_rows(credits, since, until) -> dict:
     }
 
 
+def _credit_rows_from_rows(credits, since, until) -> list[dict]:
+    buckets: dict[tuple, dict] = {}
+    for row in credits:
+        if since and row.day < since:
+            continue
+        if until and row.day > until:
+            continue
+        model = qoder_model_label(row.model)
+        project = row.project or "-"
+        item = buckets.setdefault((row.day, model, project), {
+            "day": row.day, "model": model, "project": project,
+            "credits": 0.0, "free_credits": 0.0,
+            "requests": 0, "free_requests": 0})
+        if row.billable:
+            item["credits"] += row.credits
+            item["requests"] += 1
+        else:
+            item["free_credits"] += row.credits
+            item["free_requests"] += 1
+    rows = []
+    for key in sorted(buckets):
+        item = buckets[key]
+        item["credits"] = round(item["credits"], 6)
+        item["free_credits"] = round(item["free_credits"], 6)
+        rows.append(item)
+    return rows
+
+
 def _write_credit_rows(rows, totals, quota, fmt: str):
     headers = ["day", "credits", "requests", "free_credits", "snapshots"]
     if fmt == "json":
@@ -1004,6 +1032,14 @@ def _label_est_rows(rows) -> None:
     for row in rows:
         if "model" in row:
             row["model"] = qoder_model_label(row["model"])
+        if "project" in row:
+            row["project"] = row["project"] or "-"
+
+
+def _label_credit_rows(rows) -> None:
+    for row in rows:
+        row["model"] = qoder_model_label(row.get("model"))
+        row["project"] = row.get("project") or "-"
 
 
 def _write_est_rows(rows, dims, fmt: str):
@@ -1082,13 +1118,15 @@ def cmd_est(args):
 
 def _load_credit_payload(args, since, until, filters):
     if filters.get("source") not in (None, "qoder"):
-        return None, {}, [], {}, EST_FACTOR_VERSION
+        return None, {}, [], [], {}, EST_FACTOR_VERSION
     if args.stateless or not os.path.exists(db_path()):
         result = scan_qoder_credit_sources(source_home())
         days = _credit_daily_from_rows(result.credits, result.quota, since, until)
         totals = _credit_totals_from_rows(result.credits, since, until)
+        credit_rows = _credit_rows_from_rows(result.credits, since, until)
         quota = _quota_latest_rows(result.quota)
-        est_rows = _aggregate_estimates(result.estimates, ("day", "model"), since, until)
+        est_rows = _aggregate_estimates(result.estimates, ("day", "model", "project"),
+                                        since, until)
         selected = [row for row in result.estimates
                     if (not since or row.day >= since) and (not until or row.day <= until)]
         est_totals = {
@@ -1105,14 +1143,16 @@ def _load_credit_payload(args, since, until, filters):
             _refresh_credits_if_stale(store)
             days = store.credit_daily(since, until)
             totals = store.credits_totals(since, until)
+            credit_rows = store.credit_rows(since, until)
+            _label_credit_rows(credit_rows)
             quota = store.latest_quota()
-            est_rows = store.est_rows(since, until, ("day", "model"))
+            est_rows = store.est_rows(since, until, ("day", "model", "project"))
             _label_est_rows(est_rows)
             est_totals = store.est_totals(since, until)
         finally:
             store.close()
-    return ({"days": days, "totals": totals}, quota, est_rows, est_totals,
-            EST_FACTOR_VERSION)
+    return ({"days": days, "rows": credit_rows, "totals": totals}, quota,
+            credit_rows, est_rows, est_totals, EST_FACTOR_VERSION)
 
 
 def _load_trae_est_payload(args, since, until, filters):
@@ -1120,7 +1160,8 @@ def _load_trae_est_payload(args, since, until, filters):
         return [], {}, TRAE_EST_VERSION
     if args.stateless or not os.path.exists(db_path()):
         result = scan_trae_cn_est(home=source_home())
-        rows = _aggregate_estimates(result.estimates, ("day", "model"), since, until)
+        rows = _aggregate_estimates(result.estimates, ("day", "model", "project"),
+                                    since, until)
         selected = [row for row in result.estimates
                     if (not since or row.day >= since) and (not until or row.day <= until)]
         totals = {
@@ -1135,7 +1176,10 @@ def _load_trae_est_payload(args, since, until, filters):
         store = SqliteStore(db_path())
         try:
             _refresh_trae_est_if_stale(store)
-            rows = store.est_rows(since, until, ("day", "model"), source=TRAE_EST_SOURCE)
+            rows = store.est_rows(since, until, ("day", "model", "project"),
+                                  source=TRAE_EST_SOURCE)
+            for row in rows:
+                row["project"] = row.get("project") or "-"
             totals = store.est_totals(since, until, source=TRAE_EST_SOURCE)
         finally:
             store.close()
@@ -1152,8 +1196,8 @@ def cmd_html(args):
     if getattr(args, "model", None):
         filters["model"] = args.model
     records, activities, coverage = _load_records(args, since, until, filters)
-    credit_data, quota, est_rows, est_totals, factor_version = _load_credit_payload(
-        args, since, until, filters)
+    credit_data, quota, credit_rows, est_rows, est_totals, factor_version = \
+        _load_credit_payload(args, since, until, filters)
     trae_rows, trae_totals, trae_factor = _load_trae_est_payload(
         args, since, until, filters)
     dims = ("day", "source", "model", "project")
@@ -1169,8 +1213,9 @@ def cmd_html(args):
     payload = build_payload(rows, dims, display_since, display_until,
                             [COST_NOTICE, NO_TOKEN_NOTICE],
                             activity=activity_rows, coverage=coverage,
-                            credits=credit_data, quota=quota, est_rows=est_rows,
-                            est_totals=est_totals, factor_version=factor_version,
+                            credits=credit_data, quota=quota, credit_rows=credit_rows,
+                            est_rows=est_rows, est_totals=est_totals,
+                            factor_version=factor_version,
                             trae_est_rows=trae_rows, trae_est_totals=trae_totals,
                             trae_factor_version=trae_factor)
     output = os.path.abspath(os.path.expanduser(args.output or "usage-report.html"))

@@ -214,8 +214,13 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertTrue(all(row["source"] == "qoder" for row in payload["activity"]))
         self.assertEqual(payload["coverage"]["qoder"]["token_until"], "2026-10-02")
         self.assertEqual(payload["coverage"]["qoder"]["activity_until"], "2026-10-02")
-        self.assertIn("补充口径", html)
-        self.assertIn('data-qoder-tab="credits"', html)
+        self.assertEqual(payload["agents"]["qoder"], "credits")
+        self.assertTrue(payload["credits"]["rows"])
+        self.assertEqual({row["model"] for row in payload["credits"]["rows"]},
+                         {"GLM-5.3-Flash"})
+        self.assertIn("补充：活动指标", html)
+        self.assertIn('id="shadow-switch"', html)
+        self.assertIn("精确 Credits", html)
         self.assertIn("不可相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 
@@ -249,11 +254,12 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertEqual((est["day"], est["model"], est["est_input"],
                           est["est_output"], est["requests"]),
                          ("2026-10-01", "GLM-5.3-Flash", 50_000, 1, 1))
+        self.assertEqual(est["project"], "proj-x")
         self.assertEqual(payload["est"]["totals"]["requests"], 1)
-        self.assertIn("额度消耗（credits）", html)
-        self.assertIn("估算 token（est）", html)
+        self.assertIn("区间 billable", html)
+        self.assertIn("影子：估算 token", html)
         self.assertIn("最新额度余额", html)
-        self.assertIn("活动、额度、估算与 token 真值口径不同，不可相加", html)
+        self.assertIn("credits、估算与活动口径不同，不可相加", html)
         self.assertIn("不可与 token 真值或额度相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 

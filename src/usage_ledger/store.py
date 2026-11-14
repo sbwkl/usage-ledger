@@ -449,6 +449,30 @@ class SqliteStore:
                          "snapshots": snapshots.get(day, 0)})
         return rows
 
+    def credit_rows(self, since: str | None = None,
+                    until: str | None = None) -> list[dict]:
+        clauses, params = [], []
+        if since:
+            clauses.append("day >= ?")
+            params.append(since)
+        if until:
+            clauses.append("day <= ?")
+            params.append(until)
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+        rows = []
+        for day, model, project, credits, free_credits, requests, free_requests in self.conn.execute(
+                """SELECT day, model, COALESCE(project,''),
+                   COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=1 THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=0 THEN 1 ELSE 0 END),0)
+                   FROM usage_credit WHERE %s GROUP BY day, model, project
+                   ORDER BY day, model, project""" % where_sql, params):
+            rows.append({"day": day, "model": model, "project": project or "-",
+                         "credits": round(credits, 6), "free_credits": round(free_credits, 6),
+                         "requests": requests, "free_requests": free_requests})
+        return rows
+
     def credits_totals(self, since: str | None = None,
                        until: str | None = None) -> dict:
         clauses, params = [], []

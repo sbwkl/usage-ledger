@@ -146,6 +146,13 @@ class StoreTest(unittest.TestCase):
         self.assertEqual([(row["day"], row["credits"], row["requests"],
                            row["free_credits"]) for row in daily],
                          [("2026-10-01", 2.5, 1, 1.0), ("2026-10-02", 3.25, 1, 0.0)])
+        rows = self.store.credit_rows()
+        self.assertEqual([(row["day"], row["model"], row["project"], row["credits"],
+                           row["free_credits"], row["requests"], row["free_requests"])
+                          for row in rows],
+                         [("2026-10-01", "gfmodel", "proj", 2.5, 1.0, 1, 1),
+                          ("2026-10-02", "gfmodel", "proj", 3.25, 0.0, 1, 0)])
+        self.assertEqual(len(self.store.credit_rows(since="2026-10-02")), 1)
         totals = self.store.credits_totals()
         self.assertEqual((totals["credits"], totals["free_credits"], totals["requests"]),
                          (5.75, 1.0, 3))

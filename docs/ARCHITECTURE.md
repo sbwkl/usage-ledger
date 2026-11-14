@@ -128,12 +128,12 @@
 | `src/usage_ledger/models.py` | 141 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
 | `src/usage_ledger/collectors.py` | 1265 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
-| `src/usage_ledger/store.py` | 654 | `SqliteStore`、`SCHEMA` | 8 张表 + `meta`；WAL；批量 upsert；按天替换活动 |
+| `src/usage_ledger/store.py` | 678 | `SqliteStore`、`SCHEMA` | 8 张表 + `meta`；WAL；批量 upsert；按天替换活动 |
 | `src/usage_ledger/aggregation.py` | 110 | `aggregate` `match` `merge_records` `missing_days` `period_label` | 纯函数，可单测 |
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
-| `src/usage_ledger/cli.py` | 1666 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排 |
-| `src/usage_ledger/html_report.py` | 2511 | `build_payload` `render_html` `TEMPLATE` | 内联 CSS/JS/SVG；payload 占位符替换 |
+| `src/usage_ledger/cli.py` | 1724 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排 |
+| `src/usage_ledger/html_report.py` | 2576 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
@@ -468,15 +468,22 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ### 7.4 HTML 报表
 
-- 生成：服务端把 token 行按 `(day,source,model,project)` 聚合，和活动/额度/估算/覆盖信息一起序列化为 JSON，替换模板占位符。
+- 生成：服务端把 token 行按 `(day,source,model,project)`、credits 行与估算行按 `(day,model,project)` 聚合，和活动/额度/覆盖信息一起序列化为 JSON，替换模板占位符。
 - 安全：payload 中 `<` 转义为 `\u003c`；CSP `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:` → **零外部请求**。
-- 客户端职责：日期/来源 chip/模型/项目/搜索联合过滤；KPI；可切换指标的每日堆叠柱（>200 天自动按周）；Top 8 模型/项目；可排序分页明细；Qoder 补充口径三标签页（活动/额度/估算）；浅/深色主题（`localStorage`）。
+- 客户端职责：
+  - 按 `agents` 映射把来源分为 `精确 Token` / `精确 Credits` / `仅估算` 三组，生成顶部 Agent 导航；总览只聚合 token 类来源；
+  - 每个 Agent 页复用同一套四块（每日用量 / 模型 Top 8 / 项目 Top 8 / 明细），单位为 tokens / credits / est tokens；
+  - Qoder 页以 credits 为主指标，「影子：估算 token」默认关闭；开启后在每日图上叠加估算虚线（右轴），Top 8 显示影子标注，明细追加影子列并按 `(day,model,project)` 补出只有估算的行；
+  - 日期范围按页面记忆，默认取该页数据覆盖；>200 天自动按周聚合；
+  - 活动指标折叠在 Qoder 页底部，与 credits/token 明确隔离；浅/深色主题（`localStorage`）。
 - payload 结构：
 
 ```json
 {
   "generated_at": "...",
   "range": {"since": "...", "until": "..."},
+  "agents": {"claude":"token","codex":"token","opencode":"token","kilo":"token",
+             "cline":"token","qoder":"credits","trae-cn":"estimate"},
   "rows": [{"day":"...","source":"...","model":"...","project":"...",
             "input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0,
             "total":0,"turns":0,"cost_equiv_usd":null,"cost_source":"unknown"}],
@@ -484,11 +491,16 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
                 "sessions":0,"prompts":0,"assistant_calls":0,
                 "assistant_with_metrics":0,"turns":0,"tool_calls":0,"duration_ms":0}],
   "credits": {"days":[{"day":"...","credits":0,"requests":0,"free_credits":0,"snapshots":0}],
+              "rows":[{"day":"...","model":"...","project":"...","credits":0,
+                       "free_credits":0,"requests":0,"free_requests":0}],
               "totals":{...},
               "quota":{"add_on":{...},"user":{...}}},
-  "est": {"rows":[{"day":"...","model":"...","est_input":0,"est_output":0,
+  "est": {"rows":[{"day":"...","model":"...","project":"...","est_input":0,"est_output":0,
                     "requests":0,"chars_in":0,"chars_out":0,"missing_ratio":0}],
           "totals":{...},"factor_version":"v1"},
+  "trae_est": {"rows":[{"day":"...","model":"...","project":"...","est_input":0,
+                         "est_output":0,"requests":0,"chars_in":0,"chars_out":0}],
+               "totals":{...},"factor_version":"trae-hook-v1"},
   "coverage": {"qoder":{"token_since":"...","token_until":"...",
                          "activity_since":"...","activity_until":"..."}},
   "notices": ["..."]
@@ -580,7 +592,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | `tests/test_cli_trae.py` | 6 | Trae CN hook 安装/状态/同步与 est 查询链路 |
 | `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
 | `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |
-| `tests/test_html.py` | 9 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder 区块 |
+| `tests/test_html.py` | 9 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder Agent 页与 credits/est 聚合 |
 | `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
 
 测试手法：临时 HOME + `USAGE_LEDGER_SOURCE_HOME` / `USAGE_LEDGER_DB`；Claude/Codex 用脱敏 JSONL fixture；OpenCode/Qoder 在测试内建最小 SQLite；`tests/qoder_helpers.py` 提供建库与日志构造器。
