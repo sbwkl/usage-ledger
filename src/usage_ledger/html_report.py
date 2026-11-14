@@ -322,6 +322,7 @@ try {
 
   <section class="agent-page" id="overview-page" aria-label="总览">
     <p id="token-empty" class="muted" hidden></p>
+    <div class="chips" id="overview-others" style="margin:0 0 14px" hidden></div>
     <section class="kpis" id="kpis" aria-label="汇总指标"></section>
     <section class="grid" style="margin-top:16px">
       <div class="card chart-card">
@@ -687,6 +688,7 @@ try {
     sources: $("#sources"), model: $("#model"), project: $("#project"), q: $("#q"),
     nav: $("#agent-nav"), coverage: $("#coverage"),
     overviewPage: $("#overview-page"), tokenEmpty: $("#token-empty"),
+    overviewOthers: $("#overview-others"),
     kpis: $("#kpis"), metric: $("#metric"), legend: $("#legend"), chart: $("#chart"),
     tooltip: $("#tooltip"), hint: $("#hint"), models: $("#models"), projects: $("#projects"),
     tokenTable: $("#token-table"), thead: $("#thead"), tbody: $("#tbody"),
@@ -1248,7 +1250,10 @@ try {
       if (TOKEN_AGENTS.length) {
         parts.push("精确 Token：" + TOKEN_AGENTS.join(" / "));
       }
-      if (CREDIT_ROWS.length || EST.length) parts.push("Qoder 采用 credits 口径，见 Qoder 页");
+      var others = [];
+      if (CREDIT_ROWS.length || EST.length) others.push("Qoder 采用 credits 口径");
+      if (TRAE_EST.length) others.push("Trae CN 仅有弱估算");
+      if (others.length) parts.push(others.join("、") + "，见独立页签，不并入总览");
       if (qoderToken) parts.push("Qoder 历史 token 真值 " + qoderToken + "，不计入本页");
     } else if (state.agent === "qoder") {
       if (creditBounds[0]) {
@@ -2134,9 +2139,39 @@ try {
     return Array.from(map.values());
   }
 
+  function renderOverviewOthers() {
+    var host = el.overviewOthers;
+    host.textContent = "";
+    var others = CREDIT_AGENTS.concat(ESTIMATE_AGENTS);
+    if (!others.length) {
+      host.hidden = true;
+      return;
+    }
+    var tip = document.createElement("span");
+    tip.className = "chip-tip";
+    tip.textContent = "其他口径（不并入总览）：";
+    host.appendChild(tip);
+    others.forEach(function (agent) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "chip";
+      button.title = "打开 " + agent + " 报告页（" + KIND_LABELS[agentKind(agent)] + "）";
+      var name = document.createElement("span");
+      name.textContent = agent + " · " + KIND_LABELS[agentKind(agent)];
+      var total = document.createElement("small");
+      total.textContent = navTotalText(agent);
+      button.appendChild(name);
+      button.appendChild(total);
+      button.addEventListener("click", function () { setAgent(agent); });
+      host.appendChild(button);
+    });
+    host.hidden = false;
+  }
+
   function renderOverview() {
     var rows = overviewRows();
     el.tokenEmpty.hidden = true;
+    renderOverviewOthers();
     renderOverviewKpis(rows);
     renderOverviewChart(rows);
     renderOverviewBars(overviewRows("model"), overviewRows("project"));

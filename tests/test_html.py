@@ -220,6 +220,7 @@ class QoderHtmlTest(unittest.TestCase):
                          {"GLM-5.3-Flash"})
         self.assertIn("补充：活动指标", html)
         self.assertIn('id="shadow-switch"', html)
+        self.assertIn('id="overview-others"', html)
         self.assertIn("精确 Credits", html)
         self.assertIn("不可相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
