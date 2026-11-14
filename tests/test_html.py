@@ -120,6 +120,115 @@ eq("修饰键保留最后一个", resolveAgentSelection(["a"], "a", true), ["a"]
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
+class SourceAwareCreditsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.credit_rows = [
+            {"day": "2026-10-30", "source": "qoder", "model": "qmodel",
+             "project": "p", "credits": 2.0, "free_credits": 1.0,
+             "requests": 1, "free_requests": 1},
+            {"day": "2026-10-30", "source": "trae-cn", "model": "tmodel",
+             "project": "-", "credits": 3.0, "free_credits": 0.0,
+             "requests": 2, "free_requests": 0},
+        ]
+        payload = build_payload(
+            [], ("day", "source", "model", "project"), "2026-10-30", "2026-10-30",
+            [], credit_rows=cls.credit_rows,
+            credits={"days": cls.credit_rows, "rows": cls.credit_rows,
+                     "totals": {"qoder": {"credits": 2.0},
+                                "trae-cn": {"credits": 3.0}}},
+            coverage={"trae-cn.credits": {
+                "available": True, "last_sync_at": "2026-10-30T12:00:00+08:00",
+                "last_attempt_at": "2026-10-30T12:00:00+08:00",
+                "sessions": 2, "status": "ok", "refresh_mode": "auto",
+                "refresh_error": None, "stale": False}},
+            trae_est_rows=[{"day": "2026-10-30", "model": "tmodel", "project": "-",
+                            "est_input": 100, "est_output": 10, "requests": 2,
+                            "chars_in": 1000, "chars_out": 100,
+                            "missing_ratio": 0}])
+        cls.html = render_html(payload)
+        cls.payload = payload
+
+    def test_trae_is_classified_as_credits(self):
+        self.assertEqual(self.payload["agents"]["trae-cn"], "credits")
+        self.assertEqual(self.payload["agents"]["qoder"], "credits")
+        self.assertIn("精确 Credits", self.html)
+        self.assertIn('id="trae-status"', self.html)
+
+    def test_credit_rows_keep_source(self):
+        self.assertEqual([row["source"] for row in self.payload["credits"]["rows"]],
+                         ["qoder", "trae-cn"])
+        self.assertEqual(self.payload["coverage"]["trae-cn.credits"]["refresh_mode"],
+                         "auto")
+        self.assertIn("est 请求", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_estimate_only_rows_not_ranked_as_zero_credit(self):
+        top_start = self.html.index("function topValue(")
+        text_start = self.html.index("function topValueText", top_start)
+        filter_start = self.html.index("function filterTopItems", text_start)
+        filter_end = self.html.index("function topSecondary", filter_start)
+        source = self.html[top_start:text_start] + self.html[filter_start:filter_end]
+        harness = """
+var items = [
+  { key: "estimate-only", credits: 0, est: 2242 },
+  { key: "with-credits", credits: 1.5, est: 111 }
+];
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("zero credits hidden", filterTopItems(items, "credits").map(function (item) {
+  return item.key;
+}), ["with-credits"]);
+eq("est ranking keeps all", filterTopItems(items, "est").map(function (item) {
+  return item.key;
+}), ["estimate-only", "with-credits"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_credit_filters_respect_selected_agent(self):
+        start = self.html.index("function creditRowsFor")
+        end = self.html.index("function dimensionRows", start)
+        source = self.html[start:end]
+        harness = """
+var state = { agents: new Set(["trae-cn"]), shadow: true };
+var CREDIT_ROWS = [{ source: "qoder" }, { source: "trae-cn" }];
+var EST = [{ source: "qoder" }];
+var TRAE_EST = [{ source: "trae-cn" }];
+function hasCreditsSelected() { return true; }
+function hasQoderShadowSelected() {
+  return state.shadow && state.agents.has("qoder") && EST.length > 0;
+}
+function matchesFilters() { return true; }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("credits only selected source", creditRowsFor().map(function (row) {
+  return row.source;
+}), ["trae-cn"]);
+eq("qoder shadow hidden", qoderEstRowsFor().length, 0);
+eq("trae estimate visible", traeRowsFor().length, 1);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 class HtmlCommandTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -290,7 +399,7 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertEqual((day["day"], day["credits"], day["requests"],
                           day["free_credits"], day["snapshots"]),
                          ("2026-10-01", 2.5, 1, 0.0, 1))
-        self.assertEqual(payload["credits"]["totals"]["credits"], 2.5)
+        self.assertEqual(payload["credits"]["totals"]["qoder"]["credits"], 2.5)
         self.assertEqual(payload["credits"]["quota"]["add_on"]["used"], 100)
         self.assertEqual(payload["est"]["factor_version"], "v1")
         self.assertEqual(len(payload["est"]["rows"]), 1)
@@ -303,7 +412,7 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertIn("区间 billable", html)
         self.assertIn("影子：Qoder 估算 token", html)
         self.assertIn("最新额度余额", html)
-        self.assertIn("credits、估算与活动口径不同，不可相加", html)
+        self.assertIn("Credits 按 Agent 分列", html)
         self.assertIn("不可与 token 真值或额度相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 

@@ -143,23 +143,25 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.store.quota_count(), 2)
 
         daily = self.store.credit_daily()
-        self.assertEqual([(row["day"], row["credits"], row["requests"],
-                           row["free_credits"]) for row in daily],
-                         [("2026-10-01", 2.5, 1, 1.0), ("2026-10-02", 3.25, 1, 0.0)])
+        self.assertEqual([(row["day"], row["source"], row["credits"],
+                           row["requests"], row["free_credits"]) for row in daily],
+                         [("2026-10-01", "qoder", 2.5, 1, 1.0),
+                          ("2026-10-02", "qoder", 3.25, 1, 0.0)])
         rows = self.store.credit_rows()
-        self.assertEqual([(row["day"], row["model"], row["project"], row["credits"],
-                           row["free_credits"], row["requests"], row["free_requests"])
-                          for row in rows],
-                         [("2026-10-01", "gfmodel", "proj", 2.5, 1.0, 1, 1),
-                          ("2026-10-02", "gfmodel", "proj", 3.25, 0.0, 1, 0)])
+        self.assertEqual([(row["day"], row["source"], row["model"], row["project"],
+                           row["credits"], row["free_credits"], row["requests"],
+                           row["free_requests"]) for row in rows],
+                         [("2026-10-01", "qoder", "gfmodel", "proj", 2.5, 1.0, 1, 1),
+                          ("2026-10-02", "qoder", "gfmodel", "proj", 3.25, 0.0, 1, 0)])
         self.assertEqual(len(self.store.credit_rows(since="2026-10-02")), 1)
-        totals = self.store.credits_totals()
+        totals = self.store.credits_totals()["qoder"]
         self.assertEqual((totals["credits"], totals["free_credits"], totals["requests"]),
                          (5.75, 1.0, 3))
         latest = self.store.latest_quota()
         self.assertEqual(latest["add_on"]["used"], 150)
         self.assertEqual(latest["add_on"]["remaining"], 2150)
-        self.assertEqual(self.store.credit_bounds()[0:2], ("2026-10-01", "2026-10-02"))
+        self.assertEqual(self.store.credit_bounds("qoder")[0:2],
+                         ("2026-10-01", "2026-10-02"))
 
         estimates = [
             Estimate(request_id="s1:t1", ts=1.0, day="2026-10-01", project="proj",
@@ -183,6 +185,80 @@ class StoreTest(unittest.TestCase):
                           totals["requests"], totals["missing_ratio"]),
                          (70000, 15, 2, 1))
         self.assertEqual(self.store.est_bounds()[0:2], ("2026-10-01", "2026-10-01"))
+
+    def test_credit_sources_are_separated(self):
+        def credit(rid, source, day, value, billable):
+            return Credit(request_id=rid, ts=datetime.fromisoformat(day).timestamp(),
+                          day=day, project="proj", model="m", session="s",
+                          credits=value, billable=billable, source=source)
+
+        self.store.upsert_credits([
+            credit("q1", "qoder", "2026-10-01", 2.0, True),
+            credit("q2", "qoder", "2026-10-01", 1.0, False),
+            credit("t1", "trae-cn", "2026-10-01", 3.0, True),
+            credit("t2", "trae-cn", "2026-10-02", 4.0, True),
+        ], [])
+        self.assertEqual(self.store.credit_count(), 4)
+        self.assertEqual(self.store.credit_count("qoder"), 2)
+        self.assertEqual(self.store.credit_count("trae-cn"), 2)
+        daily = self.store.credit_daily()
+        self.assertEqual([(row["source"], row["day"], row["credits"],
+                           row["requests"], row["free_credits"], row["snapshots"])
+                          for row in daily],
+                         [("qoder", "2026-10-01", 2.0, 1, 1.0, 0),
+                          ("trae-cn", "2026-10-01", 3.0, 1, 0.0, 0),
+                          ("trae-cn", "2026-10-02", 4.0, 1, 0.0, 0)])
+        self.assertEqual([row["credits"] for row in
+                          self.store.credit_daily(source="trae-cn")], [3.0, 4.0])
+        self.assertEqual([row["source"] for row in self.store.credit_rows()],
+                         ["qoder", "trae-cn", "trae-cn"])
+        totals = self.store.credits_totals()
+        self.assertEqual(sorted(totals), ["qoder", "trae-cn"])
+        self.assertEqual((totals["qoder"]["credits"], totals["qoder"]["requests"]),
+                         (2.0, 2))
+        self.assertEqual((totals["trae-cn"]["credits"], totals["trae-cn"]["requests"]),
+                         (7.0, 2))
+        self.assertEqual(self.store.credit_bounds("trae-cn")[0:2],
+                         ("2026-10-01", "2026-10-02"))
+
+    def test_credit_source_migration_defaults_to_qoder(self):
+        path = os.path.join(self.dir.name, "legacy-credit.db")
+        conn = sqlite3.connect(path)
+        conn.executescript("""
+        CREATE TABLE usage_credit (
+          request_id TEXT PRIMARY KEY,
+          ts REAL NOT NULL,
+          day TEXT NOT NULL,
+          project TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL,
+          session_id TEXT,
+          credits REAL NOT NULL DEFAULT 0,
+          billable INTEGER NOT NULL DEFAULT 0,
+          updated_at REAL NOT NULL
+        );
+        INSERT INTO usage_credit VALUES
+          ('r1', 1.0, '2026-10-01', 'proj', 'm', 's1', 2.5, 1, 1.0);
+        """)
+        conn.commit()
+        conn.close()
+
+        store = SqliteStore(path)
+        try:
+            columns = {row[1] for row in
+                       store.conn.execute("PRAGMA table_info(usage_credit)")}
+            self.assertIn("source", columns)
+            indexes = {row[1] for row in
+                       store.conn.execute("PRAGMA index_list(usage_credit)")}
+            self.assertIn("idx_credit_source_day", indexes)
+            self.assertEqual(store.credit_count("qoder"), 1)
+            self.assertEqual(store.credit_count("trae-cn"), 0)
+            store.upsert_credits([Credit(
+                request_id="trae-cn:s1", ts=2.0, day="2026-10-02", project="",
+                model="m", session="s1", credits=1.0, billable=True,
+                source="trae-cn")], [])
+            self.assertEqual(sorted(store.credits_totals()), ["qoder", "trae-cn"])
+        finally:
+            store.close()
 
     def test_est_source_migration_separates_trae(self):
         path = os.path.join(self.dir.name, "legacy.db")

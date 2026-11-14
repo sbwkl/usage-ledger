@@ -5,11 +5,14 @@ import os
 import re
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.usage_ledger.cli import main
+from src.usage_ledger.models import Credit
 from src.usage_ledger.store import SqliteStore
+from src.usage_ledger.trae_credits import TRAE_CREDITS_SOURCE, TraeCreditsError
 from src.usage_ledger.trae_hooks import trae_event_dir
 
 BASE_TS = datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc).timestamp()
@@ -183,16 +186,20 @@ class TraeCliTest(unittest.TestCase):
             config = json.load(fh)
         self.assertEqual(config["hooks"], {})
 
-    def test_html_contains_trae_weak_estimate_panel(self):
+    def test_html_trae_is_credits_primary_with_weak_est_panel(self):
         self.assertEqual(self.run_cli(["sync", "--source", "trae-cn"])[0], 0)
         output = os.path.join(self.home, "trae.html")
-        code, _, err = self.run_cli(["html", "--output", output])
+        with patch("src.usage_ledger.cli.sync_trae_credits") as refresh:
+            code, _, err = self.run_cli(["html", "--offline", "--output", output])
         self.assertEqual(code, 0, err)
+        refresh.assert_not_called()
         with open(output, encoding="utf-8") as fh:
             html = fh.read()
         self.assertNotIn("<", html.split('id="data">', 1)[1].split("</script>", 1)[0])
         self.assertIn("Trae CN", html)
         payload = extract_payload(html)
+        self.assertEqual(payload["agents"]["trae-cn"], "credits")
+        self.assertEqual(payload["coverage"]["trae-cn.credits"]["refresh_mode"], "offline")
         self.assertEqual(payload["trae_est"]["factor_version"], "trae-hook-v1")
         self.assertEqual(payload["trae_est"]["totals"]["requests"], 2)
         rows = payload["trae_est"]["rows"]
@@ -203,8 +210,8 @@ class TraeCliTest(unittest.TestCase):
         self.assertNotIn('data-supp-source="trae-cn"', html)
         self.assertIn('id="agent-nav"', html)
         self.assertIn('id="shadow-switch"', html)
-        self.assertIn("仅估算", html)
-        self.assertEqual(payload["agents"]["trae-cn"], "estimate")
+        self.assertIn("精确 Credits", html)
+        self.assertIn("Trae credits 未同步", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 
         code, _, _ = self.run_cli(["html", "--source", "claude", "--output", output])
@@ -212,6 +219,151 @@ class TraeCliTest(unittest.TestCase):
         with open(output, encoding="utf-8") as fh:
             payload = extract_payload(fh.read())
         self.assertEqual(payload["trae_est"]["rows"], [])
+        self.assertNotIn("trae-cn.credits", payload["coverage"])
+
+    def _seed_trae_credit(self, day=None):
+        day = day or date.today().isoformat()
+        ts = datetime.now(timezone.utc).timestamp()
+        store = SqliteStore(self.db_path)
+        try:
+            store.upsert_credits([Credit(
+                request_id="trae-cn:seed", ts=ts, day=day, project="proj",
+                model="seed-model", session="seed", credits=1.25,
+                billable=True, source="trae-cn")], [])
+            store.update_source_state(TRAE_CREDITS_SOURCE, files=0, records=1,
+                                      status="ok", last_ts=ts)
+        finally:
+            store.close()
+        return day
+
+    def test_sync_without_remote_does_not_call_network(self):
+        with patch("src.usage_ledger.cli.sync_trae_credits") as remote:
+            code, _, err = self.run_cli(["sync", "--source", "trae-cn"])
+        self.assertEqual(code, 0, err)
+        remote.assert_not_called()
+
+    def test_sync_remote_calls_trae_refresh(self):
+        self.assertEqual(self.run_cli(["sync", "--source", "trae-cn"])[0], 0)
+        fake = SimpleNamespace(sessions=2, credits=1.5, skipped=0, pages=1,
+                               since=date.today().isoformat(),
+                               until=date.today().isoformat(), jwt_warning=None)
+        with patch("src.usage_ledger.cli.sync_trae_credits", return_value=fake) as remote:
+            code, out, err = self.run_cli(["sync", "--source", "trae-cn", "--remote"])
+        self.assertEqual(code, 0, err)
+        remote.assert_called_once()
+        self.assertIn("refreshed 2 sessions / 1.50 credits", out)
+
+    def test_html_default_refreshes_trae_credits(self):
+        self.assertEqual(self.run_cli(["sync", "--source", "trae-cn"])[0], 0)
+        output = os.path.join(self.home, "fresh.html")
+        fake = SimpleNamespace(sessions=3, credits=4.5, skipped=0, pages=1,
+                               since=date.today().isoformat(),
+                               until=date.today().isoformat(), jwt_warning=None)
+        with patch("src.usage_ledger.cli.sync_trae_credits", return_value=fake) as remote:
+            code, _, err = self.run_cli(["html", "--output", output])
+        self.assertEqual(code, 0, err)
+        remote.assert_called_once()
+        self.assertIn("refreshed 3 sessions / 4.50 credits", err)
+        with open(output, encoding="utf-8") as fh:
+            payload = extract_payload(fh.read())
+        self.assertEqual(payload["coverage"]["trae-cn.credits"]["refresh_mode"], "auto")
+
+    def test_html_source_qoder_skips_trae_refresh(self):
+        output = os.path.join(self.home, "qoder-only.html")
+        with patch("src.usage_ledger.cli.sync_trae_credits") as remote:
+            code, _, err = self.run_cli(
+                ["html", "--source", "qoder", "--output", output])
+        self.assertEqual(code, 0, err)
+        remote.assert_not_called()
+        with open(output, encoding="utf-8") as fh:
+            payload = extract_payload(fh.read())
+        self.assertNotIn("trae-cn.credits", payload["coverage"])
+
+    def test_html_stateless_skips_trae_refresh(self):
+        output = os.path.join(self.home, "stateless.html")
+        with patch("src.usage_ledger.cli.sync_trae_credits") as remote:
+            code, _, err = self.run_cli(
+                ["--stateless", "html", "--output", output])
+        self.assertEqual(code, 0, err)
+        remote.assert_not_called()
+        with open(output, encoding="utf-8") as fh:
+            payload = extract_payload(fh.read())
+        self.assertEqual(payload["coverage"]["trae-cn.credits"]["refresh_mode"],
+                         "stateless")
+
+    def test_html_refresh_failure_uses_cache_and_strict_exits_nonzero(self):
+        day = self._seed_trae_credit()
+        output = os.path.join(self.home, "fallback.html")
+        error = TraeCreditsError("API 请求失败（HTTP 500）", status=500)
+        with patch("src.usage_ledger.cli.sync_trae_credits", side_effect=error):
+            code, _, err = self.run_cli(["html", "--output", output])
+        self.assertEqual(code, 0, err)
+        self.assertIn("refresh failed, using cached data", err)
+        with open(output, encoding="utf-8") as fh:
+            payload = extract_payload(fh.read())
+        coverage = payload["coverage"]["trae-cn.credits"]
+        self.assertIn("HTTP 500", coverage["refresh_error"])
+        self.assertTrue(coverage["stale"])
+        trae_rows = [row for row in payload["credits"]["rows"]
+                     if row["source"] == "trae-cn"]
+        self.assertEqual([(row["day"], row["credits"]) for row in trae_rows],
+                         [(day, 1.25)])
+
+        strict_output = os.path.join(self.home, "strict.html")
+        with patch("src.usage_ledger.cli.sync_trae_credits", side_effect=error):
+            code, _, _ = self.run_cli(
+                ["html", "--strict-refresh", "--output", strict_output])
+        self.assertEqual(code, 1)
+        self.assertTrue(os.path.exists(strict_output))
+        with open(strict_output, encoding="utf-8") as fh:
+            payload = extract_payload(fh.read())
+        self.assertEqual(
+            payload["coverage"]["trae-cn.credits"]["refresh_mode"], "auto")
+        self.assertTrue(payload["credits"]["rows"])
+
+    def test_html_max_age_reuses_fresh_cache(self):
+        self.assertEqual(self.run_cli(["sync", "--source", "trae-cn"])[0], 0)
+        output = os.path.join(self.home, "max-age.html")
+        calls = []
+
+        def fake(store, since, until, jwt_file=None):
+            calls.append((since, until))
+            ts = datetime.now(timezone.utc).timestamp()
+            store.upsert_credits([Credit(
+                request_id="trae-cn:%s" % since, ts=ts, day=since,
+                project="proj", model="m", session="s", credits=1.0,
+                billable=True, source="trae-cn")], [])
+            store.update_source_state(TRAE_CREDITS_SOURCE, files=0, records=1,
+                                      status="ok", last_ts=ts)
+            store.set_meta("trae_credits_last_window",
+                           json.dumps({"since": since, "until": until}))
+            return SimpleNamespace(sessions=1, credits=1.0, skipped=0, pages=1,
+                                   since=since, until=until, jwt_warning=None)
+
+        with patch("src.usage_ledger.cli.sync_trae_credits", side_effect=fake):
+            code, _, err = self.run_cli(
+                ["html", "--max-age", "300", "--output", output])
+            self.assertEqual(code, 0, err)
+            code, _, err = self.run_cli(
+                ["html", "--max-age", "300", "--output", output])
+            self.assertEqual(code, 0, err)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("cache fresh", err)
+
+    def test_credits_command_lists_trae_sessions(self):
+        day = self._seed_trae_credit()
+        code, out, err = self.run_cli(["credits", "--source", "trae-cn"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("sessions", out)
+        self.assertIn("total trae-cn: 1.25 credits / 1 会话", out)
+
+        code, out, err = self.run_cli(
+            ["credits", "--source", "trae-cn", "--format", "json"])
+        self.assertEqual(code, 0, err)
+        payload = json.loads(out)
+        self.assertEqual(payload["days"][0]["source"], "trae-cn")
+        self.assertEqual(payload["days"][0]["day"], day)
+        self.assertEqual(payload["totals"]["trae-cn"]["credits"], 1.25)
 
 
 if __name__ == "__main__":

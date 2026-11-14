@@ -16,7 +16,7 @@ AGENT_KINDS = {
     "kilo": "token",
     "cline": "token",
     "qoder": "credits",
-    "trae-cn": "estimate",
+    "trae-cn": "credits",
 }
 
 
@@ -163,7 +163,11 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .kpi-label{font-size:12px;color:var(--muted)}
 .kpi-value{font-size:clamp(20px,2.1vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi.credit .kpi-sub{white-space:normal;overflow:visible}
 .coverage{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
+.trae-status{border-color:rgba(13,148,136,.45);background:rgba(13,148,136,.08);margin-top:-4px}
+.trae-status.warn{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.1)}
+.trae-status.error{border-color:rgba(239,68,68,.55);background:rgba(239,68,68,.1)}
 
 .agent-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .agent-title-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
@@ -218,6 +222,8 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .tt-shadow{color:var(--muted);font-style:italic}
 .bars{display:flex;flex-direction:column;gap:11px;min-height:120px}
 .bar-row{display:block;width:100%;border:0;background:transparent;padding:0;margin:0;text-align:left;cursor:pointer;border-radius:8px;font:inherit;color:inherit}
+.top-group-title{font-size:11px;letter-spacing:.4px;color:var(--muted);font-weight:600;margin:12px 0 5px}
+.top-group-title:first-child{margin-top:0}
 .bar-row:hover .bar-name{color:var(--accent)}
 .bar-row:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .bar-row.selected .bar-name{color:var(--accent);font-weight:700}
@@ -314,6 +320,7 @@ try {
   <nav class="card agent-nav" id="agent-nav" aria-label="Agent 选择"></nav>
 
   <p id="coverage" class="coverage" hidden></p>
+  <p id="trae-status" class="coverage trae-status" hidden></p>
 
   <section class="agent-page" id="report-page" aria-label="用量报告">
     <section class="kpis" id="kpis" aria-label="汇总指标"></section>
@@ -498,7 +505,7 @@ try {
   var CREDIT_ROWS = (Array.isArray(CREDIT_DATA.rows) ? CREDIT_DATA.rows : []).map(function (row) {
     var credits = number(row.credits);
     return {
-      day: row.day, source: "qoder", model: row.model || "unknown",
+      day: row.day, source: row.source || "qoder", model: row.model || "unknown",
       project: row.project || "-", credits: credits,
       free_credits: number(row.free_credits), requests: number(row.requests),
       free_requests: number(row.free_requests), total: credits
@@ -537,7 +544,8 @@ try {
 
   var present = {};
   TOKEN_ROWS.forEach(function (row) { present[row.source] = true; });
-  if (CREDIT_ROWS.length || EST.length || ACTIVITY.length) present.qoder = true;
+  CREDIT_ROWS.forEach(function (row) { present[row.source] = true; });
+  if (EST.length || ACTIVITY.length) present.qoder = true;
   if (TRAE_EST.length) present["trae-cn"] = true;
   var AGENTS = KNOWN_ORDER.filter(function (name) { return present[name]; })
     .concat(Object.keys(present).filter(function (name) {
@@ -576,6 +584,12 @@ try {
   var qoderTokenBounds = minMaxDay(QODER_TOKEN_ROWS);
   var activityBounds = minMaxDay(ACTIVITY);
   var creditBounds = minMaxDay(CREDIT_ROWS);
+  var creditBoundsBySource = {};
+  CREDIT_AGENTS.forEach(function (name) {
+    creditBoundsBySource[name] = minMaxDay(CREDIT_ROWS.filter(function (row) {
+      return row.source === name;
+    }));
+  });
   var estBounds = minMaxDay(EST);
   var traeEstBounds = minMaxDay(TRAE_EST);
   var RANGE = DATA.range || {};
@@ -598,12 +612,22 @@ try {
   function selectedTokenAgents() {
     return TOKEN_AGENTS.filter(function (name) { return state.agents.has(name); });
   }
+  function selectedCreditAgents() {
+    return CREDIT_AGENTS.filter(function (name) { return state.agents.has(name); });
+  }
   function hasTokenSelected() { return selectedTokenAgents().length > 0; }
-  function hasCreditsSelected() {
-    return CREDIT_AGENTS.some(function (name) { return state.agents.has(name); });
+  function hasCreditsSelected() { return selectedCreditAgents().length > 0; }
+  function hasCreditAgent(name) {
+    return state.agents.has(name) && agentKind(name) === "credits";
   }
   function hasEstimateSelected() {
     return ESTIMATE_AGENTS.some(function (name) { return state.agents.has(name); });
+  }
+  function hasTraeEstimateSelected() {
+    return state.agents.has("trae-cn") && TRAE_EST.length > 0;
+  }
+  function hasQoderShadowSelected() {
+    return state.shadow && state.agents.has("qoder") && EST.length > 0;
   }
 
   var initialRange = allBounds();
@@ -626,7 +650,7 @@ try {
   var el = {
     start: $("#start"), end: $("#end"), presets: $("#presets"), reset: $("#reset"),
     model: $("#model"), project: $("#project"), q: $("#q"),
-    nav: $("#agent-nav"), coverage: $("#coverage"),
+    nav: $("#agent-nav"), coverage: $("#coverage"), traeStatus: $("#trae-status"),
     kpis: $("#kpis"), metricField: $("#metric-field"), metric: $("#metric"),
     shadowSwitch: $("#shadow-switch"), shadow: $("#shadow"),
     panelToken: $("#panel-token"), panelCredits: $("#panel-credits"), panelEst: $("#panel-est"),
@@ -675,6 +699,7 @@ try {
   }
 
   function fmtCredits(value) {
+    if (value === null || value === undefined) return "—";
     var parsed = number(value);
     return Math.abs(parsed - Math.round(parsed)) < 0.005
       ? fmtInt(parsed) : parsed.toFixed(2);
@@ -798,28 +823,32 @@ try {
 
   function creditRowsFor(ignore) {
     if (!hasCreditsSelected()) return [];
-    return CREDIT_ROWS.filter(function (row) { return matchesFilters(row, ignore); });
+    return CREDIT_ROWS.filter(function (row) {
+      return state.agents.has(row.source) && matchesFilters(row, ignore);
+    });
   }
 
   function qoderEstRowsFor(ignore) {
-    if (!state.shadow || !hasCreditsSelected()) return [];
+    if (!hasQoderShadowSelected()) return [];
     return EST.filter(function (row) { return matchesFilters(row, ignore); });
   }
 
   function traeRowsFor(ignore) {
-    if (!hasEstimateSelected()) return [];
+    if (!state.agents.has("trae-cn")) return [];
     return TRAE_EST.filter(function (row) { return matchesFilters(row, ignore); });
   }
 
   function dimensionRows() {
     var rows = TOKEN_ROWS.filter(function (row) { return state.agents.has(row.source); });
     if (hasCreditsSelected()) {
-      rows = rows.concat(CREDIT_ROWS.map(function (row) {
-        return { day: row.day, source: "qoder", model: row.model,
+      rows = rows.concat(CREDIT_ROWS.filter(function (row) {
+        return state.agents.has(row.source);
+      }).map(function (row) {
+        return { day: row.day, source: row.source, model: row.model,
                  project: row.project, total: row.credits, turns: 0 };
       }));
     }
-    if (hasEstimateSelected()) rows = rows.concat(TRAE_EST);
+    if (state.agents.has("trae-cn")) rows = rows.concat(TRAE_EST);
     return rows;
   }
 
@@ -831,7 +860,11 @@ try {
   function navTotal(agent) {
     if (agent === "all") return sumField(TOKEN_ROWS, "total");
     var kind = agentKind(agent);
-    if (kind === "credits") return sumField(CREDIT_ROWS, "credits");
+    if (kind === "credits") {
+      return CREDIT_ROWS.reduce(function (acc, row) {
+        return acc + (row.source === agent ? number(row.credits) : 0);
+      }, 0);
+    }
     if (kind === "estimate") return sumField(TRAE_EST, "total");
     return TOKEN_ROWS.reduce(function (acc, row) {
       return acc + (row.source === agent ? number(row.total) : 0);
@@ -841,7 +874,10 @@ try {
   function navTotalText(agent) {
     var value = navTotal(agent);
     var kind = agent === "all" ? "token" : agentKind(agent);
-    if (kind === "credits") return fmtCompact(value) + " cr";
+    if (kind === "credits") {
+      var hasRows = CREDIT_ROWS.some(function (row) { return row.source === agent; });
+      return hasRows ? fmtCompact(value) + " cr" : "—";
+    }
     if (kind === "estimate") return fmtCompact(value) + " est";
     return fmtCompact(value);
   }
@@ -1098,19 +1134,30 @@ try {
   function syncShell() {
     var units = [];
     if (hasTokenSelected()) units.push("tokens");
-    if (hasCreditsSelected()) units.push(state.shadow ? "credits + 影子 est" : "credits");
-    if (hasEstimateSelected()) units.push("trae 弱 est");
+    if (hasCreditsSelected()) {
+      var creditUnits = [];
+      if (state.agents.has("qoder")) {
+        creditUnits.push(EST.length && state.shadow
+          ? "Qoder credits + 影子 est" : "Qoder credits");
+      }
+      if (state.agents.has("trae-cn")) {
+        creditUnits.push(TRAE_EST.length
+          ? "Trae credits + 弱 est" : "Trae credits");
+      }
+      units.push(creditUnits.join(" / "));
+    }
+    if (hasEstimateSelected()) units.push("est");
     el.panelToken.hidden = !hasTokenSelected();
     el.panelCredits.hidden = !hasCreditsSelected();
-    el.panelEst.hidden = !hasEstimateSelected();
+    el.panelEst.hidden = !hasTraeEstimateSelected();
     el.metricField.hidden = !hasTokenSelected();
-    el.shadowSwitch.hidden = !hasCreditsSelected() || !EST.length;
+    el.shadowSwitch.hidden = !state.agents.has("qoder") || !EST.length;
     el.shadow.checked = state.shadow;
     el.metric.value = state.metric;
     el.modelUnit.textContent = units.join(" / ");
     el.projectUnit.textContent = units.join(" / ");
-    el.activityBlock.hidden = !hasCreditsSelected() || !ACTIVITY.length;
-    if (!hasCreditsSelected()) {
+    el.activityBlock.hidden = !state.agents.has("qoder") || !ACTIVITY.length;
+    if (!state.agents.has("qoder")) {
       state.shadow = false;
       el.shadow.checked = false;
       el.shadowNote.hidden = true;
@@ -1119,38 +1166,85 @@ try {
 
   function renderCoverage() {
     var parts = [];
-    var qoder = COVERAGE.qoder || {};
     var qoderToken = qoderTokenBounds[0]
       ? qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1] : "";
     parts.push("已选 Agent：" + Array.from(state.agents).join(" / "));
     var unitNames = [];
     if (hasTokenSelected()) unitNames.push("tokens");
     if (hasCreditsSelected()) unitNames.push("credits");
-    if (hasEstimateSelected()) unitNames.push("est");
+    if (hasEstimateSelected() || hasTraeEstimateSelected() || hasQoderShadowSelected()) {
+      unitNames.push("est");
+    }
     if (unitNames.length > 1) {
       parts.push(unitNames.join("、") + " 单位不同，分别汇总，不跨单位相加");
     }
-    if (hasCreditsSelected()) {
-      if (creditBounds[0]) parts.push("credits " + creditBounds[0] + " ~ " + creditBounds[1]);
-      else parts.push("本地无 credits 数据");
+    if (state.agents.has("qoder") && hasCreditsSelected()) {
+      var qoderCredit = creditBoundsBySource.qoder || ["", ""];
+      if (qoderCredit[0]) parts.push("Qoder credits " + qoderCredit[0] + " ~ " + qoderCredit[1]);
+      else parts.push("Qoder 本地无 credits 数据");
       if (estBounds[0]) parts.push("Qoder 影子估算 " + estBounds[0] + " ~ " + estBounds[1]);
       if (ACTIVITY.length) {
         var actBounds = minMaxDay(ACTIVITY);
         parts.push("活动 " + actBounds[0] + " ~ " + actBounds[1]);
       }
     }
-    if (hasEstimateSelected() && traeEstBounds[0]) {
-      parts.push("Trae CN 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
-        "（仅覆盖安装 hook 后的请求）");
+    if (state.agents.has("trae-cn") && hasCreditsSelected()) {
+      var traeCredit = creditBoundsBySource["trae-cn"] || ["", ""];
+      if (traeCredit[0]) parts.push("Trae credits " + traeCredit[0] + " ~ " + traeCredit[1]);
+      else parts.push("Trae credits 未同步");
+      if (traeEstBounds[0]) {
+        parts.push("Trae 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
+          "（仅覆盖安装 hook 后的请求）");
+      }
     }
-    if (qoderToken && hasCreditsSelected()) {
+    if (qoderToken && state.agents.has("qoder")) {
       parts.push("Qoder 历史 token 真值 " + qoderToken + "，未并入本页");
     }
-    if (hasEstimateSelected() || state.shadow) {
+    if (hasEstimateSelected() || hasTraeEstimateSelected() || state.shadow) {
       parts.push("估算不与 token 真值或 credits 相加");
     }
     el.coverage.textContent = parts.join("；");
     el.coverage.hidden = false;
+  }
+
+  function renderTraeStatus() {
+    var cov = COVERAGE["trae-cn.credits"];
+    var node = el.traeStatus;
+    node.className = "coverage trae-status";
+    if (!cov) {
+      node.hidden = true;
+      return;
+    }
+    var last = cov.last_sync_at ? fmtDateTime(cov.last_sync_at) : "—";
+    var text;
+    if (cov.refresh_error) {
+      text = "Trae credits 刷新失败，当前为缓存数据 · " + last + " · " + cov.refresh_error;
+      node.classList.add("error");
+    } else if (!cov.available) {
+      text = "Trae credits 未同步 · 运行 usage html（默认刷新）或 " +
+        "usage sync --source trae-cn --remote";
+      node.classList.add("warn");
+    } else if (cov.refresh_mode === "offline") {
+      text = "Trae credits 离线缓存 · " + last;
+      if (cov.stale) {
+        text += " · 数据可能过期";
+        node.classList.add("warn");
+      }
+    } else if (cov.refresh_mode === "stateless") {
+      text = "Trae credits 需要 SQLite 缓存 · 当前为无库模式";
+      node.classList.add("warn");
+    } else {
+      text = "Trae credits 已刷新 · " + last;
+      if (cov.stale) {
+        text += " · 数据可能过期";
+        node.classList.add("warn");
+      }
+    }
+    if (cov.available && cov.sessions !== undefined && cov.sessions !== null) {
+      text += " · " + fmtInt(cov.sessions) + " 会话";
+    }
+    node.textContent = text;
+    node.hidden = false;
   }
 
   function emptyActivityTotals() {
@@ -1234,7 +1328,7 @@ try {
     host.appendChild(card);
   }
 
-  function renderCreditKpis(host, rows) {
+  function renderQoderCreditKpis(host, rows) {
     var billable = 0;
     var free = 0;
     var requests = 0;
@@ -1250,17 +1344,78 @@ try {
     var dayCount = Object.keys(days).length;
     addQuotaKpi(host, quotaSummary());
     addKpiTo(host, "区间 billable credits", fmtCredits(billable),
-      fmtInt(requests) + " billable 请求 · 服务端计费真值");
-    addKpiTo(host, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求");
+      fmtInt(requests) + " billable 请求 · 服务端逐请求计费真值", false, "credit");
+    addKpiTo(host, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求",
+      false, "credit");
     addKpiTo(host, "区间日均", fmtCredits(dayCount ? billable / dayCount : 0),
-      fmtInt(dayCount) + " 天有数据");
+      fmtInt(dayCount) + " 天有数据", false, "credit");
     if (state.shadow) {
       var estRows = qoderEstRowsFor();
       addKpiTo(host, "影子 est Token",
         fmtCompact(sumField(estRows, "total")),
         fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
-        false, "shadow");
+        false, "shadow credit");
     }
+  }
+
+  function renderTraeCreditKpis(host, rows) {
+    var cov = COVERAGE["trae-cn.credits"] || {};
+    var estRows = traeRowsFor();
+    if (!rows.length) {
+      addKpiTo(host, "区间 credits", "未同步",
+        "运行 usage html（默认刷新）或 usage sync --source trae-cn --remote", true,
+        "credit");
+      if (estRows.length) {
+        addKpiTo(host, "弱 est Token", fmtCompact(sumField(estRows, "total")),
+          fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
+          false, "shadow credit");
+      }
+      return;
+    }
+    var credits = 0;
+    var sessions = 0;
+    var days = {};
+    var models = {};
+    rows.forEach(function (row) {
+      credits += row.credits;
+      sessions += row.requests;
+      days[row.day] = true;
+      models[row.model] = true;
+    });
+    var dataState = "";
+    if (cov.refresh_error) dataState = " · 缓存数据（" + fmtDateTime(cov.last_sync_at) + "）";
+    else if (cov.refresh_mode === "offline") dataState = " · 离线缓存";
+    if (cov.stale && !dataState) dataState = " · 数据可能过期";
+    addKpiTo(host, "区间 credits", fmtCredits(credits),
+      fmtInt(sessions) + " 会话 · 服务端会话级计费真值" + dataState, true, "credit");
+    addKpiTo(host, "会话数", fmtCompact(sessions), fmtInt(sessions) + " 会话");
+    addKpiTo(host, "覆盖天数", fmtInt(Object.keys(days).length),
+      fmtInt(Object.keys(days).length) + " 天有数据");
+    addKpiTo(host, "模型数", fmtInt(Object.keys(models).length),
+      fmtInt(Object.keys(models).length) + " 个模型");
+    if (estRows.length) {
+      addKpiTo(host, "弱 est Token", fmtCompact(sumField(estRows, "total")),
+        fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
+        false, "shadow credit");
+    } else {
+      addKpiTo(host, "弱 est Token", "无 hook 估算",
+        "安装 Trae CN hook 后可看 token 趋势", false, "shadow credit");
+    }
+  }
+
+  function renderCreditKpis(host, rows) {
+    var sources = selectedCreditAgents();
+    var labeled = sources.length > 1;
+    sources.forEach(function (source) {
+      if (labeled) {
+        addKpiSection(host, source === "qoder"
+          ? "Qoder · 精确 Credits（逐请求）"
+          : "Trae CN · 精确 Credits（会话级）");
+      }
+      var subset = rows.filter(function (row) { return row.source === source; });
+      if (source === "qoder") renderQoderCreditKpis(host, subset);
+      else renderTraeCreditKpis(host, subset);
+    });
   }
 
   function renderEstimateKpis(host, rows, label) {
@@ -1300,7 +1455,9 @@ try {
       renderTokenKpis(host, tokenRowsFor());
     }
     if (hasCreditsSelected()) {
-      if (groups > 1) addKpiSection(host, "精确 Credits（credits）");
+      if (groups > 1 || selectedCreditAgents().length > 1) {
+        addKpiSection(host, "精确 Credits（credits）");
+      }
       renderCreditKpis(host, creditRowsFor());
     }
     if (hasEstimateSelected()) {
@@ -1368,6 +1525,7 @@ try {
       return;
     }
     var series = config.series;
+    var grouped = config.mode === "grouped";
     var shadowLabel = config.shadowLabel || "";
     var hasShadow = !!shadowLabel;
     var width = Math.max(host.clientWidth || 900, 320);
@@ -1414,6 +1572,7 @@ try {
 
     var band = plotW / buckets.length;
     var barW = Math.max(1.5, Math.min(26, band * 0.66));
+    var groupBarW = Math.max(1, Math.min(20, band * 0.72 / Math.max(series.length, 1)));
     var hoverLine = svgEl("line", {
       x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
     });
@@ -1430,16 +1589,24 @@ try {
     }
 
     buckets.forEach(function (bucket, index) {
-      var x = margin.left + band * index + (band - barW) / 2;
-      var y = margin.top + plotH;
+      var groupStart = margin.left + band * index + (band - groupBarW * series.length) / 2;
+      var stackedY = margin.top + plotH;
       series.forEach(function (def, i) {
         var value = bucket.values[i] || 0;
         if (value <= 0) return;
         var slice = (value / scale.max) * plotH;
-        y -= slice;
+        var x = grouped ? groupStart + groupBarW * i
+          : margin.left + band * index + (band - barW) / 2;
+        var y;
+        if (grouped) {
+          y = margin.top + plotH - slice;
+        } else {
+          stackedY -= slice;
+          y = stackedY;
+        }
         svg.appendChild(svgEl("rect", {
-          x: x, y: y, width: barW, height: slice,
-          fill: def.color, class: "seg", rx: barW > 4 ? 1.5 : 0
+          x: x, y: y, width: grouped ? groupBarW : barW, height: slice,
+          fill: def.color, class: "seg", rx: (grouped ? groupBarW : barW) > 4 ? 1.5 : 0
         }));
       });
       var hit = svgEl("rect", {
@@ -1561,17 +1728,19 @@ try {
         row.appendChild(value);
         tooltip.appendChild(row);
       });
-      var totalRow = document.createElement("div");
-      totalRow.className = "tt-row tt-total";
-      var totalName = document.createElement("span");
-      totalName.className = "tt-name";
-      totalName.textContent = "合计";
-      var totalValue = document.createElement("span");
-      totalValue.className = "tt-val";
-      totalValue.textContent = (config.tooltipFormat || fmtInt)(bucket.total);
-      totalRow.appendChild(totalName);
-      totalRow.appendChild(totalValue);
-      tooltip.appendChild(totalRow);
+      if (!grouped) {
+        var totalRow = document.createElement("div");
+        totalRow.className = "tt-row tt-total";
+        var totalName = document.createElement("span");
+        totalName.className = "tt-name";
+        totalName.textContent = "合计";
+        var totalValue = document.createElement("span");
+        totalValue.className = "tt-val";
+        totalValue.textContent = (config.tooltipFormat || fmtInt)(bucket.total);
+        totalRow.appendChild(totalName);
+        totalRow.appendChild(totalValue);
+        tooltip.appendChild(totalRow);
+      }
       if (shadowScale) {
         var shadowRow = document.createElement("div");
         shadowRow.className = "tt-row tt-shadow";
@@ -1628,29 +1797,87 @@ try {
     }
     if (hasCreditsSelected()) {
       var creditRows = creditRowsFor();
-      var creditDefs = [
-        { label: "billable（计入配额）", color: CREDIT_BILLABLE_COLOR,
-          value: function (row) { return row.credits; } },
-        { label: "免费（不计配额）", color: CREDIT_FREE_COLOR,
-          value: function (row) { return row.free_credits; } }
-      ];
-      var shadowRows = state.shadow ? qoderEstRowsFor() : null;
-      var creditBuckets = buildStackBuckets(creditRows, creditDefs,
-        state.shadow ? [{ value: function (row) { return row.total; } }] : [],
-        shadowRows);
-      renderStackChart({
-        host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
-        buckets: creditBuckets,
-        series: creditDefs,
-        shadowLabel: state.shadow ? "Qoder est" : "",
-        metaText: "Qoder credits 为服务端计费真值，非 token",
-        ariaLabel: "Qoder 每日 credits 用量",
-        legendFormat: fmtCredits,
-        tooltipFormat: fmtCredits
-      });
+      var creditSources = selectedCreditAgents();
+      var qoderOnly = creditSources.length === 1 && creditSources[0] === "qoder";
+      var traeOnly = creditSources.length === 1 && creditSources[0] === "trae-cn";
+      var shadowRows = state.shadow && creditSources.indexOf("qoder") >= 0
+        ? qoderEstRowsFor() : null;
+      var hintBits = [];
+      if (qoderOnly) {
+        var creditDefs = [
+          { label: "billable（计入配额）", color: CREDIT_BILLABLE_COLOR,
+            value: function (row) { return row.credits; } },
+          { label: "免费（不计配额）", color: CREDIT_FREE_COLOR,
+            value: function (row) { return row.free_credits; } }
+        ];
+        var creditBuckets = buildStackBuckets(creditRows, creditDefs,
+          state.shadow ? [{ value: function (row) { return row.total; } }] : [],
+          shadowRows);
+        renderStackChart({
+          host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
+          buckets: creditBuckets,
+          series: creditDefs,
+          shadowLabel: state.shadow ? "Qoder est" : "",
+          metaText: "Qoder credits 为服务端逐请求计费真值，非 token",
+          ariaLabel: "Qoder 每日 credits 用量",
+          legendFormat: fmtCredits,
+          tooltipFormat: fmtCredits
+        });
+      } else if (traeOnly) {
+        var traeDefs = [
+          { label: "Trae credits", color: COLORS["trae-cn"] || "#0d9488",
+            value: function (row) { return row.credits; } }
+        ];
+        renderStackChart({
+          host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
+          buckets: buildStackBuckets(creditRows, traeDefs),
+          series: traeDefs,
+          metaText: "Trae CN credits 为服务端会话级计费真值（按会话归属日），非 token",
+          ariaLabel: "Trae CN 每日 credits 用量",
+          legendFormat: fmtCredits,
+          tooltipFormat: fmtCredits
+        });
+        hintBits.push("Trae 为会话级归属日，不是逐请求日");
+      } else {
+        var groupedDefs = creditSources.map(function (source) {
+          return {
+            label: source === "qoder" ? "Qoder" : "Trae CN",
+            color: COLORS[source],
+            value: function (row) {
+              return row.source === source ? row.credits : 0;
+            }
+          };
+        });
+        renderStackChart({
+          host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
+          buckets: buildStackBuckets(creditRows, groupedDefs),
+          series: groupedDefs,
+          mode: "grouped",
+          metaText: "credits 按 Agent 分列，不可相加（Qoder 逐请求 / Trae 会话级）",
+          ariaLabel: "按 Agent 分组的每日 credits 用量",
+          legendFormat: fmtCredits,
+          tooltipFormat: fmtCredits
+        });
+        hintBits.push("credits 按 Agent 分列，不可相加");
+      }
       renderMissingHint(el.hintCredits, creditRows.concat(shadowRows || []));
+      if (creditSources.indexOf("trae-cn") >= 0) {
+        if (!CREDIT_ROWS.some(function (row) { return row.source === "trae-cn"; })) {
+          hintBits.push("缺 Trae credits，运行 usage html 或 " +
+            "usage sync --source trae-cn --remote");
+        }
+        var traeCov = COVERAGE["trae-cn.credits"] || {};
+        if (traeCov.available && (traeCov.stale || traeCov.refresh_error)) {
+          hintBits.push("Trae 当前为缓存数据（" +
+            (fmtDateTime(traeCov.last_sync_at) || "无同步时间") + "）");
+        }
+      }
+      if (hintBits.length) {
+        el.hintCredits.textContent = (el.hintCredits.textContent
+          ? el.hintCredits.textContent + "；" : "") + hintBits.join("；");
+      }
     }
-    if (hasEstimateSelected()) {
+    if (hasTraeEstimateSelected()) {
       var traeRows = traeRowsFor();
       var estDefs = [
         { label: "est 输入", color: EST_INPUT_COLOR,
@@ -1689,37 +1916,69 @@ try {
       shown + (missing.length > 10 ? " …" : "");
   }
 
-  function aggregateTop(key, ignore) {
+  function aggregateTop(key, ignore, options) {
+    var opts = options || {};
     var map = new Map();
     function entry(name) {
       if (!map.has(name)) {
         map.set(name, { key: name, tokens: 0, turns: 0, credits: 0,
-                        creditRequests: 0, est: 0, estRequests: 0,
+                        creditRequests: 0, creditSources: {}, creditRequestsBySource: {},
+                        est: 0, estRequests: 0,
                         shadowEst: 0, shadowRequests: 0 });
       }
       return map.get(name);
     }
-    tokenRowsFor(ignore).forEach(function (row) {
-      var item = entry(row[key] || "-");
-      item.tokens += pageMetric(row);
-      item.turns += number(row.turns);
-    });
+    if (!opts.creditsOnly) {
+      tokenRowsFor(ignore).forEach(function (row) {
+        var item = entry(row[key] || "-");
+        item.tokens += pageMetric(row);
+        item.turns += number(row.turns);
+      });
+    }
     creditRowsFor(ignore).forEach(function (row) {
+      if (opts.creditSources && !opts.creditSources.has(row.source)) return;
       var item = entry(row[key] || "-");
       item.credits += row.credits;
       item.creditRequests += row.requests;
+      item.creditSources[row.source] = (item.creditSources[row.source] || 0) + row.credits;
+      item.creditRequestsBySource[row.source] =
+        (item.creditRequestsBySource[row.source] || 0) + row.requests;
     });
-    traeRowsFor(ignore).forEach(function (row) {
-      var item = entry(row[key] || "-");
-      item.est += row.total;
-      item.estRequests += row.requests;
-    });
-    qoderEstRowsFor(ignore).forEach(function (row) {
-      var item = entry(row[key] || "-");
-      item.shadowEst += row.total;
-      item.shadowRequests += row.requests;
-    });
+    if (!opts.creditsOnly) {
+      traeRowsFor(ignore).forEach(function (row) {
+        var item = entry(row[key] || "-");
+        item.est += row.total;
+        item.estRequests += row.requests;
+      });
+      qoderEstRowsFor(ignore).forEach(function (row) {
+        var item = entry(row[key] || "-");
+        item.shadowEst += row.total;
+        item.shadowRequests += row.requests;
+      });
+    }
     return Array.from(map.values());
+  }
+
+  function sourceLabel(source) {
+    if (source === "trae-cn") return "Trae CN";
+    if (source === "qoder") return "Qoder";
+    return source;
+  }
+
+  function creditRequestLabel(source) {
+    return source === "trae-cn" ? "会话" : "请求";
+  }
+
+  function creditParts(item) {
+    var parts = [];
+    Object.keys(item.creditSources).forEach(function (source) {
+      var value = item.creditSources[source];
+      if (!(value > 0)) return;
+      parts.push(sourceLabel(source) + " " + fmtCredits(value) + " credits · " +
+        fmtInt(item.creditRequestsBySource[source] || 0) + " " +
+        creditRequestLabel(source));
+    });
+    return parts;
   }
 
   function primaryUnit() {
@@ -1752,14 +2011,25 @@ try {
     return fmtCompact(item.est) + " est";
   }
 
+  function filterTopItems(items, unit) {
+    return items.filter(function (item) { return topValue(item, unit) > 0; });
+  }
+
   function topSecondary(item, unit) {
     var parts = [];
     if (unit !== "tokens" && item.tokens > 0) {
       parts.push(fmtCompact(item.tokens) + " tokens");
     }
-    if (unit !== "credits" && item.credits > 0) {
-      parts.push(fmtCredits(item.credits) + " credits · " +
-        fmtInt(item.creditRequests) + " 请求");
+    if (unit !== "credits") {
+      var creditBits = creditParts(item);
+      if (creditBits.length) parts.push(creditBits.join(" · "));
+    } else {
+      var counts = Object.keys(item.creditSources).map(function (source) {
+        return sourceLabel(source) + " " +
+          fmtInt(item.creditRequestsBySource[source] || 0) + " " +
+          creditRequestLabel(source);
+      });
+      if (counts.length) parts.push(counts.join(" · "));
     }
     if (unit !== "est" && item.est > 0) {
       parts.push("trae 弱 est " + fmtCompact(item.est) + "（不可相加）");
@@ -1770,8 +2040,15 @@ try {
     return parts.join(" · ");
   }
 
-  function renderTopList(host, items, grandTotal, unit, selected, onPick) {
-    host.textContent = "";
+  function renderTopList(host, items, grandTotal, unit, selected, onPick, options) {
+    var opts = options || {};
+    if (!opts.append) host.textContent = "";
+    if (opts.title) {
+      var title = document.createElement("div");
+      title.className = "top-group-title";
+      title.textContent = opts.title;
+      host.appendChild(title);
+    }
     if (!items.length) {
       var empty = document.createElement("div");
       empty.className = "empty";
@@ -1820,31 +2097,63 @@ try {
     });
   }
 
+  function pickModel(key) {
+    state.model = state.model === key ? "" : key;
+    el.model.value = state.model;
+    state.page = 0;
+    renderAll();
+  }
+
+  function pickProject(key) {
+    state.project = state.project === key ? "" : key;
+    el.project.value = state.project;
+    state.page = 0;
+    renderAll();
+  }
+
   function renderTopLists() {
     var unit = primaryUnit();
-    var total = primaryGrandTotal(unit);
+    var creditSources = selectedCreditAgents();
+    var groupedCredits = unit === "credits" && creditSources.length > 1;
     var tag = unit === "tokens" ? "tokens" : unit === "credits" ? "credits" : "trae 弱 est";
     if (activeUnits().size > 1) tag = "主单位 " + tag;
     el.modelUnit.textContent = tag;
     el.projectUnit.textContent = tag;
-    var modelItems = aggregateTop("model").sort(function (a, b) {
+    if (groupedCredits) {
+      var firstModel = true;
+      var firstProject = true;
+      creditSources.forEach(function (source) {
+        var sourceRows = creditRowsFor().filter(function (row) {
+          return row.source === source;
+        });
+        var sourceTotal = sourceRows.reduce(function (acc, row) {
+          return acc + row.credits;
+        }, 0);
+        var creditOptions = { creditsOnly: true, creditSources: new Set([source]) };
+        var modelItems = filterTopItems(aggregateTop("model", null, creditOptions).sort(function (a, b) {
+          return topValue(b, unit) - topValue(a, unit);
+        }), unit).slice(0, 8);
+        var projectItems = filterTopItems(aggregateTop("project", null, creditOptions).sort(function (a, b) {
+          return topValue(b, unit) - topValue(a, unit);
+        }), unit).slice(0, 8);
+        renderTopList(el.models, modelItems, sourceTotal, unit, state.model, pickModel,
+          { append: !firstModel, title: sourceLabel(source) + " · 模型 Top 8" });
+        renderTopList(el.projects, projectItems, sourceTotal, unit, state.project, pickProject,
+          { append: !firstProject, title: sourceLabel(source) + " · 项目 Top 8" });
+        firstModel = false;
+        firstProject = false;
+      });
+      return;
+    }
+    var total = primaryGrandTotal(unit);
+    var modelItems = filterTopItems(aggregateTop("model").sort(function (a, b) {
       return topValue(b, unit) - topValue(a, unit);
-    }).slice(0, 8);
-    var projectItems = aggregateTop("project").sort(function (a, b) {
+    }), unit).slice(0, 8);
+    var projectItems = filterTopItems(aggregateTop("project").sort(function (a, b) {
       return topValue(b, unit) - topValue(a, unit);
-    }).slice(0, 8);
-    renderTopList(el.models, modelItems, total, unit, state.model, function (key) {
-      state.model = state.model === key ? "" : key;
-      el.model.value = state.model;
-      state.page = 0;
-      renderAll();
-    });
-    renderTopList(el.projects, projectItems, total, unit, state.project, function (key) {
-      state.project = state.project === key ? "" : key;
-      el.project.value = state.project;
-      state.page = 0;
-      renderAll();
-    });
+    }), unit).slice(0, 8);
+    renderTopList(el.models, modelItems, total, unit, state.model, pickModel);
+    renderTopList(el.projects, projectItems, total, unit, state.project, pickProject);
   }
 
   function columnFmt(column, value) {
@@ -1961,8 +2270,13 @@ try {
           } else if (column.key === "cost_equiv_usd") {
             td.textContent = fmtCost(value);
           } else if (column.type === "num") {
-            td.textContent = columnFmt(column, value);
-            if (!number(value)) td.classList.add("zero");
+            if (value === null || value === undefined) {
+              td.textContent = "—";
+              td.classList.add("zero");
+            } else {
+              td.textContent = columnFmt(column, value);
+              if (!number(value)) td.classList.add("zero");
+            }
           } else {
             td.textContent = value;
           }
@@ -2014,11 +2328,15 @@ try {
       return copy;
     });
     creditRowsFor().forEach(function (row) {
+      var qoder = row.source === "qoder";
       rows.push({
-        day: row.day, source: "qoder", model: row.model, project: row.project,
+        day: row.day, source: row.source, model: row.model, project: row.project,
         unit: "credit", unitLabel: "credits",
-        credits: row.credits, free_credits: row.free_credits,
-        credit_requests: row.requests, free_requests: row.free_requests
+        credits: row.credits,
+        free_credits: qoder ? row.free_credits : null,
+        credit_requests: qoder ? row.requests : null,
+        free_requests: qoder ? row.free_requests : null,
+        credit_sessions: qoder ? null : row.requests
       });
     });
     return rows.concat(estimateRows());
@@ -2028,11 +2346,15 @@ try {
     var units = new Set();
     if (hasTokenSelected()) units.add("token");
     if (hasCreditsSelected()) units.add("credit");
-    if (hasEstimateSelected() || (state.shadow && hasCreditsSelected())) units.add("est");
+    if (hasEstimateSelected() || hasTraeEstimateSelected() || hasQoderShadowSelected()) {
+      units.add("est");
+    }
     return units;
   }
 
-  function reportColumns(units) {
+  function reportColumns(units, creditSources) {
+    var qoderCredit = creditSources.indexOf("qoder") >= 0;
+    var traeCredit = creditSources.indexOf("trae-cn") >= 0;
     var columns = [
       { key: "day", label: "日期", type: "text" },
       { key: "source", label: "Agent", type: "text" }
@@ -2048,18 +2370,26 @@ try {
       columns.push({ key: "turns", label: "轮次", type: "num", unit: "token" });
     }
     if (units.has("credit")) {
-      columns.push({ key: "credits", label: "billable credits", type: "num",
+      columns.push({ key: "credits", label: "credits", type: "num",
                      unit: "credit", fmt: fmtCredits });
-      columns.push({ key: "free_credits", label: "免费 credits", type: "num",
-                     unit: "credit", fmt: fmtCredits });
-      columns.push({ key: "credit_requests", label: "billable 请求", type: "num", unit: "credit" });
-      columns.push({ key: "free_requests", label: "免费请求", type: "num", unit: "credit" });
+      if (qoderCredit) {
+        columns.push({ key: "free_credits", label: "免费 credits", type: "num",
+                       unit: "credit", fmt: fmtCredits });
+        columns.push({ key: "credit_requests", label: "请求", type: "num",
+                       unit: "credit", fmt: fmtInt });
+        columns.push({ key: "free_requests", label: "免费请求", type: "num",
+                       unit: "credit", fmt: fmtInt });
+      }
+      if (traeCredit) {
+        columns.push({ key: "credit_sessions", label: "会话", type: "num",
+                       unit: "credit", fmt: fmtInt });
+      }
     }
     if (units.has("est")) {
       columns.push({ key: "est_input", label: "est 输入", type: "num", unit: "est" });
       columns.push({ key: "est_output", label: "est 输出", type: "num", unit: "est" });
       columns.push({ key: "est_total", label: "est 合计", type: "num", unit: "est" });
-      columns.push({ key: "est_requests", label: "请求", type: "num", unit: "est" });
+      columns.push({ key: "est_requests", label: "est 请求", type: "num", unit: "est" });
     }
     if (units.has("token") && COST_KNOWN) {
       columns.push({ key: "cost_equiv_usd", label: "等价成本", type: "num", unit: "token" });
@@ -2069,32 +2399,46 @@ try {
 
   function tableInfo(rows, units) {
     var tokens = 0;
-    var credits = 0;
+    var creditsBySource = {};
     var traeEst = 0;
     var shadowEst = 0;
     rows.forEach(function (row) {
-      if (row.unit === "token") tokens += number(row.total);
-      else if (row.unit === "credit") credits += number(row.credits);
-      else if (row.unitLabel === "qoder 影子 est") shadowEst += number(row.est_total);
-      else traeEst += number(row.est_total);
+      if (row.unit === "token") {
+        tokens += number(row.total);
+      } else if (row.unit === "credit") {
+        if (!creditsBySource[row.source]) {
+          creditsBySource[row.source] = { credits: 0, requests: 0 };
+        }
+        creditsBySource[row.source].credits += number(row.credits);
+        creditsBySource[row.source].requests +=
+          number(row.source === "trae-cn" ? row.credit_sessions : row.credit_requests);
+      } else if (row.unitLabel === "qoder 影子 est") {
+        shadowEst += number(row.est_total);
+      } else {
+        traeEst += number(row.est_total);
+      }
     });
     var parts = [fmtInt(rows.length) + " 行"];
     if (units.has("token")) parts.push(fmtInt(tokens) + " tokens");
-    if (units.has("credit")) parts.push("billable " + fmtCredits(credits) + " credits");
+    Object.keys(creditsBySource).sort().forEach(function (source) {
+      var item = creditsBySource[source];
+      parts.push(sourceLabel(source) + " " + fmtCredits(item.credits) + " credits · " +
+        fmtInt(item.requests) + " " + creditRequestLabel(source));
+    });
     if (shadowEst > 0) parts.push("影子 est " + fmtInt(shadowEst) + "（不可相加）");
     if (traeEst > 0) parts.push("trae 弱 est " + fmtInt(traeEst) + "（不可相加）");
     return parts.join(" · ");
   }
 
   function renderShadowNote() {
-    if (!hasCreditsSelected() || !state.shadow) {
+    if (!hasQoderShadowSelected()) {
       el.shadowNote.hidden = true;
       return;
     }
     el.shadowNote.hidden = false;
-    el.shadowNote.textContent = "影子 est 由转录文本与 context_usage_ratio 推算（" +
+    el.shadowNote.textContent = "Qoder 影子 est 由转录文本与 context_usage_ratio 推算（" +
       EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 聚合；仅覆盖带 ratio 的请求，" +
-      "不可与 credits 相加。";
+      "不可与 credits 相加。Trae 弱 est 是另一套影子，二者不能合并。";
   }
 
   function renderReport() {
@@ -2103,9 +2447,10 @@ try {
     renderTopLists();
     var units = activeUnits();
     var rows = reportRows();
+    var creditSources = selectedCreditAgents();
     renderDataTable({
       thead: el.thead, tbody: el.tbody, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
-      prev: el.prev, next: el.next, columns: reportColumns(units), rows: rows,
+      prev: el.prev, next: el.next, columns: reportColumns(units, creditSources), rows: rows,
       emptyText: "无匹配数据",
       info: function (all) { return tableInfo(all, units); }
     });
@@ -2127,7 +2472,7 @@ try {
   }
 
   function renderActivity() {
-    if (!hasCreditsSelected() || !ACTIVITY.length) return;
+    if (!state.agents.has("qoder") || !ACTIVITY.length) return;
     var rows = filteredActivity();
     var totals = emptyActivityTotals();
     rows.forEach(function (row) {
@@ -2385,8 +2730,10 @@ try {
     var classify = document.createElement("p");
     classify.textContent = "Agent 可多选：Token 计费（" +
       (TOKEN_AGENTS.length ? TOKEN_AGENTS.join(" / ") : "无数据") +
-      "）与 Credits 计费（Qoder）分别按各自单位汇总，同一页面并列展示但不跨单位相加；" +
-      "Qoder 的影子 token 与 Trae CN 的弱估算单独归入 est，同样不可相加。";
+      "）与 Credits 计费（" +
+      (CREDIT_AGENTS.length ? CREDIT_AGENTS.join(" / ") : "无数据") +
+      "）分别按各自单位汇总，同一页面并列展示但不跨单位相加；" +
+      "Qoder 影子 token 与 Trae CN 弱估算归入 est，同样不可相加。";
     el.footer.appendChild(classify);
     if (QODER_TOKEN_ROWS.length) {
       var history = document.createElement("p");
@@ -2398,9 +2745,30 @@ try {
     }
     if (CREDIT_ROWS.length) {
       var creditNote = document.createElement("p");
-      creditNote.textContent = "Qoder credits 为服务端每请求计费真值；免费 credits 不计配额；" +
-        "余额来自本地日志快照；credits、估算与活动口径不同，不可相加。";
+      creditNote.textContent = "Credits 按 Agent 分列：Qoder 为服务端逐请求计费真值，" +
+        "Trae CN 为服务端会话级计费真值；不同 Agent 的 credits 不可相加；" +
+        "免费 credits 仅 Qoder 提供；Qoder 余额来自本地日志快照。";
       el.footer.appendChild(creditNote);
+    }
+    var traeCreditRows = CREDIT_ROWS.filter(function (row) {
+      return row.source === "trae-cn";
+    });
+    var traeCov = COVERAGE["trae-cn.credits"];
+    if (traeCreditRows.length || traeCov) {
+      var traeCreditNote = document.createElement("p");
+      var bits = ["Trae credits 来源：本机 opt-in API 同步"];
+      if (traeCov && traeCov.last_sync_at) {
+        bits.push("最近成功同步 " + fmtDateTime(traeCov.last_sync_at));
+      } else {
+        bits.push("尚未同步");
+      }
+      bits.push("本次模式 " + (traeCov && traeCov.refresh_mode
+        ? traeCov.refresh_mode : "—"));
+      bits.push("usage html 默认刷新，失败时回退缓存");
+      bits.push("不保存 prompt/正文");
+      bits.push("Trae API 无 project 字段，项目为 hook 尽力映射");
+      traeCreditNote.textContent = bits.join("；") + "。";
+      el.footer.appendChild(traeCreditNote);
     }
     if (EST.length) {
       var estNote = document.createElement("p");
@@ -2415,9 +2783,15 @@ try {
       el.footer.appendChild(traeNote);
     }
     var scope = document.createElement("p");
+    var qoderCreditRows = CREDIT_ROWS.filter(function (row) {
+      return row.source === "qoder";
+    }).length;
     scope.textContent = "数据范围 " + (DATA_SINCE || "—") + " ~ " + (DATA_UNTIL || "—") +
       " · " + fmtInt(ROWS.length) + " 行 token 聚合" +
-      (CREDIT_ROWS.length ? " · " + fmtInt(CREDIT_ROWS.length) + " 行 credits 聚合" : "") +
+      (CREDIT_ROWS.length
+        ? " · " + fmtInt(CREDIT_ROWS.length) + " 行 credits 聚合（Qoder " +
+          fmtInt(qoderCreditRows) + " / Trae CN " + fmtInt(traeCreditRows.length) + "）"
+        : "") +
       (ACTIVITY.length ? " · " + fmtInt(ACTIVITY.length) + " 行活动聚合" : "") +
       (EST.length ? " · " + fmtInt(EST.length) + " 行估算聚合" : "") +
       (TRAE_EST.length ? " · " + fmtInt(TRAE_EST.length) + " 行 Trae 弱估算聚合" : "") +
@@ -2450,6 +2824,7 @@ try {
   function renderAll() {
     syncShell();
     renderCoverage();
+    renderTraeStatus();
     renderReport();
   }
 

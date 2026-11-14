@@ -13,7 +13,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import __version__, scheduler, trae_hooks
+from . import __version__, scheduler, trae_credits, trae_hooks
 from .aggregation import (DIMENSIONS, aggregate, match, merge_records, missing_days,
                           period_label)
 from .collectors import (EST_FACTOR_VERSION, TRAE_EST_SOURCE, TRAE_EST_VERSION,
@@ -25,9 +25,14 @@ from .models import ACTIVITY_FIELDS, FIELDS, Activity, SourceResult
 from .pricing import cost_for_record, normalize_model
 from .qoder_models import qoder_model_label
 from .store import SqliteStore
+from .trae_credits import (TRAE_CREDITS_SOURCE, can_reuse_last_sync,
+                           credits_coverage, jwt_file_info, report_window,
+                           sync_trae_credits)
 
 SOURCES = ("claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn")
+CREDIT_SOURCES = ("qoder", "trae-cn")
 EST_SOURCES = {"qoder": "qoder.est", "trae-cn": TRAE_EST_SOURCE}
+TRAE_REMOTE_DAYS = 30
 ACTIVITY_SOURCE = "qoder.activity"
 ACTIVITY_CURSOR_KEY = "activity_cursor:qoder"
 ACTIVITY_STALL_KEY = "activity_stall:qoder"
@@ -38,8 +43,8 @@ HEADERS = {
     "day": "date", "week": "week", "month": "month", "source": "source",
     "model": "model", "project": "project", "session": "session",
 }
-NO_TOKEN_NOTICE = ("无 token 真值：Trae CN（仅 hook 字符弱估算，见 usage est --source trae-cn）、"
-                   "ChatGPT 桌面端（无本地数据）")
+NO_TOKEN_NOTICE = ("无 token 真值：Trae CN（credits 为服务端会话级真值；token 仅 hook 字符弱估算，"
+                   "见 usage est --source trae-cn）、ChatGPT 桌面端（无本地数据）")
 TRAE_EST_NOTICE = ("Trae CN 弱估算（%s）：仅 hook 可见内容，不含系统提示/工具定义，"
                    "误差可能数倍且方向不定，不可与真值/额度相加" % TRAE_EST_VERSION)
 COST_NOTICE = "cost_equiv_usd 为按 API 价折算的等价成本，非实付；unknown 表示无价格表匹配"
@@ -446,11 +451,26 @@ def _refresh_trae_est_if_stale(store) -> bool:
     return True
 
 
+def _remote_window(args) -> tuple[str, str]:
+    if args.since and (args.days is not None or args.full):
+        raise ValueError("--since 不能与 --days/--full 同时使用")
+    days = args.days if args.days is not None else (
+        365 if getattr(args, "full", False) else TRAE_REMOTE_DAYS)
+    start, end = report_window(args.since, None, days)
+    return start.isoformat(), end.isoformat()
+
+
 def cmd_sync(args):
     if args.stateless:
         print("sync 需要写入数据库，不能与 --stateless 同时使用", file=sys.stderr)
         return 2
     since = parse_day(args.since) if args.since else None
+    wanted = args.source or list(SOURCES)
+    remote = bool(getattr(args, "remote", False)) and "trae-cn" in wanted
+    if getattr(args, "remote", False) and not remote:
+        print("note: --remote 仅影响 trae-cn；其他 source 仍为本地同步",
+              file=sys.stderr)
+    window = _remote_window(args) if remote else None
     if args.dry_run:
         for result in _source_results(args.source):
             if result.name == ACTIVITY_SOURCE:
@@ -470,11 +490,31 @@ def cmd_sync(args):
             tokens = sum(rec.counts.total() for rec in records)
             print("%s: %d records, %s tokens, files=%d, status=%s" %
                   (result.name, len(records), _fmt_int(tokens), result.files, _status(result)))
+        if remote:
+            info = jwt_file_info(args.jwt_file)
+            print("trae-cn.credits: remote plan %s..%s jwt=%s（exists=%s）→ POST %s" %
+                  (window[0], window[1], info["source"], info["exists"],
+                   trae_credits.API_URL))
+            print("dry-run: 未读取 JWT、未发起网络请求、未写库")
         return 0
 
     store = SqliteStore(db_path())
     try:
         stats = _sync_into(store, sources=args.source, full=args.full, since=since)
+        if remote:
+            try:
+                result = sync_trae_credits(store, window[0], window[1],
+                                          jwt_file=args.jwt_file)
+            except (trae_credits.TraeCreditsError, ValueError, OSError) as exc:
+                print("trae-cn.credits: sync failed（%s）；本地 hook 估算已保留" % exc,
+                      file=sys.stderr)
+                return 1
+            print("trae-cn.credits: refreshed %d sessions / %.2f credits（%s..%s）" %
+                  (result.sessions, result.credits, result.since, result.until))
+            if result.skipped:
+                print("trae-cn.credits: 跳过 %d 条字段不完整的会话" % result.skipped)
+            if result.jwt_warning:
+                print("warning: %s" % result.jwt_warning, file=sys.stderr)
     finally:
         store.close()
     print("synced %d records -> %s" % (stats["total"], db_path()))
@@ -835,41 +875,42 @@ def _quota_latest_rows(quota) -> dict:
     return result
 
 
+def _credit_source(row) -> str:
+    return getattr(row, "source", None) or "qoder"
+
+
 def _credit_daily_from_rows(credits, quota, since, until) -> list[dict]:
-    buckets: dict[str, dict] = {}
+    buckets: dict[tuple, dict] = {}
+
+    def bucket(day, source):
+        return buckets.setdefault((day, source), {
+            "day": day, "source": source, "credits": 0.0, "requests": 0,
+            "free_credits": 0.0, "snapshots": 0})
+
     for row in credits:
         if since and row.day < since:
             continue
         if until and row.day > until:
             continue
-        item = buckets.setdefault(row.day, {
-            "day": row.day, "credits": 0.0, "requests": 0,
-            "free_credits": 0.0, "snapshots": 0})
+        item = bucket(row.day, _credit_source(row))
         if row.billable:
             item["credits"] += row.credits
             item["requests"] += 1
         else:
             item["free_credits"] += row.credits
+    snapshots: dict[str, set] = {}
     for row in quota:
         if since and row.day < since:
             continue
         if until and row.day > until:
             continue
-        buckets.setdefault(row.day, {
-            "day": row.day, "credits": 0.0, "requests": 0,
-            "free_credits": 0.0, "snapshots": 0})
-    seen_snapshots = set()
-    for row in quota:
-        key = (row.request_id, row.day)
-        if key in seen_snapshots:
-            continue
-        seen_snapshots.add(key)
-        item = buckets.get(row.day)
-        if item is not None:
-            item["snapshots"] += 1
+        bucket(row.day, "qoder")
+        snapshots.setdefault(row.day, set()).add(row.request_id)
+    for day, request_ids in snapshots.items():
+        bucket(day, "qoder")["snapshots"] = len(request_ids)
     rows = []
-    for day in sorted(buckets):
-        item = buckets[day]
+    for key in sorted(buckets):
+        item = buckets[key]
         item["credits"] = round(item["credits"], 6)
         item["free_credits"] = round(item["free_credits"], 6)
         rows.append(item)
@@ -877,17 +918,31 @@ def _credit_daily_from_rows(credits, quota, since, until) -> list[dict]:
 
 
 def _credit_totals_from_rows(credits, since, until) -> dict:
-    selected = [row for row in credits
-                if (not since or row.day >= since) and (not until or row.day <= until)]
-    billable = [row for row in selected if row.billable]
-    return {
-        "credits": round(sum(row.credits for row in billable), 6),
-        "free_credits": round(sum(row.credits for row in selected
-                                  if not row.billable), 6),
-        "requests": len(selected),
-        "days": len({row.day for row in selected}),
-        "models": len({row.model for row in selected}),
-    }
+    totals: dict[str, dict] = {}
+    days: dict[str, set] = {}
+    models: dict[str, set] = {}
+    for row in credits:
+        if since and row.day < since:
+            continue
+        if until and row.day > until:
+            continue
+        source = _credit_source(row)
+        item = totals.setdefault(source, {
+            "credits": 0.0, "free_credits": 0.0, "requests": 0,
+            "days": 0, "models": 0})
+        if row.billable:
+            item["credits"] += row.credits
+        else:
+            item["free_credits"] += row.credits
+        item["requests"] += 1
+        days.setdefault(source, set()).add(row.day)
+        models.setdefault(source, set()).add(row.model)
+    for source, item in totals.items():
+        item["credits"] = round(item["credits"], 6)
+        item["free_credits"] = round(item["free_credits"], 6)
+        item["days"] = len(days.get(source, ()))
+        item["models"] = len(models.get(source, ()))
+    return totals
 
 
 def _credit_rows_from_rows(credits, since, until) -> list[dict]:
@@ -897,10 +952,11 @@ def _credit_rows_from_rows(credits, since, until) -> list[dict]:
             continue
         if until and row.day > until:
             continue
-        model = qoder_model_label(row.model)
+        source = _credit_source(row)
+        model = qoder_model_label(row.model) if source == "qoder" else row.model
         project = row.project or "-"
-        item = buckets.setdefault((row.day, model, project), {
-            "day": row.day, "model": model, "project": project,
+        item = buckets.setdefault((row.day, source, model, project), {
+            "day": row.day, "source": source, "model": model, "project": project,
             "credits": 0.0, "free_credits": 0.0,
             "requests": 0, "free_requests": 0})
         if row.billable:
@@ -919,23 +975,40 @@ def _credit_rows_from_rows(credits, since, until) -> list[dict]:
 
 
 def _write_credit_rows(rows, totals, quota, fmt: str):
-    headers = ["day", "credits", "requests", "free_credits", "snapshots"]
     if fmt == "json":
         print(json.dumps({"days": rows, "totals": totals, "quota": quota,
                           "factor_version": EST_FACTOR_VERSION},
                          ensure_ascii=False, indent=2))
         return
-    table = []
-    for row in rows:
-        table.append([row["day"], "%.2f" % row["credits"], str(row["requests"]),
-                      "%.2f" % row["free_credits"], str(row["snapshots"])])
-    widths = [max(len(headers[i]), *(len(line[i]) for line in table)) if table
-              else len(headers[i]) for i in range(len(headers))]
-    print("".join(header.ljust(widths[i] + 2) for i, header in enumerate(headers)))
-    for line in table:
-        print("".join(value.ljust(widths[i] + 2) for i, value in enumerate(line)))
-    print("total: %.2f credits / %d requests（免费 %.2f，不计配额）"
-          % (totals["credits"], totals["requests"], totals["free_credits"]))
+    for source in sorted({row["source"] for row in rows}):
+        source_rows = [row for row in rows if row["source"] == source]
+        if source == "trae-cn":
+            headers = ["day", "credits", "sessions"]
+            table = [[row["day"], "%.2f" % row["credits"], str(row["requests"])]
+                     for row in source_rows]
+        else:
+            headers = ["day", "credits", "requests", "free_credits", "snapshots"]
+            table = [[row["day"], "%.2f" % row["credits"], str(row["requests"]),
+                      "%.2f" % row["free_credits"], str(row["snapshots"])]
+                     for row in source_rows]
+        if len({row["source"] for row in rows}) > 1:
+            print("source:", source)
+        widths = [max(len(headers[i]), *(len(line[i]) for line in table)) if table
+                  else len(headers[i]) for i in range(len(headers))]
+        print("".join(header.ljust(widths[i] + 2)
+                      for i, header in enumerate(headers)))
+        for line in table:
+            print("".join(value.ljust(widths[i] + 2)
+                          for i, value in enumerate(line)))
+        item = totals.get(source) or {}
+        if source == "trae-cn":
+            print("total %s: %.2f credits / %d 会话" %
+                  (source, item.get("credits", 0.0), item.get("requests", 0)))
+        else:
+            print("total %s: %.2f credits / %d requests（免费 %.2f，不计配额）" %
+                  (source, item.get("credits", 0.0), item.get("requests", 0),
+                   item.get("free_credits", 0.0)))
+        print()
 
 
 def _print_quota(quota: dict):
@@ -957,26 +1030,42 @@ def _print_quota(quota: dict):
 
 def cmd_credits(args):
     since, until = _effective_range(args)
+    wanted = [args.source] if getattr(args, "source", None) else list(CREDIT_SOURCES)
+    credits = []
+    quota_rows = []
+    quota = {}
     if args.stateless:
-        result = scan_qoder_credit_sources(source_home())
-        daily = _credit_daily_from_rows(result.credits, result.quota, since, until)
-        totals = _credit_totals_from_rows(result.credits, since, until)
-        quota = _quota_latest_rows(result.quota)
-        for note in result.notes:
-            print("note:", note, file=sys.stderr)
+        if "qoder" in wanted:
+            result = scan_qoder_credit_sources(source_home())
+            credits = result.credits
+            quota_rows = result.quota
+            quota = _quota_latest_rows(result.quota)
+            for note in result.notes:
+                print("note:", note, file=sys.stderr)
+        if "trae-cn" in wanted:
+            print("note: Trae credits 需要 SQLite 缓存；--stateless 不读库",
+                  file=sys.stderr)
+        daily = _credit_daily_from_rows(credits, quota_rows, since, until)
+        totals = _credit_totals_from_rows(credits, since, until)
     else:
         store = SqliteStore(db_path())
         try:
-            _refresh_credits_if_stale(store)
-            daily = store.credit_daily(since, until)
-            totals = store.credits_totals(since, until)
-            quota = store.latest_quota()
+            if "qoder" in wanted:
+                _refresh_credits_if_stale(store)
+            source = wanted[0] if len(wanted) == 1 else None
+            daily = store.credit_daily(since, until, source=source)
+            if source is None:
+                daily = [row for row in daily if row["source"] in wanted]
+            totals = store.credits_totals(since, until, source=source)
+            totals = {name: item for name, item in totals.items() if name in wanted}
+            quota = store.latest_quota() if "qoder" in wanted else {}
         finally:
             store.close()
     _write_credit_rows(daily, totals, quota, args.format)
-    print("credits 为服务端每请求计费真值（billable=1 计入配额）；非 token，不可与 token 相加",
-          file=sys.stderr)
-    _print_quota(quota)
+    print("credits 为服务端计费真值：Qoder 逐请求、Trae CN 会话级；"
+          "不同 Agent 不可相加；非 token，不可与 token 相加", file=sys.stderr)
+    if "qoder" in wanted:
+        _print_quota(quota)
     if not daily:
         print("no credits data in range", file=sys.stderr)
     return 0
@@ -1038,7 +1127,9 @@ def _label_est_rows(rows) -> None:
 
 def _label_credit_rows(rows) -> None:
     for row in rows:
-        row["model"] = qoder_model_label(row.get("model"))
+        row["source"] = row.get("source") or "qoder"
+        if row["source"] == "qoder":
+            row["model"] = qoder_model_label(row.get("model"))
         row["project"] = row.get("project") or "-"
 
 
@@ -1116,18 +1207,42 @@ def cmd_est(args):
     return 0
 
 
+def _credit_sources_for_filters(filters) -> list[str]:
+    source = filters.get("source")
+    if source is None:
+        return list(CREDIT_SOURCES)
+    return [source] if source in CREDIT_SOURCES else []
+
+
+def _empty_est_totals() -> dict:
+    return {"est_input": 0, "est_output": 0, "requests": 0, "days": 0,
+            "models": 0, "missing_ratio": 0}
+
+
 def _load_credit_payload(args, since, until, filters):
-    if filters.get("source") not in (None, "qoder"):
-        return None, {}, [], [], {}, EST_FACTOR_VERSION
-    if args.stateless or not os.path.exists(db_path()):
-        result = scan_qoder_credit_sources(source_home())
-        days = _credit_daily_from_rows(result.credits, result.quota, since, until)
-        totals = _credit_totals_from_rows(result.credits, since, until)
-        credit_rows = _credit_rows_from_rows(result.credits, since, until)
-        quota = _quota_latest_rows(result.quota)
-        est_rows = _aggregate_estimates(result.estimates, ("day", "model", "project"),
+    wanted = _credit_sources_for_filters(filters)
+    empty = {"days": [], "rows": [], "totals": {}}
+    if not wanted:
+        return empty, {}, [], [], _empty_est_totals(), EST_FACTOR_VERSION
+    stateless = args.stateless or not os.path.exists(db_path())
+    if stateless:
+        credits = []
+        quota_rows = []
+        estimates = []
+        if "qoder" in wanted:
+            result = scan_qoder_credit_sources(source_home())
+            credits = result.credits
+            quota_rows = result.quota
+            estimates = result.estimates
+            for note in result.notes:
+                print("note:", note, file=sys.stderr)
+        days = _credit_daily_from_rows(credits, quota_rows, since, until)
+        totals = _credit_totals_from_rows(credits, since, until)
+        credit_rows = _credit_rows_from_rows(credits, since, until)
+        quota = _quota_latest_rows(quota_rows) if "qoder" in wanted else {}
+        est_rows = _aggregate_estimates(estimates, ("day", "model", "project"),
                                         since, until)
-        selected = [row for row in result.estimates
+        selected = [row for row in estimates
                     if (not since or row.day >= since) and (not until or row.day <= until)]
         est_totals = {
             "est_input": sum(row.est_input for row in selected),
@@ -1140,15 +1255,25 @@ def _load_credit_payload(args, since, until, filters):
     else:
         store = SqliteStore(db_path())
         try:
-            _refresh_credits_if_stale(store)
-            days = store.credit_daily(since, until)
-            totals = store.credits_totals(since, until)
-            credit_rows = store.credit_rows(since, until)
+            if "qoder" in wanted:
+                _refresh_credits_if_stale(store)
+            source = wanted[0] if len(wanted) == 1 else None
+            allowed = set(wanted)
+            days = [row for row in store.credit_daily(since, until, source=source)
+                    if row["source"] in allowed]
+            totals = {name: item for name, item in
+                      store.credits_totals(since, until, source=source).items()
+                      if name in allowed}
+            credit_rows = [row for row in store.credit_rows(since, until, source=source)
+                           if row["source"] in allowed]
             _label_credit_rows(credit_rows)
-            quota = store.latest_quota()
-            est_rows = store.est_rows(since, until, ("day", "model", "project"))
-            _label_est_rows(est_rows)
-            est_totals = store.est_totals(since, until)
+            quota = store.latest_quota() if "qoder" in wanted else {}
+            if "qoder" in wanted:
+                est_rows = store.est_rows(since, until, ("day", "model", "project"))
+                _label_est_rows(est_rows)
+                est_totals = store.est_totals(since, until)
+            else:
+                est_rows, est_totals = [], _empty_est_totals()
         finally:
             store.close()
     return ({"days": days, "rows": credit_rows, "totals": totals}, quota,
@@ -1195,11 +1320,85 @@ def cmd_html(args):
         filters["source"] = args.source
     if getattr(args, "model", None):
         filters["model"] = args.model
+
+    trae_in_scope = filters.get("source") in (None, "trae-cn")
+    trae_mode = "disabled"
+    refresh_error = None
+    refresh_result = None
+    cached_at = None
+    if trae_in_scope:
+        start_day, end_day = report_window(since, until, TRAE_REMOTE_DAYS)
+        requested = (start_day.isoformat(), end_day.isoformat())
+        if args.stateless:
+            trae_mode = "stateless"
+            print("trae-cn.credits: stateless，无 SQLite 缓存", file=sys.stderr)
+        elif args.offline:
+            trae_mode = "offline"
+        else:
+            trae_mode = "auto"
+            if not os.path.exists(db_path()):
+                refresh_error = "数据库不存在，未刷新；先运行 usage sync"
+            else:
+                store = SqliteStore(db_path())
+                try:
+                    _refresh_trae_est_if_stale(store)
+                    if (args.max_age > 0 and can_reuse_last_sync(
+                            store, requested[0], requested[1], args.max_age)):
+                        print("trae-cn.credits: cache fresh（max-age %ss），跳过刷新"
+                              % args.max_age, file=sys.stderr)
+                    else:
+                        try:
+                            refresh_result = sync_trae_credits(
+                                store, requested[0], requested[1],
+                                jwt_file=args.jwt_file)
+                        except (trae_credits.TraeCreditsError, ValueError,
+                                OSError) as exc:
+                            refresh_error = str(exc)
+                    state = store.source_state(TRAE_CREDITS_SOURCE) or {}
+                    cached_at = state.get("last_sync_at")
+                finally:
+                    store.close()
+        if trae_mode == "offline" and os.path.exists(db_path()):
+            store = SqliteStore(db_path())
+            try:
+                state = store.source_state(TRAE_CREDITS_SOURCE) or {}
+                cached_at = state.get("last_sync_at")
+            finally:
+                store.close()
+        if refresh_result is not None:
+            print("trae-cn.credits: refreshed %d sessions / %.2f credits（%s..%s）" %
+                  (refresh_result.sessions, refresh_result.credits,
+                   refresh_result.since, refresh_result.until), file=sys.stderr)
+            if refresh_result.jwt_warning:
+                print("warning: %s" % refresh_result.jwt_warning, file=sys.stderr)
+        elif refresh_error:
+            print("trae-cn.credits: refresh failed, using cached data from %s（%s）" %
+                  (cached_at or "无", refresh_error), file=sys.stderr)
+        elif trae_mode == "offline":
+            print("trae-cn.credits: offline cache from %s" % (cached_at or "无"),
+                  file=sys.stderr)
+
     records, activities, coverage = _load_records(args, since, until, filters)
     credit_data, quota, credit_rows, est_rows, est_totals, factor_version = \
         _load_credit_payload(args, since, until, filters)
     trae_rows, trae_totals, trae_factor = _load_trae_est_payload(
         args, since, until, filters)
+    exit_code = 0
+    if trae_in_scope:
+        coverage = coverage or {}
+        cov_store = None
+        if not args.stateless and os.path.exists(db_path()):
+            cov_store = SqliteStore(db_path())
+        try:
+            start_day, end_day = report_window(since, until, TRAE_REMOTE_DAYS)
+            coverage[TRAE_CREDITS_SOURCE] = credits_coverage(
+                cov_store, trae_mode, refresh_error,
+                start_day.isoformat(), end_day.isoformat())
+        finally:
+            if cov_store is not None:
+                cov_store.close()
+        if args.strict_refresh and trae_mode == "auto" and refresh_error:
+            exit_code = 1
     dims = ("day", "source", "model", "project")
     rows = aggregate(records, dims)
     activity_rows = _filter_activity(activities, since, until, filters)
@@ -1231,7 +1430,7 @@ def cmd_html(args):
           (len(rows), len(records), _fmt_int(total), span))
     if args.open:
         webbrowser.open(Path(output).as_uri())
-    return 0
+    return exit_code
 
 
 def cmd_top(args):
@@ -1311,10 +1510,17 @@ def cmd_doctor(args):
                 print("activity: days=%d rows=%d sessions=%d prompts=%d tool_calls=%d" %
                       (activity["days"], store.activity_count(), activity["sessions"],
                        activity["prompts"], activity["tool_calls"]))
-            print("credits: requests=%d quota_snapshots=%d est_rows=%d missing_ratio=%d "
-                  "trae_est_rows=%d" %
-                  (store.credit_count(), store.quota_count(), store.est_count(),
+            print("credits: qoder_requests=%d trae_sessions=%d quota_snapshots=%d "
+                  "est_rows=%d missing_ratio=%d trae_est_rows=%d" %
+                  (store.credit_count("qoder"), store.credit_count("trae-cn"),
+                   store.quota_count(), store.est_count(),
                    store.est_missing_ratio(), store.est_count(TRAE_EST_SOURCE)))
+            trae_state = store.source_state(TRAE_CREDITS_SOURCE)
+            if trae_state:
+                print("trae-cn.credits: status=%s sessions=%d last_sync=%s error=%s" %
+                      (trae_state.get("status"), store.credit_count("trae-cn"),
+                       trae_state.get("last_sync_at") or "-",
+                       trae_state.get("last_error") or "-"))
             latest_quota = store.latest_quota().get("add_on")
             if latest_quota:
                 age_h = (time.time() - latest_quota["ts"]) / 3600
@@ -1341,6 +1547,14 @@ def cmd_doctor(args):
             store.close()
         else:
             print("DB 不存在（尚未 sync/backfill）")
+
+    jwt = jwt_file_info()
+    mode = "%04o" % jwt["mode"] if jwt.get("mode") is not None else "-"
+    print("trae-cn jwt: source=%s path=%s exists=%s readable=%s mode=%s size=%s" %
+          (jwt["source"], jwt.get("path") or "-", jwt["exists"], jwt["readable"],
+           mode, jwt.get("size") if jwt.get("size") is not None else "-"))
+    if jwt.get("warning"):
+        print("warning: %s" % jwt["warning"])
 
     hook = trae_hooks.status("global", home=source_home())
     installed = sum(hook["hook_groups"].values())
@@ -1597,6 +1811,11 @@ def build_parser():
     sync = sub.add_parser("sync")
     sync.add_argument("--source", action="append", choices=SOURCES)
     sync.add_argument("--since")
+    sync.add_argument("--days", type=int,
+                      help="Trae credits 远程窗口天数（默认 30）")
+    sync.add_argument("--jwt-file")
+    sync.add_argument("--remote", action="store_true",
+                      help="Trae CN credits 通过 opt-in API 同步（仅 trae-cn）")
     sync.add_argument("--full", action="store_true")
     sync.add_argument("--dry-run", action="store_true")
     sync.set_defaults(func=cmd_sync)
@@ -1649,6 +1868,8 @@ def build_parser():
     credits.add_argument("--range")
     credits.add_argument("--since")
     credits.add_argument("--until")
+    credits.add_argument("--source", choices=CREDIT_SOURCES,
+                         help="默认汇总 Qoder 与 Trae CN（分列，不可相加）")
     credits.add_argument("--format", choices=["table", "json"], default="table")
     credits.set_defaults(func=cmd_credits)
 
@@ -1670,6 +1891,13 @@ def build_parser():
     html.add_argument("--project")
     html.add_argument("--filter")
     html.add_argument("--live", action="store_true")
+    html.add_argument("--offline", action="store_true",
+                      help="不刷新 Trae credits，只用本地缓存")
+    html.add_argument("--max-age", type=int, default=0,
+                      help="Trae credits 缓存新鲜度秒数；0 表示每次刷新")
+    html.add_argument("--strict-refresh", action="store_true",
+                      help="Trae credits 刷新失败时仍生成报告，但返回非零")
+    html.add_argument("--jwt-file")
     html.add_argument("--output", default="usage-report.html")
     html.add_argument("--open", action="store_true")
     html.set_defaults(func=cmd_html)

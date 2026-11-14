@@ -386,3 +386,42 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
 用 hooks 可见内容做 `trae-cn.est` **弱估算**（只记字符数/事件元数据，不落正文），
 不以 hooks 采 token 真值或额度。安装 hook 需用户批准（全局 `/Users/wayne/.trae-cn/hooks.json`
 或项目级 `<workspace>/.trae/hooks.json`）。仅当未来 Trae 提供用量字段/导出时，才考虑升级为真值轨。
+
+### 6.9 Trae CN credits 数据源与 JWT 形态（2026-11-14，已批准 D1/D2）
+
+> 本节记录 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 实现所依据的接口证据。
+> 探针阶段**没有调用**该接口，也没有把 JWT 内容写入文档/日志；以下为客户端日志 + 竞品实现 + 本机文件形态。
+
+1. **端点**
+   - `POST https://api.trae.cn/trae/api/v1/pay/query_user_usage_group_by_session`
+   - 客户端日志可见该请求（2026-11-14 16:53，HTTP 200）；响应不落盘。
+   - 同族接口 `ide_user_ent_usage` / `web_user_ent_usage` 仍不做（余额/套餐不在首版范围）。
+2. **凭证**
+   - 文件：`~/.trae-cn/trae-jwt-token`，925 B，mode `0600`；内容是 `eyJ...` 开头的**原始 JWT**，
+     不是 JSON；没有换行/前缀。仅检查存在性、大小、权限与前缀。
+   - 请求头 `authorization: Cloud-IDE-JWT <jwt>`；不是 `Bearer`。
+   - 优先级（实现）：`--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > 默认文件。
+   - JWT 过期/401/403 不自动重试，提示重新登录；不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher。
+3. **请求形态**
+   - `content-type: application/json`；`origin: https://www.trae.cn`、`referer: https://www.trae.cn/`；
+     `sec-fetch-dest: empty`、`mode: cors`、`site: same-site`；浏览器 UA（对齐客户端 Web 路由）。
+   - body 关键字段：`start_time` / `end_time`（Unix 秒）、`page_num`（从 1）、`page_size`（实现取 20）。
+   - 实现按 30 天分块，从当前时刻向过去切；每页间隔 0.3s；30s 超时；429/5xx 最多重试 1 次（2s）。
+4. **响应形态**
+   - 列表键：`user_usage_group_by_sessions`（必须是 list）。
+   - 行内关键字段：`session_id`、`usage_time`（秒；>1e11 视为毫秒）、`model_name`、
+     `credits_float`（优先）/ `amount_float`（回退）、可选 `mode`、`user_input_preview`。
+   - 实现只取用量元数据；`user_input_preview` **直接丢弃**，不落库、不进日志/HTML。
+   - 同一会话重复出现时保留 `usage_time` 更新的那条，不求和；跨窗口重拉按
+     `request_id = trae-cn:<session_id>` 幂等覆盖。
+5. **可加性**
+   - 会话级 credits 是服务端计费真值，但**归属 `usage_time` 所在本地日**，不是逐请求日；
+     一个会话跨天无法拆分。
+   - 与 Qoder credits 不是同一厂商/同一计费单位，**不可相加**；与 `trae-cn.est` token 也不可相加。
+6. **失败与缓存**
+   - 整批 fetch 成功后才写库；失败保留旧缓存并更新 `source_state` 错误（不含 JWT）。
+   - `usage html` 默认刷新，失败软回退缓存并在 HTML/命令行标注；`--strict-refresh` 才非 0。
+   - 无后台轮询；只有 `sync --source trae-cn --remote` 与 `usage html`（Trae 在范围内）联网，
+     `report` / `credits` / `doctor` / `live` / 自动同步 / `html --offline` 均离线。
+
+> 该定向例外取代 §6.7 的“维持不做 credits 轴”处置；其余加密库、Keychain、内存扫描结论不变。

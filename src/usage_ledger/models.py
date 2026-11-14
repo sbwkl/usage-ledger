@@ -66,6 +66,7 @@ class Credit:
     session: str
     credits: float
     billable: bool
+    source: str = "qoder"
 
 
 @dataclass
