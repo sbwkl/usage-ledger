@@ -492,10 +492,12 @@ def cmd_sync(args):
                   (result.name, len(records), _fmt_int(tokens), result.files, _status(result)))
         if remote:
             info = jwt_file_info(args.jwt_file)
-            print("trae-cn.credits: remote plan %s..%s jwt=%s（exists=%s）→ POST %s" %
+            print("trae-cn.credits: remote plan %s..%s auth=%s（exists=%s）→ POST %s" %
                   (window[0], window[1], info["source"], info["exists"],
                    trae_credits.API_URL))
-            print("dry-run: 未读取 JWT、未发起网络请求、未写库")
+            if info.get("error"):
+                print("warning: %s" % info["error"])
+            print("dry-run: 未读取登录凭证、未发起网络请求、未写库")
         return 0
 
     store = SqliteStore(db_path())
@@ -1550,9 +1552,11 @@ def cmd_doctor(args):
 
     jwt = jwt_file_info()
     mode = "%04o" % jwt["mode"] if jwt.get("mode") is not None else "-"
-    print("trae-cn jwt: source=%s path=%s exists=%s readable=%s mode=%s size=%s" %
+    print("trae-cn auth: source=%s path=%s exists=%s readable=%s mode=%s size=%s" %
           (jwt["source"], jwt.get("path") or "-", jwt["exists"], jwt["readable"],
            mode, jwt.get("size") if jwt.get("size") is not None else "-"))
+    if jwt.get("error"):
+        print("warning: %s" % jwt["error"])
     if jwt.get("warning"):
         print("warning: %s" % jwt["warning"])
 

@@ -20,12 +20,13 @@
 
 ## 0. v2 变更摘要（相对 v1）
 
-- **D1/D2 已批准**：允许读取本机 JWT 并访问 Trae CN 客户端同源用量接口；允许自动读取 `~/.trae-cn/trae-jwt-token`（0600）。
+- **D1/D2 已批准**：允许读取本机登录凭证并访问 Trae CN 客户端同源用量接口。默认来源为 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5 本地解密）；`~/.trae-cn/trae-jwt-token` 是临时 token，usage 接口返回 401，已不再作为默认（2026-11-15 修正）。
 - **`usage html` 不再始终离线**：只要 Trae 在报告范围内，渲染前默认执行一次 Trae credits 刷新；`--offline` 可跳过。
 - **刷新失败软回退**：默认保留缓存并生成报告，同时在报告和命令行显式标注“刷新失败/数据时间”；`--strict-refresh` 可要求刷新失败即非 0 退出。
 - **静态快照边界**：HTML 是生成时快照；再次双击旧文件不会更新，必须重新运行 `usage html`。
 - **其余命令仍默认离线**：`usage report`、`usage credits`、`usage doctor`、`usage live`、自动同步不触发 Trae 远程调用；`usage sync --source trae-cn --remote` 继续用于手动/回填。
-- **安全边界不变**：JWT 只在刷新进程内读取，不落库/日志/HTML；不保存 prompt/正文/`user_input_preview`；不读 Keychain、不解密 SQLCipher 库。
+- **安全边界不变**：登录凭证只在刷新进程内读取，不落库/日志/HTML；不保存 prompt/正文/`user_input_preview`；不读 Keychain/Cookie、不解密 SQLCipher 库。
+- **v3 凭证修正（2026-11-15）**：默认凭证从临时 token 改为 `storage.json` 的 tc v5 登录凭证；详见 [PROBE.md](PROBE.md) §6.10。
 
 ---
 
@@ -38,7 +39,7 @@
 3. Token 继续作为**影子指标**：保留现有 hook 弱估算 `trae-cn.est`，显式标注“预估、不可与 credits 相加”，不把 API 返回的 token 冒充真值。
 4. 风格与 Qoder 一致：同一套 KPI、图表、Top、明细；多选 Agent 时按 Agent 分列，不做跨单位、跨厂商的静默合计。
 5. 报告取最新：`usage html` 在包含 Trae 时，渲染前默认执行一次 Trae credits 刷新；`--offline` 可跳过。`usage report` / `credits` / `doctor` / 自动同步仍默认离线；`usage sync --source trae-cn --remote` 继续用于手动/回填。
-6. 凭证最小化：只在前台刷新/同步进程内读取本机 JWT；不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher 库、不写日志、不落库、不进 HTML。
+6. 凭证最小化：只在前台刷新/同步进程内读取本机登录凭证；不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher 库、不写日志、不落库、不进 HTML。
 7. 数据可追溯：记录最近同步时间、覆盖区间、会话数、错误；数据缺失时显示“缺少同步/刷新失败”的明确提示，不伪造 0。
 
 ### 1.2 非目标（首版不做）
@@ -47,7 +48,7 @@
 - 不做 Trae 余额/套餐配额 KPI（`ide_user_ent_usage` 等）——首版只做已消费 credits；余额后续可加。
 - 不把 API 的 `input_token/output_token/cache_read_token` 作为 token 真值；首版不落库，避免出现第三套 token 口径。
 - 不做 SQLCipher 解密、内存扫描、进程注入、Keychain 读取、浏览器自动化、网络抓包。
-- 不做 refresh token / 自动登录 / 多账号；JWT 过期后要求用户重新登录 Trae CN。
+- 不做 refresh token / 自动登录 / 多账号；登录凭证过期后要求用户重新登录 Trae CN。
 - 不做后台定时联网；`usage html` 的刷新是命令内的前台同步调用，不是后台任务。现有 `live`/自动刷新逻辑不增加任何远程调用。
 - 不做国际版 Trae；只处理 `api.trae.cn` 的 CN 账号。
 - 不保存 `user_input_preview`、prompt、工具参数、响应正文；只保存用量元数据。
@@ -91,10 +92,10 @@
 | `User/globalStorage/storage.json` | 32 个 key；`iCubeServerData://icube.cloudide` 是权益/商业化配置，无 used/remaining | ❌ |
 | `renderer.log` / `main.log` | 只有 URL + HTTP 200；无响应体；本机未发现 `ICubeUsageService` 余额行 | ❌ |
 | hooks 事件 | 168 + 264 条；只有 session/tool/text 元数据；无 usage/credits/token_usage/quota | ❌ |
-| `~/.trae-cn/trae-jwt-token` | 存在；925 B；权限 0600；内容是 `eyJ...` 开头的原始 JWT，**不是 JSON**；本设计阶段未把内容用于任何请求 | ⚠️ 仅凭证 |
+| `~/.trae-cn/trae-jwt-token` | 存在；925 B；权限 0600；内容是 `eyJ...` 开头的原始 JWT，**不是 JSON**；本设计阶段未把内容用于任何请求 | ⚠️ 临时 token，usage 接口 401；默认来源见 §6.10 |
 | Trae CN 客户端同源 usage 接口 | 客户端日志可见 `query_user_usage_group_by_session` 请求（2026-11-14 16:53，HTTP 200）；竞品已实现请求/响应契约 | ✅ 唯一可行 |
 
-> 说明：探针阶段本机 JWT 文件只做了“存在性/大小/权限/前缀”检查，没有把 token 写入文档、日志或数据库。D1/D2 批准后，实现只在前台刷新进程内读取，仍不落库/日志/HTML。
+> 说明：探针阶段本机 JWT 文件只做了“存在性/大小/权限/前缀”检查，没有把 token 写入文档、日志或数据库。D1/D2 批准后，实现只在前台刷新进程内读取凭证，仍不落库/日志/HTML。该临时 token 不被 usage 接口接受，2026-11-15 起默认改用 `storage.json` 的 tc v5 登录凭证（§6.10）。
 
 ### 3.2 客户端同源接口（竞品证据）
 
@@ -197,11 +198,11 @@ README 原文：
 > “不读取 `/Users/wayne/.trae-cn/trae-jwt-token`，不接触登录态。”
 > “不调用 `api.trae.cn` 的 `ide_user_ent_usage` / `web_user_ent_usage` / `query_user_usage_group_by_session` 等私有接口。”
 
-**D1/D2 已批准（2026-11-14）**：允许为 Trae credits 增加客户端同源接口访问，并允许自动读取 `~/.trae-cn/trae-jwt-token`。这是一次**定向、前台、可关闭**的例外，不扩大到其他源或其他 API。
+**D1/D2 已批准（2026-11-14）**：允许为 Trae credits 增加客户端同源接口访问，并允许自动读取本机 Trae CN 登录凭证。初版误用 `~/.trae-cn/trae-jwt-token`（临时 token，401）；2026-11-15 起默认读取 `storage.json` 的 `iCubeAuthInfo://icube.cloudide` 并在本地解密（tc v5），不读 Keychain/Cookie、不解密 SQLCipher 库。这仍是**定向、前台、可关闭**的例外，不扩大到其他源或其他 API。
 
 ### 4.2 已批准的定向例外
 
-允许以下两个前台入口联网，二者共用同一 API client 与同一套 JWT 规则：
+允许以下两个前台入口联网，二者共用同一 API client 与同一套凭证规则：
 
 ```text
 入口 1（手动/回填）：
@@ -213,7 +214,7 @@ usage html [--source trae-cn | 不带 source]
   -> 再读 SQLite + 渲染静态 HTML
 
 共同流程：
-  读取本机 JWT（仅本次进程内存）
+  读取本机登录凭证（仅本次进程内存）
   -> POST query_user_usage_group_by_session
   -> 只解析用量元数据
   -> 写 SQLite 缓存
@@ -223,8 +224,8 @@ usage html [--source trae-cn | 不带 source]
 
 1. **前台、可控**：只有 `usage sync --source trae-cn --remote` 或 `usage html`（Trae 在范围内）会联网；`usage html --offline`、`report`、`credits`、`doctor`、`live`、自动同步都不触发远程调用。
 2. **单账号、低频**：只使用本机当前登录账号；不做多账号、不做并发、不做后台轮询。`usage html` 只拉报告窗口（默认 30 天），不是全量历史。
-3. **凭证最小化**：优先读 `~/.trae-cn/trae-jwt-token`（0600）或用户显式提供的文件/环境变量；不读 Keychain、不读浏览器 Cookie、不解密 `storage.json` 的 tc v5 blob（首版）。
-4. **凭证不落盘**：JWT 不写 SQLite、不写 meta、不写 HTML、不写日志、不进异常信息；错误只输出 HTTP 状态和脱敏后的错误码。
+3. **凭证最小化**：默认读 `storage.json` 的 `iCubeAuthInfo://icube.cloudide` 并在本地解密 tc v5；用户显式提供 `--jwt-file` / `TRAE_CN_JWT` / `TRAE_CN_JWT_FILE` 时优先。不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher 库。
+4. **凭证不落盘**：解密后的 token 不写 SQLite、不写 meta、不写 HTML、不写日志、不进异常信息；错误只输出 HTTP 状态和脱敏后的错误码。
 5. **内容不落盘**：不保存 `user_input_preview`、prompt、工具参数、响应正文；只保存 `session_id`、`usage_time`、`model_name`、`credits`、`mode`（可选）。
 6. **失败软回退**：`usage html` 默认刷新失败时使用缓存继续出报告，并在命令行/HTML 显式标注“刷新失败 + 数据时间”；`--strict-refresh` 可改为失败即非 0 退出。`sync --remote` 失败时保留旧缓存并报错，不编造数据。
 7. **TLS 不降级**：使用 Python 默认 SSL 校验；不关闭证书验证；不自定义代理。
@@ -235,8 +236,8 @@ usage html [--source trae-cn | 不带 source]
 
 | 编号 | 问题 | 结论 |
 |---|---|---|
-| **D1** | 是否允许 Trae credits 的联网路径？ | **已批准 A1**：允许；`sync --remote` 与 `usage html` 前台刷新可联网；自动读取本机 JWT |
-| **D2** | 是否允许自动读取 `~/.trae-cn/trae-jwt-token`？ | **已批准**：允许，仅在刷新进程内读取；文件 0600；不读 Keychain；支持 `--jwt-file` / `TRAE_CN_JWT` 覆盖 |
+| **D1** | 是否允许 Trae credits 的联网路径？ | **已批准 A1**：允许；`sync --remote` 与 `usage html` 前台刷新可联网；自动读取本机登录凭证 |
+| **D2** | 是否允许自动读取本机登录凭证？ | **已批准**：默认读取 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5，本地解密）；临时 token 已因 401 弃用；支持 `--jwt-file` / `TRAE_CN_JWT` 覆盖；不读 Keychain/Cookie |
 
 > v1 中的 A3（不联网）/A4（手工导入）不再作为本次实现路径，保留在附录作历史备选。
 
@@ -246,7 +247,7 @@ usage html [--source trae-cn | 不带 source]
 
 | 方案 | 数据 | 准确性 | 网络 | 凭证 | 复杂度 | 结论 |
 |---|---|---|---|---|---|---|
-| **A. 官方客户端同源 usage 接口（opt-in）** | 会话级 credits、模型、时间、token 字段 | 高（服务端计费） | `sync --remote` + `html` 默认刷新（`--offline` 可关） | 本机 JWT | 中 | **推荐** |
+| **A. 官方客户端同源 usage 接口（opt-in）** | 会话级 credits、模型、时间、token 字段 | 高（服务端计费） | `sync --remote` + `html` 默认刷新（`--offline` 可关） | 本机登录凭证 | 中 | **推荐** |
 | B. 本地余额日志采样 | 余额/下限，不是逐会话 | 低，且本机当前没有该日志行 | 无 | 无 | 低 | 只能做余额趋势，不能做主报告 |
 | C. SQLCipher 解密 | 理论上最全 | 高 | 无 | 需要密钥 | 极高，已失败 | 不采用 |
 | D. 手工导入 dashboard 导出 | 取决于导出文件 | 高 | 无 | 无 | 中 | 备用；需先确认导出能力 |
@@ -263,8 +264,8 @@ usage html [--source trae-cn | 不带 source]
 入口 1：usage sync --source trae-cn --remote [--days N]
 入口 2：usage html [--source trae-cn | 不带 source]   # 渲染前默认刷新
         │
-        ├─ JWT 解析（仅内存）
-        │    --jwt-file > TRAE_CN_JWT > TRAE_CN_JWT_FILE > ~/.trae-cn/trae-jwt-token
+        ├─ 登录凭证解析（仅内存）
+        │    --jwt-file > TRAE_CN_JWT > TRAE_CN_JWT_FILE > storage.json（iCubeAuthInfo tc v5）
         │
         ├─ Trae CN usage client（stdlib urllib）
         │    30 天分块 / page_size=20 / page_num=1..N / usage_type=[7]
@@ -298,7 +299,7 @@ usage sync --source trae-cn --remote
 # 首次回填一年
 usage sync --source trae-cn --remote --days 365
 
-# 指定 JWT 文件（不读默认文件）
+# 指定凭证文件（优先于 storage.json）
 usage sync --source trae-cn --remote --jwt-file /path/to/token
 
 # 只演练，不联网、不写库
@@ -312,8 +313,8 @@ usage sync --source trae-cn --remote --dry-run
 | `--remote` | 关闭 | 只有显式指定才联网 |
 | `--days N` | 30 | 同步最近 N 天；与 `--since` 二选一 |
 | `--since YYYY-MM-DD` | 无 | 从本地日期 00:00 开始；优先于 `--days` |
-| `--jwt-file PATH` | 无 | 显式 JWT 文件 |
-| `--dry-run` | 关闭 | 只打印计划（天数、分块数、JWT 是否存在），不请求 |
+| `--jwt-file PATH` | 无 | 显式凭证文件（优先于 storage.json） |
+| `--dry-run` | 关闭 | 只打印计划（天数、分块数、凭证是否存在），不请求 |
 | `--full` | 关闭 | 对 Trae 等价于 `--days 365`（首次回填） |
 
 行为：
@@ -363,10 +364,10 @@ usage credits --source trae-cn
 - **刷新窗口**：使用本次报告的 `--since/--until`（或默认 30 天）；`usage html` 不额外拉 365 天历史。
 - **刷新成功**：写 `usage_credit`，更新 `source_state.last_sync_at`；stdout/stderr 打印本次同步的会话数/credits/覆盖区间，并写入 HTML 的 coverage。
 - **刷新失败**：默认不阻断报告生成；stderr 打印脱敏警告，HTML coverage 标记 `refresh_error` + `last_sync_at`，UI 显示“当前为缓存数据”。`--strict-refresh` 时仍生成回退报告，但命令返回非 0。
-- **离线**：`--offline` 不读 JWT、不请求；UI 标记“离线缓存”，并显示缓存时间；没有缓存时显示空状态和同步命令。
+- **离线**：`--offline` 不读登录凭证、不请求；UI 标记“离线缓存”，并显示缓存时间；没有缓存时显示空状态和同步命令。
 - **静态快照**：`usage html` 每次运行都会重新生成文件；已经生成的 HTML 不会因为再次打开而更新。需要最新数据时重新运行命令。
 - `usage credits` 默认展示所有 credit source；输出 source 列；Trae 的计数列叫“会话”，Qoder 叫“请求”；它不自动联网，需要最新数据时先 `usage sync --remote` 或跑一次 `usage html`。
-- `usage report` / `usage doctor` 不触发 Trae 远程调用；doctor 只显示缓存状态和 JWT 文件是否存在/权限，不读取 token 内容。
+- `usage report` / `usage doctor` 不触发 Trae 远程调用；doctor 只显示缓存状态和登录凭证是否存在/权限/可读性（只做 stat，不解密 token）。
 
 实现落点：
 
@@ -483,11 +484,11 @@ source_state.source = 'trae-cn.credits'
   records_total: 会话数
   last_sync_at: 最近成功同步时间
   last_event_ts: 最大 usage_time
-  last_error: 脱敏错误（不含 JWT）
+  last_error: 脱敏错误（不含登录凭证）
 ```
 
 - 不用文件 mtime 判断远程缓存是否过期；用 `last_sync_at` + `--max-age`。
-- 可选 meta：`trae_credits_last_window`（记录上次请求的 days/since）和 `trae_credits_last_attempt`（最近一次尝试时间，无论成败），用于诊断；不存 JWT。
+- 可选 meta：`trae_credits_last_window`（记录上次请求的 days/since）和 `trae_credits_last_attempt`（最近一次尝试时间，无论成败），用于诊断；不存登录凭证。
 - `usage html` 默认先刷新，刷新失败时更新 `status/last_error`、保留 `last_sync_at`，然后读缓存渲染；`--offline` 只读这些状态，不触发远程。
 
 ### 7.4 兼容性
@@ -584,14 +585,14 @@ source_state.source = 'trae-cn.credits'
 ```
 
 - `refresh_mode`：`auto`（html 默认刷新）、`offline`（`--offline`）、`stateless`（`--stateless`）、`disabled`（Trae 不在范围内）。
-- `refresh_error`：本次刷新失败的脱敏原因；成功/离线为 `null`。不含 JWT/请求头/响应体。
+- `refresh_error`：本次刷新失败的脱敏原因；成功/离线为 `null`。不含登录凭证/请求头/响应体。
 - `stale`：本次刷新失败、或 `last_sync_at` 超过 2 天、或 `--offline` 且缓存较旧时为 `true`。
 - 没有同步数据时 `available=false`，UI 显示“未同步”与命令提示，不显示 0 作为真实值。
 - 刷新失败但已有缓存时仍展示缓存，并在 HTML 顶部显示“Trae credits 刷新失败，当前为缓存数据（last_sync_at）”。
 
 ### 8.4 不进入 payload 的内容
 
-- JWT、请求头、原始 API 响应、`user_input_preview`、prompt、工具参数、响应正文、refresh token。
+- 登录凭证、请求头、原始 API 响应、`user_input_preview`、prompt、工具参数、响应正文、refresh token。
 - 同步错误只保留脱敏后的状态码/错误码。
 
 ---
@@ -757,7 +758,7 @@ function hasTraeEstimateSelected() {
 
 | 测试 | 断言 |
 |---|---|
-| JWT 头 | `Authorization: Cloud-IDE-JWT <jwt>`；token 不出现在 stdout/stderr/DB/HTML |
+| 登录凭证头 | `Authorization: Cloud-IDE-JWT <token>`；token 不出现在 stdout/stderr/DB/HTML |
 | 请求体 | Unix 秒；`usage_type:[7]`；`page_size:20`；30 天分块 |
 | 分页 | `total` 到达即停；空页停止；超过 100 页报错/二分 |
 | 幂等 | 同一 session 二次同步仍只有一行，credits 被更新而非累加 |
@@ -793,7 +794,7 @@ python3 -m compileall -q src
 1. `usage sync --source trae-cn --remote --days 1`，确认：
    - 网络只发一次窗口请求；
    - 输出会话数/credits；
-   - JWT 未出现在任何输出/DB/HTML。
+   - 登录凭证未出现在任何输出/DB/HTML。
 2. 打开 Trae CN 控制台，对照最近一天 credits 是否一致。
 3. `usage html --source trae-cn --open`，确认：
    - 命令输出包含 `trae-cn.credits: refreshed ...`；
@@ -807,7 +808,7 @@ python3 -m compileall -q src
    - 数据与上一步一致。
 5. `usage html --source qoder --open`，确认不触发 Trae 网络请求、Qoder 报告无回归。
 6. `usage sync --source trae-cn --remote`（30 天）后复跑，确认幂等、无重复行。
-7. 模拟刷新失败（断网/临时改错 JWT）后 `usage html --open`，确认回退缓存、显示警告；`--strict-refresh` 返回非 0。
+7. 模拟刷新失败（断网/临时改错凭证）后 `usage html --open`，确认回退缓存、显示警告；`--strict-refresh` 返回非 0。
 
 ### 10.6 下游影响（Perch）
 
@@ -825,13 +826,13 @@ Perch 的 `render_usage_report` 会调用 `usage html --output <cache>/usage-rep
 |---|---|
 | `README.md` | 政策改为“默认离线；Trae credits 在 `sync --remote` 或 `usage html` 刷新时联网”；来源表 Trae 从“弱估算”改为“Credits + token 弱估算”；新增 `--offline`/`--strict-refresh`/静态快照说明 |
 | `docs/TRAE-CN-DESIGN.md` | 顶部加“历史文档”说明：credits 轴由本文取代；hook 弱估算设计继续有效 |
-| `docs/PROBE.md` | 新增 §6.9：客户端 usage 接口证据、JWT 文件形态、本机未实测响应体的说明 |
+| `docs/PROBE.md` | §6.9：客户端 usage 接口证据、临时 token 形态；§6.10：临时 token 401 → storage.json tc v5 凭证来源修正 |
 | `docs/ARCHITECTURE.md` | §7.4 更新：Trae 归入 credits；多 source credits 分列；不跨源合计 |
 | `docs/TRAE-CN-CREDITS-DESIGN.md` | 本文；审核通过后作为实现依据 |
 
 README 政策建议文案：
 
-> 默认离线。Trae CN credits 在两种前台场景联网：用户执行 `usage sync --source trae-cn --remote`，或执行 `usage html` 且 Trae 在报告范围内（渲染前刷新一次）。两种场景都从本机读取 Trae CN 登录 JWT，调用 Trae CN 客户端同源的用量接口，只把会话级 credits/模型/时间写入本地库；不保存 prompt/正文，不写凭证，不后台轮询。`usage html --offline`、`report`、`credits`、`doctor` 默认不联网。HTML 是生成时快照，需重新运行 `usage html` 才会更新。
+> 默认离线。Trae CN credits 在两种前台场景联网：用户执行 `usage sync --source trae-cn --remote`，或执行 `usage html` 且 Trae 在报告范围内（渲染前刷新一次）。两种场景都从本机读取 Trae CN 登录凭证（默认 `storage.json` 的 tc v5 blob，本地解密），调用 Trae CN 客户端同源的用量接口，只把会话级 credits/模型/时间写入本地库；不保存 prompt/正文，不写凭证，不后台轮询。`usage html --offline`、`report`、`credits`、`doctor` 默认不联网。HTML 是生成时快照，需重新运行 `usage html` 才会更新。
 
 ---
 
@@ -840,7 +841,7 @@ README 政策建议文案：
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | 接口未公开、随时变更 | 同步失败 | 失败关闭、保留缓存、错误可见；不编造数据 |
-| JWT 过期/失效 | 401 | 提示重新登录；不自动刷新；不读 Keychain |
+| 登录凭证过期/未被接受 | 401 | 提示重新登录；不自动刷新；不读 Keychain |
 | 请求过多/风控 | 被限流 | 前台触发、仅报告窗口、20/页、300ms 间隔、页数上限、无并发；`--offline` / `--max-age` 可减少请求 |
 | `usage html` 每次联网 | 延迟、重复请求 | 默认只拉报告窗口；`--max-age` 可设新鲜度复用；`--offline` 完全跳过；Perch/脚本可显式传 `--offline` 或 `--max-age` |
 | 凭证泄露 | 严重 | 仅刷新进程内存读取；不落盘/日志/HTML；错误脱敏；文件 0600 警告 |
@@ -858,8 +859,8 @@ README 政策建议文案：
 
 | 编号 | 决策 | 结论 |
 |---|---|---|
-| **D1** | Trae credits 联网路径 | **已批准 A1**：`sync --remote` + `usage html` 前台刷新；自动读本机 JWT |
-| **D2** | JWT 来源 | **已批准**：自动读 `~/.trae-cn/trae-jwt-token`（0600），支持 `--jwt-file` / `TRAE_CN_JWT` 覆盖 |
+| **D1** | Trae credits 联网路径 | **已批准 A1**：`sync --remote` + `usage html` 前台刷新；自动读本机登录凭证 |
+| **D2** | 凭证来源 | **已批准**：默认读 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5，本地解密）；临时 token 已因 401 弃用；支持 `--jwt-file` / `TRAE_CN_JWT` 覆盖 |
 | **D3** | Qoder + Trae credits 是否合计？ | **已批准推荐项**：不合计，按 Agent 分列；图表分组，Top 分组，表合计分列 |
 | **D4** | token 影子来源 | **已批准推荐项**：保留现有 hook 弱估算；首版不用 API token 字段 |
 | **D5** | v1 是否做 Trae 余额/配额？ | **已批准推荐项**：不做，只做已消费 credits |
@@ -868,7 +869,7 @@ README 政策建议文案：
 | **D8** | Trae 项目维度 | **已批准推荐项**：hook session→project 尽力映射；未命中显示 `-`；不做额外本地探针 |
 | **D9** | `usage html` 刷新策略 | **已批准推荐项**：默认每次刷新；`--offline` 跳过；`--max-age N` 复用；`--strict-refresh` 失败非 0 |
 
-实现状态（2026-11-14）：D1–D9 全部落地；`python3 -m unittest discover -s tests -t .` 通过 129 个测试，报告 JS 通过 `node --check`。分支 `feat/trae-cn-credits`，按 AGENTS.md 保留提交记录并推送；合并到 `main` 前仍需用户明确同意。
+实现状态（2026-11-15）：D1–D9 全部落地；凭证默认来源已修正为 `storage.json` 的 tc v5 登录凭证（临时 token 401）；`python3 -m unittest discover -s tests -t .` 通过 152 个测试，报告 JS 通过 `node --check`。分支 `feat/trae-cn-credits`，按 AGENTS.md 保留提交记录并推送；合并到 `main` 前仍需用户明确同意。
 
 ---
 
@@ -879,4 +880,4 @@ README 政策建议文案：
 - 项目维度的完整映射（本地会话元数据只读探针）。
 - dashboard 手工导出导入（零网络备用路径）。
 - SQLCipher 解密（维持不做）。
-- 多账号/多 JWT。
+- 多账号/多凭证。

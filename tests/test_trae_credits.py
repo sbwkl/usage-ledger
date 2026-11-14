@@ -85,6 +85,48 @@ class JwtTest(unittest.TestCase):
         credential = resolve_jwt(env=env)
         self.assertEqual(credential.token, "eyJhbGciOiJIUzI1NiJ9.payload.signature")
 
+    def test_default_uses_storage_json(self):
+        from tests.test_trae_auth import VALID_B64
+        storage = os.path.join(self.tmp.name, "storage.json")
+        with open(storage, "w", encoding="utf-8") as fh:
+            json.dump({"iCubeAuthInfo://icube.cloudide": VALID_B64}, fh)
+        os.chmod(storage, 0o600)
+        credential = resolve_jwt(env={"TRAE_CN_STORAGE": storage})
+        self.assertEqual(credential.token, "test-token-not-real")
+        self.assertTrue(credential.source.startswith("storage:"))
+        self.assertNotIn("test-token", repr(credential))
+        info = jwt_file_info(env={"TRAE_CN_STORAGE": storage})
+        self.assertEqual(info["source"], "storage.json")
+        self.assertTrue(info["readable"])
+        self.assertIsNone(info["expires_at"])
+        self.assertNotIn("test-token", json.dumps(info))
+
+    def test_default_missing_storage_raises(self):
+        missing = os.path.join(self.tmp.name, "storage.json")
+        with self.assertRaises(TraeCreditsError) as caught:
+            resolve_jwt(env={"TRAE_CN_STORAGE": missing})
+        self.assertIn("未找到 Trae CN 登录凭证", str(caught.exception))
+
+    def test_storage_expired_raises(self):
+        from tests.test_trae_auth import EXPIRED_B64
+        storage = os.path.join(self.tmp.name, "storage.json")
+        with open(storage, "w", encoding="utf-8") as fh:
+            json.dump({"iCubeAuthInfo://icube.cloudide": EXPIRED_B64}, fh)
+        os.chmod(storage, 0o600)
+        with self.assertRaises(TraeCreditsError) as caught:
+            resolve_jwt(env={"TRAE_CN_STORAGE": storage})
+        self.assertIn("过期", str(caught.exception))
+
+    def test_explicit_file_wins_over_storage(self):
+        from tests.test_trae_auth import VALID_B64
+        storage = os.path.join(self.tmp.name, "storage.json")
+        with open(storage, "w", encoding="utf-8") as fh:
+            json.dump({"iCubeAuthInfo://icube.cloudide": VALID_B64}, fh)
+        os.chmod(storage, 0o600)
+        credential = resolve_jwt(self.path, env={"TRAE_CN_STORAGE": storage})
+        self.assertTrue(credential.token.startswith("eyJ"))
+        self.assertTrue(credential.source.startswith("file:"))
+
     def test_missing_file_does_not_leak(self):
         with self.assertRaises(TraeCreditsError) as caught:
             resolve_jwt(os.path.join(self.tmp.name, "missing"), env={})

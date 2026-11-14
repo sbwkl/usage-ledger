@@ -207,7 +207,7 @@ Trae CN 的本机加密库不可读、额度不落盘；本系统有两条互不
 ```bash
 usage sync --source trae-cn --remote          # 显式联网刷新最近 30 天
 usage sync --source trae-cn --remote --days 365   # 首次回填一年
-usage sync --source trae-cn --remote --dry-run    # 只打印计划，不读 JWT、不请求
+usage sync --source trae-cn --remote --dry-run    # 只打印计划，不读凭证、不请求
 usage credits --source trae-cn                # 查看缓存（本命令不联网）
 usage html --open                             # 含 Trae 时默认先刷新再出报告
 usage html --offline --open                   # 只读缓存，不联网
@@ -217,9 +217,11 @@ usage html --strict-refresh --open            # 刷新失败时命令非 0（仍
 
 - **入口**：只有 `usage sync --source trae-cn --remote` 与 `usage html`（Trae 在报告范围内）会联网；
   `report` / `credits` / `doctor` / `live` / 自动同步 / `html --offline` 全部离线。
-- **凭证**：读取 `~/.trae-cn/trae-jwt-token`（0600），优先级 `--jwt-file` > `TRAE_CN_JWT` >
-  `TRAE_CN_JWT_FILE` > 默认文件；JWT 只在刷新进程内使用，不落库、不写日志、不进 HTML。
-  不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher 库。JWT 过期后需重新登录 Trae CN。
+- **凭证**：默认读取 Trae CN 客户端登录态 `~/Library/Application Support/Trae CN/User/globalStorage/storage.json`
+  中的 `iCubeAuthInfo://icube.cloudide`（tc v5，本地解密）；优先级 `--jwt-file` > `TRAE_CN_JWT` >
+  `TRAE_CN_JWT_FILE` > `storage.json`。`~/.trae-cn/trae-jwt-token` 是客户端临时 token，usage 接口会返回 401，
+  不再作为默认来源。凭证只在刷新进程内使用，不落库、不写日志、不进 HTML；不读 Keychain、不读浏览器 Cookie、
+  不解密 SQLCipher 库。凭证过期后需重新登录 Trae CN。
 - **口径**：API 是**会话级**，credits 归属 `usage_time` 所在本地日；一个会话跨天无法拆分。
   `request_id = trae-cn:<session_id>`，重复拉取幂等覆盖；报告按 Agent 分列，不与 Qoder credits 相加。
 - **项目维度**：API 无 project 字段，用 hook 事件的 `session → project` 尽力映射，未命中显示 `-`。
@@ -300,7 +302,8 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 ## 下一步
 
 1. 安装 launchd：`usage schedule install`（hourly sync / 00:15 full rescan / 00:20 prune）
-2. Trae CN credits 验收：登录 Trae CN 后确认 `~/.trae-cn/trae-jwt-token`（0600）存在，运行
+2. Trae CN credits 验收：登录 Trae CN 后确认 `usage doctor --probe trae-cn` 显示
+   `source=storage.json readable=True`，运行
    `usage sync --source trae-cn --remote --days 7`，再运行 `usage credits --source trae-cn` 与
    `usage html --source trae-cn --open`，核对会话数、credits 与 Trae 控制台一致
 3. Trae CN H0 hook 真实捕获验收：`usage hooks install trae-cn --scope global` 后，在 Trae CN 设置 > Hooks 确认已加载，

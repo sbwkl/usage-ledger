@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 
 from .models import Credit
+from .trae_auth import TraeAuthError, load_storage_credential, storage_info
 
 API_URL = "https://api.trae.cn/trae/api/v1/pay/query_user_usage_group_by_session"
-DEFAULT_JWT_PATH = "~/.trae-cn/trae-jwt-token"
 TRAE_CREDITS_SOURCE = "trae-cn.credits"
 TRAE_EST_SOURCE = "trae-cn.est"
 CHUNK_DAYS = 30
@@ -84,12 +84,6 @@ class TraeSyncResult:
     jwt_warning: str | None = None
 
 
-def default_jwt_path(env: dict | None = None) -> str:
-    env = os.environ if env is None else env
-    return os.path.abspath(os.path.expanduser(
-        env.get("TRAE_CN_JWT_FILE") or DEFAULT_JWT_PATH))
-
-
 def _strip_jwt_prefix(token: str) -> str:
     lowered = token.lower()
     for prefix in ("cloud-ide-jwt ", "bearer "):
@@ -128,20 +122,26 @@ def resolve_jwt(explicit_file: str | None = None,
     token = (env.get("TRAE_CN_JWT") or "").strip()
     if token:
         return JwtCredential(token=_strip_jwt_prefix(token), source="env:TRAE_CN_JWT")
-    return _read_jwt_file(default_jwt_path(env))
+    jwt_file = (env.get("TRAE_CN_JWT_FILE") or "").strip()
+    if jwt_file:
+        return _read_jwt_file(os.path.abspath(os.path.expanduser(jwt_file)))
+    try:
+        credential = load_storage_credential(env=env)
+    except TraeAuthError as exc:
+        raise TraeCreditsError(str(exc)) from exc
+    return JwtCredential(token=credential.token,
+                         source="storage:%s" % credential.path,
+                         warning=credential.warning)
 
 
-def jwt_file_info(path: str | None = None, env: dict | None = None) -> dict:
-    env = os.environ if env is None else env
-    if not path and env.get("TRAE_CN_JWT"):
-        return {"source": "env:TRAE_CN_JWT", "path": None, "exists": True,
-                "readable": True, "size": None, "mode": None, "warning": None}
-    target = os.path.abspath(os.path.expanduser(path)) if path else default_jwt_path(env)
-    info = {"source": "file", "path": target, "exists": False, "readable": False,
-            "size": None, "mode": None, "warning": None}
+def _file_info(target: str, source: str) -> dict:
+    info = {"source": source, "path": target, "exists": False, "readable": False,
+            "size": None, "mode": None, "warning": None, "error": None,
+            "expires_at": None}
     try:
         st = os.stat(target)
     except OSError:
+        info["error"] = "文件不存在"
         return info
     info["exists"] = True
     info["readable"] = os.access(target, os.R_OK)
@@ -150,6 +150,20 @@ def jwt_file_info(path: str | None = None, env: dict | None = None) -> dict:
     if info["mode"] & 0o077:
         info["warning"] = "JWT 文件权限过宽，建议 chmod 600 %s" % target
     return info
+
+
+def jwt_file_info(path: str | None = None, env: dict | None = None) -> dict:
+    env = os.environ if env is None else env
+    if path:
+        return _file_info(os.path.abspath(os.path.expanduser(path)), "file")
+    if env.get("TRAE_CN_JWT"):
+        return {"source": "env:TRAE_CN_JWT", "path": None, "exists": True,
+                "readable": True, "size": None, "mode": None, "warning": None,
+                "error": None, "expires_at": None}
+    if env.get("TRAE_CN_JWT_FILE"):
+        return _file_info(os.path.abspath(os.path.expanduser(env["TRAE_CN_JWT_FILE"])),
+                          "env:TRAE_CN_JWT_FILE")
+    return storage_info(env=env)
 
 
 def http_post_json(url: str, headers: dict, payload: dict,
@@ -284,7 +298,8 @@ class TraeCreditsClient:
             break
         if status in (401, 403):
             raise TraeCreditsError(
-                "API 认证失败（HTTP %d），请重新登录 Trae CN" % status, status=status)
+                "API 认证失败（HTTP %d）：凭证已失效或不被该接口接受；"
+                "请重新登录 Trae CN 后重试" % status, status=status)
         if status < 200 or status >= 300:
             raise TraeCreditsError(
                 "API 请求失败（HTTP %d）" % status, status=status)

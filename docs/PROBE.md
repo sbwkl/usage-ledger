@@ -397,10 +397,13 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
    - 客户端日志可见该请求（2026-11-14 16:53，HTTP 200）；响应不落盘。
    - 同族接口 `ide_user_ent_usage` / `web_user_ent_usage` 仍不做（余额/套餐不在首版范围）。
 2. **凭证**
-   - 文件：`~/.trae-cn/trae-jwt-token`，925 B，mode `0600`；内容是 `eyJ...` 开头的**原始 JWT**，
+   - 初版实现默认读取：`~/.trae-cn/trae-jwt-token`，925 B，mode `0600`；内容是 `eyJ...` 开头的**原始 JWT**，
      不是 JSON；没有换行/前缀。仅检查存在性、大小、权限与前缀。
+   - **2026-11-15 修正**：该文件是客户端 `GenerateTempToken` 生成的**临时 token**（供电商 CLI/预览服务），
+     usage 接口不接受（401 code 1001）。默认来源已改为 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`，
+     详见 §6.10。
    - 请求头 `authorization: Cloud-IDE-JWT <jwt>`；不是 `Bearer`。
-   - 优先级（实现）：`--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > 默认文件。
+   - 优先级（实现）：`--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`。
    - JWT 过期/401/403 不自动重试，提示重新登录；不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher。
 3. **请求形态**
    - `content-type: application/json`；`origin: https://www.trae.cn`、`referer: https://www.trae.cn/`；
@@ -425,3 +428,46 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
      `report` / `credits` / `doctor` / `live` / 自动同步 / `html --offline` 均离线。
 
 > 该定向例外取代 §6.7 的“维持不做 credits 轴”处置；其余加密库、Keychain、内存扫描结论不变。
+
+### 6.10 Trae CN 凭证来源修正：临时 token 401 → storage.json tc v5（2026-11-15）
+
+> 背景：`usage html` 曾显示“Trae CN 未登录”，但客户端处于正常登录状态。排查确认是凭证来源选错，
+> 不是账号或网络问题。本节记录修正依据；**不解密 SQLCipher 库、不读 Keychain、不读浏览器 Cookie**。
+
+1. **临时 token 不被 usage 接口接受**
+   - `~/.trae-cn/trae-jwt-token` 由客户端 `GenerateTempToken` 生成，供电商 CLI/预览服务使用，
+     不是主登录凭证。
+   - 实测：用该 token 以 `Cloud-IDE-JWT` 发送同一 usage 请求，并尝试叠加 `app_id`、`device`、
+     `x-ide-token`、`x-cloudide-token`、`Bearer` 等 header 组合，全部返回 **HTTP 401、code 1001**。
+   - 结论：该文件不再作为默认来源；显式 `--jwt-file` / `TRAE_CN_JWT` / `TRAE_CN_JWT_FILE` 仍保留，
+     用于用户自行提供接口可接受的凭证。
+2. **主登录凭证位置**
+   - `~/Library/Application Support/Trae CN/User/globalStorage/storage.json`
+     （部分版本为 `TRAE SOLO CN`；可用 `TRAE_CN_STORAGE` 覆盖）。
+   - key：`iCubeAuthInfo://icube.cloudide`；值不是明文 JWT，而是 Base64 的 **tc v5** 加密 blob。
+3. **tc v5 形态与本地解密**
+   - Base64 解码后：magic `tc\x05\x10\x00\x00` + 32B salt + AES-128-CBC 密文（PKCS#7 填充）。
+   - KDF：`SHA-512(salt) || (JG xor KG)` 再取 `SHA-512`，前 16B 为 key、后 16B 为 IV；
+     `JG`/`KG` 是客户端内置的 64B 常量（公开实现 TokenTracker 已记录，非用户密码）。
+   - 明文：64B `SHA-512(payload)` 摘要 + UTF-8 JSON（含 `token`、`expiredAt`、`userId` 等字段）。
+     解密后先校验摘要，再解析 JSON；摘要不匹配直接拒绝。
+   - 实现为**纯标准库** AES-128-CBC（程序化生成 S-box/逆 S-box、密钥扩展与逆轮），
+     用 NIST SP 800-38A F.2.1 向量做回归；解密代码在 `src/usage_ledger/trae_auth.py`。
+4. **端到端验证**
+   - 用 storage.json 解出的 token 发送 §6.9 的同一请求，返回 **HTTP 200**；7 天窗口返回 150 个会话，
+     与客户端计费页一致。
+   - 若凭证过期：刷新流程中 `expiredAt` 本地预检直接报“登录凭证已过期，请重新登录”，不发起请求；
+     `doctor` / `--dry-run` 只做 stat 元数据检查，不解密，因此不显示过期时间。
+5. **安全边界**
+   - 只读取 storage.json 中 `iCubeAuthInfo://*` 的值；拒绝符号链接、非普通文件、group/world 可写
+     （`mode & 0o022`）；0644 允许读取，但不强制 0600。`doctor` / `--dry-run` 只 `lstat` 检查，
+     不打开文件、不解密。
+   - token 只在刷新进程内存中存在；不落库、不写 meta、不写日志、不进 HTML；`StorageCredential.token`
+     使用 `repr=False`；错误信息只输出路径、HTTP 状态和脱敏后的错误码。
+   - 不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher 库（`ModularData/ai-agent/database.db` 仍不可读）。
+6. **配置优先级**
+   - `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`。
+   - `usage doctor --probe trae-cn` 只显示来源、路径、存在性、大小、mode 与可读性，
+     不显示 token 本身或过期时间。
+
+> 该修正只改变“凭证从哪里读”，不改变 §6.9 的接口、分页、失败回退与联网边界。

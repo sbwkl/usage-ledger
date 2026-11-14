@@ -6,7 +6,7 @@
 > 额度复测（2026-11-01）：本地没有额度真值可读——用量接口响应不落盘，日志只有 URL + HTTP 200，`storage.json` / localStorage 仅套餐权益与活动配置，无 used/remaining；维持不做额度轴。详见 [PROBE.md](PROBE.md) §6.7。
 > Hooks 复测（2026-11-01）：Trae CN 提供项目级 `.trae/hooks.json` 与全局 `~/.trae-cn/hooks.json`（六个官方事件），但 hook stdin 只有会话/工具/文本元数据，没有 token、credits、quota 或 transcript 路径；不能用于真值统计（只能做弱估算，见 §12）。详见 [PROBE.md](PROBE.md) §6.8。
 > Plan H（2026-11-01 设计 / 2026-11-02 实现）：按用户决定改用 Hooks 做 **token 估算**，复用 Qoder `est` 轨的呈现方式；只记录字符数与事件元数据，不落正文。因 hook 不可见系统提示/工具定义/上下文比例，该轨是**弱估算/下限**，误差可能数倍（未校准），仅看趋势，永不与真值或额度相加。详见 §12。
-> **后续（2026-11-14）**：credits 轴已由 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 定向修订并实现——通过客户端同源 usage 接口获取会话级 credits，报告改为 credits 主指标。本文 §4.3/§5 中“额度不可得 / 不做 credits 轴”的结论仅代表当时阶段；**hook 弱估算（§12）仍是 Trae CN token 影子的唯一来源**，两条轨互不相加。
+> **后续（2026-11-14）**：credits 轴已由 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 定向修订并实现——通过客户端同源 usage 接口获取会话级 credits，报告改为 credits 主指标。2026-11-15 凭证来源再修正：默认读取 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5 本地解密），`~/.trae-cn/trae-jwt-token` 是临时 token（usage 接口 401）已弃用；详见 [PROBE.md](PROBE.md) §6.10。本文 §1.2/§4.3/§5 中“不读登录态 / 不做 credits 轴”的结论仅代表当时阶段；**hook 弱估算（§12）仍是 Trae CN token 影子的唯一来源**，两条轨互不相加。
 > 一句话结论：加密库路径仍不可行；Trae CN 的 token 只能走 Hooks 可见内容的**弱估算**（Plan H），额度仍不可得。
 
 ---

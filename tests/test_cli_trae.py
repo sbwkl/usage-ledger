@@ -41,6 +41,7 @@ class TraeCliTest(unittest.TestCase):
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_HOME": self.data_home,
             "USAGE_LEDGER_DB": self.db_path,
+            "TRAE_CN_STORAGE": os.path.join(self.home, "storage.json"),
         })
         self.env.start()
         self.event_dir = trae_event_dir(self.home)
@@ -146,6 +147,30 @@ class TraeCliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("trae_est_rows=2", out)
         self.assertIn("trae-cn.est: files=1", out)
+
+    def write_storage(self):
+        from tests.test_trae_auth import VALID_B64
+        path = os.environ["TRAE_CN_STORAGE"]
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"iCubeAuthInfo://icube.cloudide": VALID_B64}, fh)
+        os.chmod(path, 0o600)
+        return path
+
+    def test_doctor_reports_storage_auth(self):
+        self.write_storage()
+        code, out, err = self.run_cli(["doctor", "--probe", "trae-cn"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("trae-cn auth: source=storage.json", out)
+        self.assertIn("readable=True", out)
+        self.assertNotIn("test-token-not-real", out)
+
+    def test_remote_dry_run_reports_missing_auth(self):
+        code, out, err = self.run_cli(["sync", "--source", "trae-cn",
+                                       "--remote", "--dry-run"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("auth=storage.json（exists=False", out)
+        self.assertIn("未找到 Trae CN 登录凭证", out)
+        self.assertNotIn("test-token-not-real", out)
 
     def test_hooks_commands(self):
         code, out, _ = self.run_cli(["hooks", "status", "trae-cn"])

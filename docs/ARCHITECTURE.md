@@ -5,7 +5,7 @@
 | 文档状态 | v1.2（2026-11-14 增补 Trae CN credits 多源轨道） |
 | 代码基线 | `usage-ledger 0.5.0`；main `a2c9fce` + `feat/cline` + `feat/trae-cn-credits` |
 | 文档定位 | 描述**当前实现如何工作**，不是新方案。设计沿革与动机见 [DESIGN.md](DESIGN.md)、[QODER-DESIGN.md](QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](CLINE-DESIGN.md) |
-| 验收基线 | `python3 -m unittest discover -s tests -t .` → **129 tests OK** |
+| 验收基线 | `python3 -m unittest discover -s tests -t .` → **152 tests OK** |
 | 阅读顺序 | 审核者先看 §0、§10、§11、§12；实现细节按需查 §4–§9 |
 
 ---
@@ -15,7 +15,7 @@
 - 系统是一个**拉取式、单机、默认离线**的用量台账：只读各 AI 编码工具自己落盘的日志/库，归一成统一记录，归档进本地 SQLite，再聚合成 CLI 表格与单文件 HTML。唯一联网例外是 Trae CN credits 的两条前台刷新路径。
 - 对外是 **7 个源**（claude / codex / opencode / kilo / cline / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
 - **源是唯一事实来源**；数据库只承担三件事：抗删除归档、聚合索引、同步状态。`--stateless` 完全绕过数据库。
-- 唯一持久状态：`~/.local/share/usage-ledger/usage.db`（可用环境变量覆盖）。无常驻进程、默认无网络、零第三方依赖；JWT 只在 Trae credit 刷新进程内读取。
+- 唯一持久状态：`~/.local/share/usage-ledger/usage.db`（可用环境变量覆盖）。无常驻进程、默认无网络、零第三方依赖；Trae CN 登录凭证只在 credit 刷新进程内读取。
 - 当前最需要审核的四个现状问题（详见 §11）：
   1. **P0：`prune` 后再 `sync` 会重放旧记录，下一次 `prune` 把同一段数据重复累加进 `usage_daily`**，已用最小用例复现（100 → 200）。
   2. **P1：`usage live` 实际约 2.3s**（本机实测），与 README 的 `<0.3s` 不符；原因是它顺带全量扫描了 1.65GB Qoder 旧 token 库与全部转录。
@@ -113,7 +113,8 @@
 | 层 | 模块 | 职责 | 不负责 |
 |---|---|---|---|
 | 采集 | `collectors.py` | 定位本地源、解析、映射为 `Record/Activity/Credit/QuotaSnapshot/Estimate`、行级去重 | 不写库、不做聚合、不联网 |
-| 采集 | `trae_credits.py` | Trae CN 同源 usage API、JWT 解析、分块/分页、错误脱敏、幂等同步 | 不做 token 采集、不读 Keychain/浏览器 Cookie |
+| 采集 | `trae_auth.py` | 定位 `storage.json`、解密 tc v5 登录凭证、校验过期/权限、输出脱敏元数据 | 不读 Keychain/Cookie、不解密 SQLCipher、不发请求 |
+| 采集 | `trae_credits.py` | Trae CN 同源 usage API、凭证解析、分块/分页、错误脱敏、幂等同步 | 不做 token 采集、不读 Keychain/浏览器 Cookie |
 | 归一 | `models.py` + `pricing.py` | 统一字段模型；模型名别名归一 | 计价（当前为空实现） |
 | 存储 | `store.py` | schema、幂等 upsert、按天替换活动、归档、prune、查询 | 不做业务聚合 |
 | 聚合 | `aggregation.py` | 多维分桶、成本口径合并、过滤、缺失日期 | 不接触文件/DB |
@@ -131,12 +132,13 @@
 | `src/usage_ledger/models.py` | 142 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
 | `src/usage_ledger/collectors.py` | 1265 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
-| `src/usage_ledger/trae_credits.py` | 497 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；JWT 只在内存；错误脱敏；幂等 upsert |
+| `src/usage_ledger/trae_auth.py` | 368 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
+| `src/usage_ledger/trae_credits.py` | 512 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
 | `src/usage_ledger/store.py` | 752 | `SqliteStore`、`SCHEMA` | 8 张表 + `meta`；WAL；批量 upsert；按天替换活动；`usage_credit.source` 迁移 |
 | `src/usage_ledger/aggregation.py` | 112 | `aggregate` `match` `merge_records` `missing_days` `period_label` | 纯函数，可单测 |
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
-| `src/usage_ledger/cli.py` | 1951 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
+| `src/usage_ledger/cli.py` | 1956 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
 | `src/usage_ledger/html_report.py` | 2843 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
@@ -431,7 +433,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 - **入口**：只有 `usage sync --source trae-cn --remote` 与 `usage html`（Trae 在报告范围内）会调用；`report` / `credits` / `doctor` / `live` / 自动同步 / `html --offline` 均走缓存。
 - **API**：`POST https://api.trae.cn/trae/api/v1/pay/query_user_usage_group_by_session`；`authorization: Cloud-IDE-JWT <jwt>`；分页 `page_num/page_size=20`，按 30 天窗口从当前时刻向过去切；每页 0.3s 间隔；30s 超时；429/5xx 最多重试 1 次，401/403 不重试。
-- **凭证**：`resolve_jwt()` 优先级 `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `~/.trae-cn/trae-jwt-token`；只接受原始 JWT；JWT 只在刷新进程内存在，不落库/日志/HTML。`jwt_file_info()` 只输出存在性、大小、mode 与权限告警。
+- **凭证**：默认从 `~/Library/Application Support/Trae CN/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide` 本地解密 tc v5 登录凭证（纯标准库 AES-128-CBC + SHA-512 完整性校验）；优先级 `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`。`~/.trae-cn/trae-jwt-token` 是临时 token，不被 usage 接口接受（401），不再作为默认。凭证只在刷新进程内存中存在，不落库/日志/HTML；不读 Keychain/Cookie，不解密 SQLCipher 库。`jwt_file_info()` / `storage_info()` 只做元数据检查（存在性、大小、mode、可读性），不解密凭证。
 - **归一**：`session_id` 空或 `usage_time` 非法的行跳过；`credits_float` 优先、`amount_float` 回退；`usage_time > 1e11` 视为毫秒；同一批重复 session 保留最新行；`user_input_preview` 丢弃；`request_id='trae-cn:<session_id>'` 幂等覆盖。
 - **项目映射**：用 `store.est_session_projects('trae-cn.est')` 的 hook session→project 尽力映射；未命中 `-`。
 - **写库**：整批成功后才 `upsert_credits`；`billable=1`、`free_credits=0`、`source='trae-cn'`；失败保留旧缓存并更新 `source_state` 错误；不写部分结果。
@@ -535,7 +537,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 ### 7.5 `doctor` 检查项
 
 - DB 路径、明细/日聚合行数、`archived` 保全数、活动汇总、credits（Qoder 请求 / Trae 会话）/est 计数、最新额度快照及年龄（>24h 告警）。
-- `source_state` 每源状态、`full_scan_at`、WAL 大小（>1MB 告警）；Trae credits 的 `last_sync_at` / 错误 / JWT 文件存在性与权限（只读元数据，不读 token）。
+- `source_state` 每源状态、`full_scan_at`、WAL 大小（>1MB 告警）；Trae credits 的 `last_sync_at` / 错误 / 登录凭证存在性、权限与可读性（只做 stat 元数据，不解密 token）。
 - 逐源扫描：文件数、记录数、token 总量、近 7 天记录数、错误、状态。
 - 异常提示：token 全 0、记录数较上次下降 >50%、>26h 未成功同步、Qoder token 库 >30 天未更新、活动连续 3 次 cursor 未推进、额度日志解析失败、credits 与快照增量偏差 >20%。
 - `--probe <source>`：打印模型/活动月度分布。
@@ -554,7 +556,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | 估算的例外 | 转录正文仅在采集进程内存中用于统计字符数；落库只有 `chars_in/chars_out/ratio/est_*`，不写日志、不进错误信息 |
 | 项目路径 | 统一存 `basename`；设计中的 `full/hash` 模式未实现 |
 | 网络 | 默认无网络调用；唯一例外是 Trae credits 的 `sync --source trae-cn --remote` 与 `usage html` 前台刷新（`--offline` / `--stateless` 可关闭） |
-| 凭证 | 默认不读取任何账号凭证；唯一例外是刷新进程内读取 Trae CN JWT（`--jwt-file` / env / `~/.trae-cn/trae-jwt-token`），不落库/日志/HTML，不读 Keychain/Cookie |
+| 凭证 | 默认不读取任何账号凭证；唯一例外是刷新进程内读取 Trae CN 登录凭证（`--jwt-file` / env / `storage.json` 的 `iCubeAuthInfo://icube.cloudide`），不落库/日志/HTML，不读 Keychain/Cookie，不解密 SQLCipher 库 |
 
 ### 8.2 失败隔离
 
@@ -582,7 +584,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | Qoder credits/est/quota | 1,509ms | — |
 | `collect_all`（全源，2026-11-01 数据量） | **2.25s** | `live` <0.3s（未达标） |
 | cline 采集（1,806 记录 / 20 会话） | 108ms | —（2026-11-11 实测） |
-| 129 项单测 | 0.65s | —（2026-11-14 实测） |
+| 152 项单测 | 0.72s | —（2026-11-15 实测） |
 
 > `live` 慢的根因不是解析算法，而是它调用 `collect_all()`：即使只需要 token 记录，也会扫描 Qoder 旧库（1.7s）和全部转录（1.5s），并计算活动与额度。
 
@@ -607,24 +609,25 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-129 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+152 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|
 | `tests/test_collectors.py` | 24 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、Cline metrics 映射/回退/坏文件隔离、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、子源签名独立 |
 | `tests/test_store.py` | 9 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state、credit source 分列与旧库迁移 |
 | `tests/test_cli.py` | 15 | backfill 幂等、report 与 stateless 一致、stateless 不写库、分组过滤、自动刷新、单源刷新、Cline 回填与自动刷新、doctor 缺口、源不可用时不归档、Qoder 四轨落库、token mtime 跳过、活动单独刷新、doctor 双台账 |
-| `tests/test_cli_trae.py` | 14 | Trae CN hook 安装/状态/同步、est 查询、credits 远程同步、html 默认/offline/stateless 刷新、max-age 复用、失败回退与 strict 退出、credits 按 source 展示 |
-| `tests/test_trae_credits.py` | 27 | JWT 优先级/权限/不泄漏、30 天窗口、分页/重试/401、响应归一、重复会话、超限拆分、幂等同步、项目映射、coverage/max-age/stale |
+| `tests/test_cli_trae.py` | 16 | Trae CN hook 安装/状态/同步、est 查询、credits 远程同步、html 默认/offline/stateless 刷新、max-age 复用、失败回退与 strict 退出、credits 按 source 展示、doctor 凭证来源与 dry-run 未登录提示 |
+| `tests/test_trae_auth.py` | 17 | storage.json tc v5 解密（含 NIST AES 向量、完整性/格式/过期/缺 token）、符号链接与过宽权限拒绝、路径覆盖、元数据不泄漏凭证且只 stat 不解密 |
+| `tests/test_trae_credits.py` | 31 | 凭证优先级/权限/不泄漏、storage.json 默认与过期、30 天窗口、分页/重试/401、响应归一、重复会话、超限拆分、幂等同步、项目映射、coverage/max-age/stale |
 | `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
 | `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |
 | `tests/test_html.py` | 15 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合 |
 | `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
 | `tests/test_qoder_models.py` | 2 | Qoder 内部模型键 → 显示名映射 |
 
-测试手法：临时 HOME + `USAGE_LEDGER_SOURCE_HOME` / `USAGE_LEDGER_DB`；Claude/Codex 用脱敏 JSONL fixture；OpenCode/Qoder 在测试内建最小 SQLite；`tests/qoder_helpers.py` 提供建库与日志构造器。涉及 `html` 默认刷新的用例全部 mock `sync_trae_credits`，不读真实 JWT、不访问网络。
+测试手法：临时 HOME + `USAGE_LEDGER_SOURCE_HOME` / `USAGE_LEDGER_DB` / `TRAE_CN_STORAGE`；Claude/Codex 用脱敏 JSONL fixture；OpenCode/Qoder 在测试内建最小 SQLite；`tests/qoder_helpers.py` 提供建库与日志构造器。涉及 `html` 默认刷新的用例全部 mock `sync_trae_credits`，不读真实登录凭证、不访问网络。
 
-**未覆盖**：真实 launchd 加载、真实上游 schema 漂移、`prune → sync → prune` 重复累计路径（P0）、真实 Trae API 的长期契约变化（首版以 PROBE §6.9 证据为准）。
+**未覆盖**：真实 launchd 加载、真实上游 schema 漂移、`prune → sync → prune` 重复累计路径（P0）、真实 Trae API 的长期契约变化（首版以 PROBE §6.9/§6.10 证据为准）。
 
 ---
 
