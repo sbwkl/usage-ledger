@@ -471,7 +471,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 生成：服务端把 token 行按 `(day,source,model,project)`、credits 行与估算行按 `(day,model,project)` 聚合，和活动/额度/覆盖信息一起序列化为 JSON，替换模板占位符。
 - 安全：payload 中 `<` 转义为 `\u003c`；CSP `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:` → **零外部请求**。
 - 客户端职责：
-  - 顶部只有一个 Agent 多选区（可同时选 token 计费与 credits 计费 Agent，至少保留一个），不做页面分组；
+  - 顶部只有一个 Agent 多选区（可同时选 token 计费与 credits 计费 Agent，至少保留一个），不做页面分组；单击只看、再次单击恢复全选，⌘/Ctrl/Shift+单击增减成员，另有“全选”按钮；
   - 同一页按单位并列渲染：tokens / credits / est 各自汇总，**不跨单位相加**；多单位时 KPI、图表、Top 8、明细均按单位分区或并列；
   - 每日用量按单位各一块堆叠图；Top 8 按主单位（tokens → credits → est）排序，其他单位在同一行做次要标注；
   - 明细为统一表，`单位` 列区分 `tokens` / `credits` / `qoder 影子 est` / `trae-cn 弱估算`，不适用单位显示 `—`；`行数/各口径合计` 分别汇总；

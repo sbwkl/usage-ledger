@@ -233,6 +233,7 @@ usage --stateless html --output /tmp/usage.html   # 不读库，直接读源
 可随时发给别人或归档，不需要起服务。所有 Agent 共用一处多选与同一页报告：
 
 - **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder（精确 credits）、trae-cn（弱估算），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个
+- **点击语义**：单击只看该 Agent，再次单击恢复全选；⌘/Ctrl/Shift+单击增减成员；另有“全选”按钮
 - **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
 - **KPI 分区**：`精确 Token（tokens）`（总量/输入/输出/缓存/推理/缓存占比/轮次）、`精确 Credits（credits）`（额度余额、区间 billable、免费 credits、日均）、`仅估算（est tokens，不可相加）`（Trae 弱估算）
 - **每日用量**：每个单位一块堆叠图——Token 按 Agent 堆叠并跟随 `Token 指标` 选择；Credits 为 billable + 免费堆叠；Trae 弱估算为 est 输入/输出堆叠

@@ -865,6 +865,32 @@ try {
     host.appendChild(card);
   }
 
+  function resolveAgentSelection(current, agent, additive) {
+    if (additive) {
+      var next = current.slice();
+      var index = next.indexOf(agent);
+      if (index >= 0) {
+        if (next.length === 1) return next;
+        next.splice(index, 1);
+      } else {
+        next.push(agent);
+      }
+      return next;
+    }
+    if (current.length === 1 && current[0] === agent) return AGENTS.slice();
+    return [agent];
+  }
+
+  function applyAgentSelection(names) {
+    state.agents = new Set(names);
+    state.model = "";
+    state.project = "";
+    state.page = 0;
+    rebuildDimensionSelects();
+    syncAgentFilter();
+    renderAll();
+  }
+
   function buildAgentFilter() {
     el.nav.textContent = "";
     var label = document.createElement("span");
@@ -876,7 +902,8 @@ try {
       button.type = "button";
       button.className = "chip";
       button.dataset.agent = agent;
-      button.title = agent + " · " + KIND_LABELS[agentKind(agent)] + "，点击切换是否纳入汇总";
+      button.title = agent + " · " + KIND_LABELS[agentKind(agent)] +
+        "，单击只看，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
       var dot = document.createElement("span");
       dot.className = "dot";
       dot.style.background = COLORS[agent];
@@ -887,26 +914,23 @@ try {
       button.appendChild(dot);
       button.appendChild(name);
       button.appendChild(total);
-      button.addEventListener("click", function () { toggleAgent(agent); });
+      button.addEventListener("click", function (event) {
+        var additive = event.metaKey || event.ctrlKey || event.shiftKey;
+        applyAgentSelection(resolveAgentSelection(Array.from(state.agents), agent, additive));
+      });
       el.nav.appendChild(button);
     });
     var all = document.createElement("button");
     all.type = "button";
     all.className = "btn ghost small";
     all.textContent = "全选";
-    all.addEventListener("click", function () {
-      state.agents = new Set(AGENTS);
-      state.model = "";
-      state.project = "";
-      state.page = 0;
-      rebuildDimensionSelects();
-      syncAgentFilter();
-      renderAll();
-    });
+    all.addEventListener("click", function () { applyAgentSelection(AGENTS.slice()); });
     el.nav.appendChild(all);
     var tip = document.createElement("span");
     tip.className = "chip-tip";
-    tip.textContent = "可多选；tokens 与 credits 分别汇总，估算不并入真值";
+    tip.textContent = navigator.platform.indexOf("Mac") >= 0
+      ? "单击只看 · ⌘+单击多选；tokens/credits/est 分别汇总"
+      : "单击只看 · Ctrl+单击多选；tokens/credits/est 分别汇总";
     el.nav.appendChild(tip);
     syncAgentFilter();
   }
@@ -917,23 +941,6 @@ try {
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
-  }
-
-  function toggleAgent(agent) {
-    var next = new Set(state.agents);
-    if (next.has(agent)) {
-      if (next.size === 1) return;
-      next.delete(agent);
-    } else {
-      next.add(agent);
-    }
-    state.agents = next;
-    state.model = "";
-    state.project = "";
-    state.page = 0;
-    rebuildDimensionSelects();
-    syncAgentFilter();
-    renderAll();
   }
 
   function fillSelect(select, options, allLabel, labelFn) {

@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime
@@ -77,6 +78,46 @@ class HtmlRenderTest(unittest.TestCase):
         self.assertEqual(payload["activity"][0]["project"], "proj")
         self.assertEqual(payload["activity"][0]["tool_calls"], 7)
         self.assertEqual(payload["coverage"], coverage)
+
+
+class AgentSelectionTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        payload = build_payload([], ("day", "source", "model", "project"), None, None, [])
+        cls.html = render_html(payload)
+
+    def test_chip_click_semantics_present(self):
+        self.assertIn("单击只看", self.html)
+        self.assertIn("再次单击恢复全部", self.html)
+        self.assertIn("event.metaKey || event.ctrlKey || event.shiftKey", self.html)
+        self.assertIn("function resolveAgentSelection", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_resolve_agent_selection_behavior(self):
+        start = self.html.index("function resolveAgentSelection")
+        end = self.html.index("function applyAgentSelection", start)
+        source = self.html[start:end]
+        harness = """
+const AGENTS = ["a", "b", "c"];
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("普通点击只看", resolveAgentSelection(["a", "b", "c"], "b", false), ["b"]);
+eq("再次点击恢复全部", resolveAgentSelection(["b"], "b", false), ["a", "b", "c"]);
+eq("从子集普通点击", resolveAgentSelection(["a", "b"], "b", false), ["b"]);
+eq("修饰键增加", resolveAgentSelection(["a"], "b", true), ["a", "b"]);
+eq("修饰键移除", resolveAgentSelection(["a", "b"], "a", true), ["b"]);
+eq("修饰键保留最后一个", resolveAgentSelection(["a"], "a", true), ["a"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 class HtmlCommandTest(unittest.TestCase):
