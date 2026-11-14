@@ -471,11 +471,13 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 生成：服务端把 token 行按 `(day,source,model,project)`、credits 行与估算行按 `(day,model,project)` 聚合，和活动/额度/覆盖信息一起序列化为 JSON，替换模板占位符。
 - 安全：payload 中 `<` 转义为 `\u003c`；CSP `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:` → **零外部请求**。
 - 客户端职责：
-  - 按 `agents` 映射把来源分为 `精确 Token` / `精确 Credits` / `仅估算` 三组，生成顶部 Agent 导航；总览只聚合 token 类来源；
-  - 每个 Agent 页复用同一套四块（每日用量 / 模型 Top 8 / 项目 Top 8 / 明细），单位为 tokens / credits / est tokens；
-  - Qoder 页以 credits 为主指标，「影子：估算 token」默认关闭；开启后在每日图上叠加估算虚线（右轴），Top 8 显示影子标注，明细追加影子列并按 `(day,model,project)` 补出只有估算的行；
-  - 日期范围按页面记忆，默认取该页数据覆盖；>200 天自动按周聚合；
-  - 活动指标折叠在 Qoder 页底部，与 credits/token 明确隔离；浅/深色主题（`localStorage`）。
+  - 顶部只有一个 Agent 多选区（可同时选 token 计费与 credits 计费 Agent，至少保留一个），不做页面分组；
+  - 同一页按单位并列渲染：tokens / credits / est 各自汇总，**不跨单位相加**；多单位时 KPI、图表、Top 8、明细均按单位分区或并列；
+  - 每日用量按单位各一块堆叠图；Top 8 按主单位（tokens → credits → est）排序，其他单位在同一行做次要标注；
+  - 明细为统一表，`单位` 列区分 `tokens` / `credits` / `qoder 影子 est` / `trae-cn 弱估算`，不适用单位显示 `—`；`行数/各口径合计` 分别汇总；
+  - 「影子：Qoder 估算 token」默认关闭，仅在选中 qoder 时可用；开启后在 credits 图叠加虚线（右轴），明细追加影子行并标注不可相加；
+  - 日期范围默认取全部数据覆盖；>200 天自动按周聚合；
+  - 活动指标仅选中 qoder 时显示，折叠在页底，与 credits/token 明确隔离；浅/深色主题（`localStorage`）。
 - payload 结构：
 
 ```json

@@ -230,21 +230,20 @@ usage --stateless html --output /tmp/usage.html   # 不读库，直接读源
 ```
 
 页面是**单文件、离线、零外部请求**（CSP `default-src 'none'`，CSS/JS/SVG 全内联），
-可随时发给别人或归档，不需要起服务。报告按 Agent 的口径分类，每个 Agent 页使用同一套四块布局：
+可随时发给别人或归档，不需要起服务。所有 Agent 共用一处多选与同一页报告：
 
-- **顶部 Agent 导航**：`总览` / `精确 Token`（claude、codex、opencode、kilo、cline）/ `精确 Credits`（qoder）/ `仅估算`（trae-cn），标签上带该 Agent 的汇总值
-- **总览**：精确 token agent 的 KPI（总 token/输入/输出/缓存/推理/缓存占比/轮次）、按来源堆叠的每日用量、模型 Top 8、项目 Top 8、明细；Qoder 不并入总览
-- **每个 Agent 页**：统一的四块——`每日用量`、`模型 Top 8`、`项目 Top 8`、`明细`，单位标签随口径显示 `tokens` / `credits` / `est tokens`
-- **Qoder（精确 Credits）**：credits 为服务端逐请求计费真值，是本页主指标
-  - 最新额度余额卡片（余额/已用/总量/进度条/快照日）；区间 billable、免费 credits、日均 KPI
-  - 每日 billable + 免费 credits 堆叠柱状图；模型/项目 Top 8 按 credits 排序；明细为天 × 模型 × 项目（credits/请求/免费 credits）
-  - **影子：估算 token** 开关默认关闭；打开后在同一图表上叠加虚线（右轴）、Top 8 显示影子标注、明细追加影子列（并补出只有估算、没有 billable 的行），始终注明不可与 credits 相加
-  - 活动指标（会话/提示/工具调用/时长）折叠在页面底部，不参与任何用量计算
-- **Trae CN（仅估算）**：无 token/credits 真值，用同一套四块展示 hook 弱估算，固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」
-- **日期范围按页面记忆**，默认取该页自身的数据覆盖；「全部」为该页全部数据，避免用总范围把单日/短周期 Agent 的图压成一条线
-- 模型 Top 8 / 项目 Top 8 点击筛选、再点取消（列表不会被自身筛选折叠）；来源 chip 支持单击只看、⌘/Ctrl/Shift 多选
+- **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder（精确 credits）、trae-cn（弱估算），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个
+- **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
+- **KPI 分区**：`精确 Token（tokens）`（总量/输入/输出/缓存/推理/缓存占比/轮次）、`精确 Credits（credits）`（额度余额、区间 billable、免费 credits、日均）、`仅估算（est tokens，不可相加）`（Trae 弱估算）
+- **每日用量**：每个单位一块堆叠图——Token 按 Agent 堆叠并跟随 `Token 指标` 选择；Credits 为 billable + 免费堆叠；Trae 弱估算为 est 输入/输出堆叠
+- **模型 Top 8 / 项目 Top 8**：按主单位（优先 tokens → credits → est）排序，其余单位在同一行做次要标注（标注不可相加）；点击筛选、再点取消
+- **明细**：统一一张表，`单位` 列区分 `tokens` / `credits` / `qoder 影子 est` / `trae-cn 弱估算`，不适用该单位的列显示 `—`；按天 × Agent × 模型 × 项目聚合，可排序、可分页，`行数/各口径合计` 分列汇总
+- **Qoder 影子 est**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子 est、明细追加影子行，始终注明不可与 credits 相加
+- **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」
+- **活动指标**（会话/提示/工具调用/时长）：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算
+- **日期范围**：默认取全部数据覆盖；「全部」为全量，避免把单日/短周期 Agent 的图压成一条线
 - 可排序、可分页的明细表；缺失日期显式标注（图表按 0 显示）；浅色/深色主题记在 `localStorage`
-- 页首覆盖提示与页脚说明 token 真值 / credits / 估算 / 活动的口径边界，Qoder 历史 token 真值（2026-06-01 ~ 09-16）只在说明中披露，不计入总览与 credits 页
+- 页首覆盖提示与页脚说明 token 真值 / credits / 估算 / 活动的口径边界，Qoder 历史 token 真值（2026-06-01 ~ 09-16）只在说明中披露，不并入本页
 
 数据来自与 `report` 相同的聚合链路（天 × 来源 × 模型 × 项目），所以页面数字与 CLI 报表一致。
 

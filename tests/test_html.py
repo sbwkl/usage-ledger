@@ -119,7 +119,8 @@ class HtmlCommandTest(unittest.TestCase):
         self.assertTrue(any("Trae" in notice for notice in payload["notices"]))
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
         self.assertIn("Content-Security-Policy", html)
-        self.assertIn("单击只看", html)
+        self.assertIn("点击筛选 / 再点取消", html)
+        self.assertIn('id="agent-nav"', html)
 
     def test_html_empty_source_generates_page(self):
         empty = tempfile.TemporaryDirectory()
@@ -220,7 +221,8 @@ class QoderHtmlTest(unittest.TestCase):
                          {"GLM-5.3-Flash"})
         self.assertIn("补充：活动指标", html)
         self.assertIn('id="shadow-switch"', html)
-        self.assertIn('id="overview-others"', html)
+        self.assertIn('id="panel-credits"', html)
+        self.assertIn('id="panel-est"', html)
         self.assertIn("精确 Credits", html)
         self.assertIn("不可相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
@@ -258,7 +260,7 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertEqual(est["project"], "proj-x")
         self.assertEqual(payload["est"]["totals"]["requests"], 1)
         self.assertIn("区间 billable", html)
-        self.assertIn("影子：估算 token", html)
+        self.assertIn("影子：Qoder 估算 token", html)
         self.assertIn("最新额度余额", html)
         self.assertIn("credits、估算与活动口径不同，不可相加", html)
         self.assertIn("不可与 token 真值或额度相加", html)

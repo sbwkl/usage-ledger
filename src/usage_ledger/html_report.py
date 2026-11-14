@@ -150,14 +150,11 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .chip-tip{font-size:11.5px;color:var(--muted);align-self:center;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
 
-.agent-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:10px 14px}
-.nav-group{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.nav-group+.nav-group{padding-left:16px;border-left:1px solid var(--border)}
-.nav-group-label{font-size:10.5px;letter-spacing:.4px;color:var(--muted);margin-right:2px;white-space:nowrap}
-.agent-tab{display:inline-flex;align-items:center;gap:7px;border:1px solid transparent;background:transparent;color:var(--muted);border-radius:9px;padding:5px 9px;font:inherit;font-size:12.5px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
-.agent-tab:hover{color:var(--text);border-color:var(--border)}
-.agent-tab.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
-.agent-tab small{opacity:.62;font-variant-numeric:tabular-nums}
+.agent-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 14px}
+.agent-nav-label{font-size:11px;letter-spacing:.4px;color:var(--muted);white-space:nowrap}
+.kpi-section{grid-column:1/-1;font-size:11px;letter-spacing:.4px;color:var(--muted);margin-top:4px}
+.chart-panel+.chart-panel{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.chart-panel h3{font-size:12.5px;margin:0;letter-spacing:.2px}
 
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);min-width:0}
@@ -252,7 +249,7 @@ td.shadow-col{color:var(--muted)}
 .pager button{border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
 .pager button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
 .pager button:disabled{opacity:.42;cursor:default}
-#pageinfo,#agent-pageinfo{font-variant-numeric:tabular-nums}
+#pageinfo{font-variant-numeric:tabular-nums}
 .activity-block{padding:0}
 .activity-block summary{cursor:pointer;padding:14px 16px;font-size:13.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
 .activity-block summary::-webkit-details-marker{display:none}
@@ -274,7 +271,6 @@ footer p{margin:3px 0}
   .topbar{padding:16px 14px 8px}
   .kpi.primary{grid-column:span 1}
   .kpis{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
-  .nav-group+.nav-group{padding-left:0;border-left:0}
 }
 </style>
 <script>
@@ -291,7 +287,7 @@ try {
     <div class="logo">UL</div>
     <div>
       <h1>Usage Ledger</h1>
-      <p class="sub">本地 AI 编码工具用量 · 按 Agent 分类 · 离线单文件</p>
+      <p class="sub">本地 AI 编码工具用量 · 多 Agent 按单位汇总 · 离线单文件</p>
     </div>
   </div>
   <div class="top-actions">
@@ -309,49 +305,80 @@ try {
       <button id="reset" class="btn ghost small" type="button">重置筛选</button>
     </div>
     <div class="filter-line">
-      <div class="chips" id="sources" aria-label="来源"></div>
       <label class="field">模型 <select id="model"></select></label>
       <label class="field">项目 <select id="project"></select></label>
       <label class="field">搜索 <input type="search" id="q" placeholder="日期 / 模型 / 项目"></label>
     </div>
   </section>
 
-  <nav class="card agent-nav" id="agent-nav" aria-label="Agent 报告"></nav>
+  <nav class="card agent-nav" id="agent-nav" aria-label="Agent 选择"></nav>
 
   <p id="coverage" class="coverage" hidden></p>
 
-  <section class="agent-page" id="overview-page" aria-label="总览">
-    <p id="token-empty" class="muted" hidden></p>
-    <div class="chips" id="overview-others" style="margin:0 0 14px" hidden></div>
+  <section class="agent-page" id="report-page" aria-label="用量报告">
     <section class="kpis" id="kpis" aria-label="汇总指标"></section>
     <section class="grid" style="margin-top:16px">
       <div class="card chart-card">
         <div class="card-head">
-          <div class="head-tags"><h2>每日用量</h2><span class="unit-tag">tokens</span></div>
-          <label class="field">指标
-            <select id="metric">
-              <option value="total">总量</option>
-              <option value="input">输入</option>
-              <option value="output">输出</option>
-              <option value="cache_read">缓存读</option>
-              <option value="cache_write">缓存写</option>
-              <option value="reasoning">推理</option>
-            </select>
-          </label>
+          <h2>每日用量</h2>
+          <div class="head-tags">
+            <label class="field" id="metric-field">Token 指标
+              <select id="metric">
+                <option value="total">总量</option>
+                <option value="input">输入</option>
+                <option value="output">输出</option>
+                <option value="cache_read">缓存读</option>
+                <option value="cache_write">缓存写</option>
+                <option value="reasoning">推理</option>
+              </select>
+            </label>
+            <label class="switch" id="shadow-switch" hidden>
+              <input type="checkbox" id="shadow">
+              <span class="switch-track" aria-hidden="true"></span>
+              <span>影子：Qoder 估算 token</span>
+            </label>
+          </div>
         </div>
-        <div class="legend" id="legend"></div>
-        <div class="chart-wrap">
-          <div id="chart"></div>
-          <div id="tooltip" class="tooltip"></div>
+        <div class="chart-panel" id="panel-token">
+          <div class="card-head"><div class="head-tags"><h3>Token</h3><span class="unit-tag">tokens</span></div></div>
+          <div class="legend" id="legend-token"></div>
+          <div class="chart-wrap">
+            <div id="chart-token"></div>
+            <div id="tooltip-token" class="tooltip"></div>
+          </div>
+          <p class="muted" id="hint-token" style="margin:8px 0 0"></p>
         </div>
-        <p class="muted" id="hint" style="margin:8px 0 0"></p>
+        <div class="chart-panel" id="panel-credits" hidden>
+          <div class="card-head"><div class="head-tags"><h3>Credits</h3><span class="unit-tag">credits</span></div></div>
+          <div class="legend" id="legend-credits"></div>
+          <div class="chart-wrap">
+            <div id="chart-credits"></div>
+            <div id="tooltip-credits" class="tooltip"></div>
+          </div>
+          <p class="muted" id="hint-credits" style="margin:8px 0 0"></p>
+        </div>
+        <div class="chart-panel" id="panel-est" hidden>
+          <div class="card-head"><div class="head-tags"><h3>估算</h3><span class="unit-tag">est tokens</span></div></div>
+          <div class="legend" id="legend-est"></div>
+          <div class="chart-wrap">
+            <div id="chart-est"></div>
+            <div id="tooltip-est" class="tooltip"></div>
+          </div>
+          <p class="muted" id="hint-est" style="margin:8px 0 0"></p>
+        </div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>模型 Top 8</h2><span class="muted">点击筛选 / 再点取消</span></div>
+        <div class="card-head">
+          <div class="head-tags"><h2>模型 Top 8</h2><span class="unit-tag" id="model-unit"></span></div>
+          <span class="muted">点击筛选 / 再点取消</span>
+        </div>
         <div class="bars" id="models"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>项目 Top 8</h2><span class="muted">点击筛选 / 再点取消</span></div>
+        <div class="card-head">
+          <div class="head-tags"><h2>项目 Top 8</h2><span class="unit-tag" id="project-unit"></span></div>
+          <span class="muted">点击筛选 / 再点取消</span>
+        </div>
         <div class="bars" id="projects"></div>
       </div>
     </section>
@@ -371,83 +398,6 @@ try {
         <button id="prev" type="button">上一页</button>
         <span id="pageinfo" class="muted"></span>
         <button id="next" type="button">下一页</button>
-      </div>
-    </section>
-  </section>
-
-  <section class="agent-page" id="agent-page" aria-label="Agent 报告" hidden>
-    <section class="card agent-head">
-      <div>
-        <div class="agent-title-row">
-          <h2 id="agent-title"></h2>
-          <span class="kind-badge" id="agent-badge"></span>
-        </div>
-        <p class="muted" id="agent-note"></p>
-      </div>
-      <div class="agent-head-actions">
-        <label class="field" id="agent-metric-field">指标
-          <select id="agent-metric">
-            <option value="total">总量</option>
-            <option value="input">输入</option>
-            <option value="output">输出</option>
-            <option value="cache_read">缓存读</option>
-            <option value="cache_write">缓存写</option>
-            <option value="reasoning">推理</option>
-          </select>
-        </label>
-        <label class="switch" id="shadow-switch" hidden>
-          <input type="checkbox" id="shadow">
-          <span class="switch-track" aria-hidden="true"></span>
-          <span>影子：估算 token</span>
-        </label>
-      </div>
-    </section>
-
-    <section class="kpis" id="agent-kpis" aria-label="Agent 汇总指标" style="margin-top:16px"></section>
-
-    <section class="grid" style="margin-top:16px">
-      <div class="card chart-card">
-        <div class="card-head">
-          <div class="head-tags"><h2>每日用量</h2><span class="unit-tag" id="chart-unit"></span></div>
-        </div>
-        <div class="legend" id="agent-legend"></div>
-        <div class="chart-wrap">
-          <div id="agent-chart"></div>
-          <div id="agent-tooltip" class="tooltip"></div>
-        </div>
-        <p class="muted" id="agent-hint" style="margin:8px 0 0"></p>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <div class="head-tags"><h2>模型 Top 8</h2><span class="unit-tag" id="model-unit"></span></div>
-          <span class="muted">点击筛选 / 再点取消</span>
-        </div>
-        <div class="bars" id="agent-models"></div>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <div class="head-tags"><h2>项目 Top 8</h2><span class="unit-tag" id="project-unit"></span></div>
-          <span class="muted">点击筛选 / 再点取消</span>
-        </div>
-        <div class="bars" id="agent-projects"></div>
-      </div>
-    </section>
-
-    <section class="card table-card" style="margin-top:16px">
-      <div class="card-head">
-        <h2>明细</h2>
-        <span class="muted" id="agent-rowinfo"></span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead id="agent-thead"></thead>
-          <tbody id="agent-tbody"></tbody>
-        </table>
-      </div>
-      <div class="pager">
-        <button id="agent-prev" type="button">上一页</button>
-        <span id="agent-pageinfo" class="muted"></span>
-        <button id="agent-next" type="button">下一页</button>
       </div>
       <p class="muted shadow-note" id="shadow-note" hidden></p>
     </section>
@@ -507,11 +457,6 @@ try {
   var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn"];
   var AGENT_KINDS = DATA.agents || {};
   var KIND_LABELS = { token: "精确 Token", credits: "精确 Credits", estimate: "仅估算" };
-  var KIND_NOTES = {
-    token: "Token 为本地日志逐调用真值；输入、输出、缓存、推理互不重叠。",
-    credits: "credits 为服务端逐请求计费真值，是本页主指标；token 无法精确获取，估算值仅作为影子指标（默认隐藏，不可相加）。",
-    estimate: "本地无 token / credits 真值；以下为 hook 可见内容的弱估算，误差可能数倍，只适合看趋势。"
-  };
   var CREDIT_BILLABLE_COLOR = "#e11d48";
   var CREDIT_FREE_COLOR = "#f59e0b";
   var EST_INPUT_COLOR = "#3b6cf6";
@@ -601,7 +546,6 @@ try {
   var TOKEN_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "token"; });
   var CREDIT_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "credits"; });
   var ESTIMATE_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "estimate"; });
-  var HAS_OVERVIEW = TOKEN_AGENTS.length > 0 || AGENTS.length === 0;
   var COLORS = {};
   AGENTS.forEach(function (name, index) {
     COLORS[name] = KNOWN_COLORS[name] || PALETTE[index % PALETTE.length];
@@ -646,31 +590,27 @@ try {
   var TODAY = localToday();
   var PICK_MAX = DATA_UNTIL > TODAY ? DATA_UNTIL : TODAY;
 
-  var initialState = HAS_OVERVIEW ? "all" : (AGENTS[0] || "all");
-
-  function defaultRange(agent) {
-    var bounds;
-    if (agent === "all") {
-      bounds = tokenBounds;
-    } else if (agentKind(agent) === "credits") {
-      bounds = creditBounds[0] ? creditBounds : estBounds;
-    } else if (agentKind(agent) === "estimate") {
-      bounds = traeEstBounds;
-    } else {
-      bounds = minMaxDay(TOKEN_ROWS.filter(function (row) { return row.source === agent; }));
-    }
-    if (!bounds || !bounds[0]) return { start: DATA_SINCE, end: DATA_UNTIL };
-    return { start: bounds[0], end: bounds[1] };
+  function allBounds() {
+    if (!DATA_SINCE || !DATA_UNTIL) return { start: DATA_SINCE, end: DATA_UNTIL };
+    return { start: DATA_SINCE, end: DATA_UNTIL };
   }
 
-  var pageRanges = {};
-  var initialRange = defaultRange(initialState);
-  pageRanges[initialState] = initialRange;
+  function selectedTokenAgents() {
+    return TOKEN_AGENTS.filter(function (name) { return state.agents.has(name); });
+  }
+  function hasTokenSelected() { return selectedTokenAgents().length > 0; }
+  function hasCreditsSelected() {
+    return CREDIT_AGENTS.some(function (name) { return state.agents.has(name); });
+  }
+  function hasEstimateSelected() {
+    return ESTIMATE_AGENTS.some(function (name) { return state.agents.has(name); });
+  }
+
+  var initialRange = allBounds();
   var state = {
-    agent: initialState,
+    agents: new Set(AGENTS),
     start: initialRange.start,
     end: initialRange.end,
-    sources: new Set(TOKEN_AGENTS),
     model: "",
     project: "",
     q: "",
@@ -685,24 +625,22 @@ try {
 
   var el = {
     start: $("#start"), end: $("#end"), presets: $("#presets"), reset: $("#reset"),
-    sources: $("#sources"), model: $("#model"), project: $("#project"), q: $("#q"),
+    model: $("#model"), project: $("#project"), q: $("#q"),
     nav: $("#agent-nav"), coverage: $("#coverage"),
-    overviewPage: $("#overview-page"), tokenEmpty: $("#token-empty"),
-    overviewOthers: $("#overview-others"),
-    kpis: $("#kpis"), metric: $("#metric"), legend: $("#legend"), chart: $("#chart"),
-    tooltip: $("#tooltip"), hint: $("#hint"), models: $("#models"), projects: $("#projects"),
-    tokenTable: $("#token-table"), thead: $("#thead"), tbody: $("#tbody"),
-    rowinfo: $("#rowinfo"), pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
-    agentPage: $("#agent-page"), agentTitle: $("#agent-title"), agentBadge: $("#agent-badge"),
-    agentNote: $("#agent-note"), agentMetricField: $("#agent-metric-field"),
-    agentMetric: $("#agent-metric"), shadowSwitch: $("#shadow-switch"), shadow: $("#shadow"),
-    chartUnit: $("#chart-unit"), modelUnit: $("#model-unit"), projectUnit: $("#project-unit"),
-    agentKpis: $("#agent-kpis"), agentLegend: $("#agent-legend"), agentChart: $("#agent-chart"),
-    agentTooltip: $("#agent-tooltip"), agentHint: $("#agent-hint"),
-    agentModels: $("#agent-models"), agentProjects: $("#agent-projects"),
-    agentThead: $("#agent-thead"), agentTbody: $("#agent-tbody"),
-    agentRowinfo: $("#agent-rowinfo"), agentPageinfo: $("#agent-pageinfo"),
-    agentPrev: $("#agent-prev"), agentNext: $("#agent-next"), shadowNote: $("#shadow-note"),
+    kpis: $("#kpis"), metricField: $("#metric-field"), metric: $("#metric"),
+    shadowSwitch: $("#shadow-switch"), shadow: $("#shadow"),
+    panelToken: $("#panel-token"), panelCredits: $("#panel-credits"), panelEst: $("#panel-est"),
+    chartToken: $("#chart-token"), tooltipToken: $("#tooltip-token"),
+    legendToken: $("#legend-token"), hintToken: $("#hint-token"),
+    chartCredits: $("#chart-credits"), tooltipCredits: $("#tooltip-credits"),
+    legendCredits: $("#legend-credits"), hintCredits: $("#hint-credits"),
+    chartEst: $("#chart-est"), tooltipEst: $("#tooltip-est"),
+    legendEst: $("#legend-est"), hintEst: $("#hint-est"),
+    modelUnit: $("#model-unit"), projectUnit: $("#project-unit"),
+    models: $("#models"), projects: $("#projects"),
+    thead: $("#thead"), tbody: $("#tbody"), rowinfo: $("#rowinfo"),
+    pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
+    shadowNote: $("#shadow-note"),
     activityBlock: $("#activity-block"), activityKpis: $("#activity-kpis"),
     activityMetric: $("#activity-metric"), activityLegend: $("#activity-legend"),
     activityChart: $("#activity-chart"), activityTooltip: $("#activity-tooltip"),
@@ -844,37 +782,45 @@ try {
     return haystack.indexOf(state.q) >= 0;
   }
 
-  function pageBaseRows(agent) {
-    if (agent === "all") return TOKEN_ROWS;
-    var kind = agentKind(agent);
-    if (kind === "credits") return CREDIT_ROWS;
-    if (kind === "estimate") return TRAE_EST;
-    return TOKEN_ROWS.filter(function (row) { return row.source === agent; });
+  function matchesFilters(row, ignore) {
+    if (state.start && row.day < state.start) return false;
+    if (state.end && row.day > state.end) return false;
+    if (ignore !== "model" && state.model && row.model !== state.model) return false;
+    if (ignore !== "project" && state.project && row.project !== state.project) return false;
+    return matchesQuery(row);
   }
 
-  function pageRowsFiltered(agent, ignore) {
-    return pageBaseRows(agent).filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (ignore !== "model" && state.model && row.model !== state.model) return false;
-      if (ignore !== "project" && state.project && row.project !== state.project) return false;
-      return matchesQuery(row);
-    });
-  }
-
-  function overviewRows(ignore) {
+  function tokenRowsFor(ignore) {
     return TOKEN_ROWS.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (!state.sources.has(row.source)) return false;
-      if (ignore !== "model" && state.model && row.model !== state.model) return false;
-      if (ignore !== "project" && state.project && row.project !== state.project) return false;
-      return matchesQuery(row);
+      return state.agents.has(row.source) && matchesFilters(row, ignore);
     });
   }
 
-  function activeRows(ignore) {
-    return state.agent === "all" ? overviewRows(ignore) : pageRowsFiltered(state.agent, ignore);
+  function creditRowsFor(ignore) {
+    if (!hasCreditsSelected()) return [];
+    return CREDIT_ROWS.filter(function (row) { return matchesFilters(row, ignore); });
+  }
+
+  function qoderEstRowsFor(ignore) {
+    if (!state.shadow || !hasCreditsSelected()) return [];
+    return EST.filter(function (row) { return matchesFilters(row, ignore); });
+  }
+
+  function traeRowsFor(ignore) {
+    if (!hasEstimateSelected()) return [];
+    return TRAE_EST.filter(function (row) { return matchesFilters(row, ignore); });
+  }
+
+  function dimensionRows() {
+    var rows = TOKEN_ROWS.filter(function (row) { return state.agents.has(row.source); });
+    if (hasCreditsSelected()) {
+      rows = rows.concat(CREDIT_ROWS.map(function (row) {
+        return { day: row.day, source: "qoder", model: row.model,
+                 project: row.project, total: row.credits, turns: 0 };
+      }));
+    }
+    if (hasEstimateSelected()) rows = rows.concat(TRAE_EST);
+    return rows;
   }
 
   function pageMetric(row) {
@@ -919,134 +865,75 @@ try {
     host.appendChild(card);
   }
 
-  function buildAgentNav() {
+  function buildAgentFilter() {
     el.nav.textContent = "";
-    function tab(agent, label) {
+    var label = document.createElement("span");
+    label.className = "agent-nav-label";
+    label.textContent = "Agent";
+    el.nav.appendChild(label);
+    AGENTS.forEach(function (agent) {
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "agent-tab";
+      button.className = "chip";
       button.dataset.agent = agent;
+      button.title = agent + " · " + KIND_LABELS[agentKind(agent)] + "，点击切换是否纳入汇总";
       var dot = document.createElement("span");
       dot.className = "dot";
-      dot.style.background = agent === "all"
-        ? "linear-gradient(135deg,var(--accent),#22c1a4)" : COLORS[agent];
+      dot.style.background = COLORS[agent];
       var name = document.createElement("span");
-      name.textContent = label;
+      name.textContent = agent;
       var total = document.createElement("small");
       total.textContent = navTotalText(agent);
       button.appendChild(dot);
       button.appendChild(name);
       button.appendChild(total);
-      button.title = (agent === "all" ? "精确 Token 总览" : agent + " · " +
-        KIND_LABELS[agentKind(agent)]) + "，单击切换报告页";
-      button.addEventListener("click", function () { setAgent(agent); });
-      return button;
-    }
-    if (HAS_OVERVIEW) el.nav.appendChild(tab("all", "总览"));
-    var groups = [
-      { label: "精确 Token", agents: TOKEN_AGENTS },
-      { label: "精确 Credits", agents: CREDIT_AGENTS },
-      { label: "仅估算", agents: ESTIMATE_AGENTS }
-    ];
-    groups.forEach(function (group) {
-      if (!group.agents.length) return;
-      var wrap = document.createElement("div");
-      wrap.className = "nav-group";
-      var label = document.createElement("span");
-      label.className = "nav-group-label";
-      label.textContent = group.label;
-      wrap.appendChild(label);
-      group.agents.forEach(function (agent) { wrap.appendChild(tab(agent, agent)); });
-      el.nav.appendChild(wrap);
+      button.addEventListener("click", function () { toggleAgent(agent); });
+      el.nav.appendChild(button);
     });
-    syncAgentNav();
+    var all = document.createElement("button");
+    all.type = "button";
+    all.className = "btn ghost small";
+    all.textContent = "全选";
+    all.addEventListener("click", function () {
+      state.agents = new Set(AGENTS);
+      state.model = "";
+      state.project = "";
+      state.page = 0;
+      rebuildDimensionSelects();
+      syncAgentFilter();
+      renderAll();
+    });
+    el.nav.appendChild(all);
+    var tip = document.createElement("span");
+    tip.className = "chip-tip";
+    tip.textContent = "可多选；tokens 与 credits 分别汇总，估算不并入真值";
+    el.nav.appendChild(tip);
+    syncAgentFilter();
   }
 
-  function syncAgentNav() {
+  function syncAgentFilter() {
     Array.prototype.forEach.call(el.nav.querySelectorAll("[data-agent]"), function (button) {
-      var active = button.dataset.agent === state.agent;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-current", active ? "page" : "false");
-    });
-  }
-
-  function setAgent(agent) {
-    if (agent !== "all" && !present[agent]) return;
-    if (agent === "all" && !HAS_OVERVIEW) return;
-    pageRanges[state.agent] = { start: state.start, end: state.end };
-    state.agent = agent;
-    var range = pageRanges[agent] || defaultRange(agent);
-    pageRanges[agent] = range;
-    state.start = range.start;
-    state.end = range.end;
-    syncDateInputs();
-    state.model = "";
-    state.project = "";
-    state.shadow = false;
-    state.sortKey = "day";
-    state.sortDir = "desc";
-    state.page = 0;
-    el.shadow.checked = false;
-    if (agent === "all") state.sources = new Set(TOKEN_AGENTS);
-    rebuildDimensionSelects();
-    syncAgentNav();
-    renderAll();
-  }
-
-  function buildChips() {
-    el.sources.textContent = "";
-    TOKEN_AGENTS.forEach(function (source) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "chip";
-      button.dataset.source = source;
-      button.title = "单击只看 " + source + "，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
-      var dot = document.createElement("span");
-      dot.className = "dot";
-      dot.style.background = COLORS[source];
-      var name = document.createElement("span");
-      name.textContent = source;
-      var total = document.createElement("small");
-      total.textContent = fmtCompact(navTotal(source));
-      button.appendChild(dot);
-      button.appendChild(name);
-      button.appendChild(total);
-      button.addEventListener("click", function (event) {
-        var additive = event.metaKey || event.ctrlKey || event.shiftKey;
-        if (additive) {
-          if (state.sources.has(source)) {
-            if (state.sources.size === 1) return;
-            state.sources.delete(source);
-          } else {
-            state.sources.add(source);
-          }
-        } else if (state.sources.size === 1 && state.sources.has(source)) {
-          state.sources = new Set(TOKEN_AGENTS);
-        } else {
-          state.sources = new Set([source]);
-        }
-        state.page = 0;
-        syncChips();
-        renderAll();
-      });
-      el.sources.appendChild(button);
-    });
-    if (TOKEN_AGENTS.length > 1) {
-      var tip = document.createElement("span");
-      tip.className = "chip-tip";
-      tip.textContent = navigator.platform.indexOf("Mac") >= 0
-        ? "单击只看 · ⌘+单击多选" : "单击只看 · Ctrl+单击多选";
-      el.sources.appendChild(tip);
-    }
-    syncChips();
-  }
-
-  function syncChips() {
-    Array.prototype.forEach.call(el.sources.querySelectorAll(".chip"), function (button) {
-      var active = state.sources.has(button.dataset.source);
+      var active = state.agents.has(button.dataset.agent);
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
+  }
+
+  function toggleAgent(agent) {
+    var next = new Set(state.agents);
+    if (next.has(agent)) {
+      if (next.size === 1) return;
+      next.delete(agent);
+    } else {
+      next.add(agent);
+    }
+    state.agents = next;
+    state.model = "";
+    state.project = "";
+    state.page = 0;
+    rebuildDimensionSelects();
+    syncAgentFilter();
+    renderAll();
   }
 
   function fillSelect(select, options, allLabel, labelFn) {
@@ -1064,7 +951,7 @@ try {
   }
 
   function rebuildDimensionSelects() {
-    var rows = pageBaseRows(state.agent);
+    var rows = dimensionRows();
     var models = groupTotals(rows, "model").sort(byTotal);
     var projects = groupTotals(rows, "project").sort(byTotal);
     fillSelect(el.model, models, "全部模型", function (key) { return key; });
@@ -1097,7 +984,7 @@ try {
       button.className = "btn ghost small";
       button.textContent = preset.label;
       button.addEventListener("click", function () {
-        var bounds = defaultRange(state.agent);
+        var bounds = allBounds();
         var end = preset.kind === "all" ? (bounds.end || DATA_UNTIL) : TODAY;
         var start = preset.kind === "today" ? TODAY
                   : preset.kind === "all" ? (bounds.start || DATA_SINCE)
@@ -1106,7 +993,6 @@ try {
         if (start < minDay) start = minDay;
         state.start = start;
         state.end = end;
-        pageRanges[state.agent] = { start: start, end: end };
         syncDateInputs();
         state.page = 0;
         renderAll();
@@ -1139,12 +1025,6 @@ try {
 
     el.metric.addEventListener("change", function () {
       state.metric = el.metric.value;
-      el.agentMetric.value = state.metric;
-      renderAll();
-    });
-    el.agentMetric.addEventListener("change", function () {
-      state.metric = el.agentMetric.value;
-      el.metric.value = state.metric;
       renderAll();
     });
     el.shadow.addEventListener("change", function () {
@@ -1165,10 +1045,6 @@ try {
       if (state.page > 0) { state.page -= 1; renderAll(); }
     });
     el.next.addEventListener("click", function () { state.page += 1; renderAll(); });
-    el.agentPrev.addEventListener("click", function () {
-      if (state.page > 0) { state.page -= 1; renderAll(); }
-    });
-    el.agentNext.addEventListener("click", function () { state.page += 1; renderAll(); });
   }
 
   function onDateChange(event) {
@@ -1184,18 +1060,15 @@ try {
     el.end.value = end;
     state.start = start;
     state.end = end;
-    pageRanges[state.agent] = { start: start, end: end };
     state.page = 0;
     renderAll();
   }
 
   function resetFilters() {
-    pageRanges = {};
-    var range = defaultRange(state.agent);
-    pageRanges[state.agent] = range;
+    var range = allBounds();
+    state.agents = new Set(AGENTS);
     state.start = range.start;
     state.end = range.end;
-    state.sources = new Set(TOKEN_AGENTS);
     state.model = "";
     state.project = "";
     state.q = "";
@@ -1209,36 +1082,32 @@ try {
     el.project.value = "";
     el.q.value = "";
     el.metric.value = "total";
-    el.agentMetric.value = "total";
     el.shadow.checked = false;
-    syncChips();
+    syncAgentFilter();
     rebuildDimensionSelects();
     renderAll();
   }
 
-  function syncPageShell() {
-    var overview = state.agent === "all";
-    el.overviewPage.hidden = !overview;
-    el.agentPage.hidden = overview;
-    el.sources.hidden = !overview;
-    el.metric.parentElement.hidden = !overview;
-    var kind = overview ? "token" : agentKind(state.agent);
-    el.agentMetricField.hidden = kind !== "token";
-    el.shadowSwitch.hidden = kind !== "credits";
+  function syncShell() {
+    var units = [];
+    if (hasTokenSelected()) units.push("tokens");
+    if (hasCreditsSelected()) units.push(state.shadow ? "credits + 影子 est" : "credits");
+    if (hasEstimateSelected()) units.push("trae 弱 est");
+    el.panelToken.hidden = !hasTokenSelected();
+    el.panelCredits.hidden = !hasCreditsSelected();
+    el.panelEst.hidden = !hasEstimateSelected();
+    el.metricField.hidden = !hasTokenSelected();
+    el.shadowSwitch.hidden = !hasCreditsSelected() || !EST.length;
     el.shadow.checked = state.shadow;
     el.metric.value = state.metric;
-    el.agentMetric.value = state.metric;
-    if (!overview) {
-      el.agentTitle.textContent = state.agent;
-      el.agentBadge.textContent = KIND_LABELS[kind];
-      el.agentBadge.className = "kind-badge " + kind;
-      el.agentNote.textContent = KIND_NOTES[kind] || "";
-      var unit = kind === "credits" ? "credits" : kind === "estimate" ? "est tokens" : "tokens";
-      el.chartUnit.textContent = unit;
-      el.modelUnit.textContent = unit;
-      el.projectUnit.textContent = unit;
+    el.modelUnit.textContent = units.join(" / ");
+    el.projectUnit.textContent = units.join(" / ");
+    el.activityBlock.hidden = !hasCreditsSelected() || !ACTIVITY.length;
+    if (!hasCreditsSelected()) {
+      state.shadow = false;
+      el.shadow.checked = false;
+      el.shadowNote.hidden = true;
     }
-    el.activityBlock.hidden = state.agent !== "qoder" || !ACTIVITY.length;
   }
 
   function renderCoverage() {
@@ -1246,40 +1115,32 @@ try {
     var qoder = COVERAGE.qoder || {};
     var qoderToken = qoderTokenBounds[0]
       ? qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1] : "";
-    if (state.agent === "all") {
-      if (TOKEN_AGENTS.length) {
-        parts.push("精确 Token：" + TOKEN_AGENTS.join(" / "));
-      }
-      var others = [];
-      if (CREDIT_ROWS.length || EST.length) others.push("Qoder 采用 credits 口径");
-      if (TRAE_EST.length) others.push("Trae CN 仅有弱估算");
-      if (others.length) parts.push(others.join("、") + "，见独立页签，不并入总览");
-      if (qoderToken) parts.push("Qoder 历史 token 真值 " + qoderToken + "，不计入本页");
-    } else if (state.agent === "qoder") {
-      if (creditBounds[0]) {
-        parts.push("credits " + creditBounds[0] + " ~ " + creditBounds[1]);
-      } else {
-        parts.push("本地无 credits 数据");
-      }
-      if (estBounds[0]) parts.push("估算 " + estBounds[0] + " ~ " + estBounds[1]);
-      var since = qoder.token_since || qoderTokenBounds[0];
-      var until = qoder.token_until || qoderTokenBounds[1];
-      if (since) parts.push("历史 token " + since + " ~ " + until + "（不计入本页）");
+    parts.push("已选 Agent：" + Array.from(state.agents).join(" / "));
+    var unitNames = [];
+    if (hasTokenSelected()) unitNames.push("tokens");
+    if (hasCreditsSelected()) unitNames.push("credits");
+    if (hasEstimateSelected()) unitNames.push("est");
+    if (unitNames.length > 1) {
+      parts.push(unitNames.join("、") + " 单位不同，分别汇总，不跨单位相加");
+    }
+    if (hasCreditsSelected()) {
+      if (creditBounds[0]) parts.push("credits " + creditBounds[0] + " ~ " + creditBounds[1]);
+      else parts.push("本地无 credits 数据");
+      if (estBounds[0]) parts.push("Qoder 影子估算 " + estBounds[0] + " ~ " + estBounds[1]);
       if (ACTIVITY.length) {
         var actBounds = minMaxDay(ACTIVITY);
         parts.push("活动 " + actBounds[0] + " ~ " + actBounds[1]);
       }
-      parts.push("credits、估算与活动口径不同，不可相加");
-    } else if (state.agent === "trae-cn") {
-      if (traeEstBounds[0]) {
-        parts.push("弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
-          "（仅覆盖安装 hook 后的请求）");
-      }
-      parts.push("无 token / credits 真值，弱估算不可与任何真值或额度相加");
     }
-    if (!parts.length) {
-      el.coverage.hidden = true;
-      return;
+    if (hasEstimateSelected() && traeEstBounds[0]) {
+      parts.push("Trae CN 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
+        "（仅覆盖安装 hook 后的请求）");
+    }
+    if (qoderToken && hasCreditsSelected()) {
+      parts.push("Qoder 历史 token 真值 " + qoderToken + "，未并入本页");
+    }
+    if (hasEstimateSelected() || state.shadow) {
+      parts.push("估算不与 token 真值或 credits 相加");
     }
     el.coverage.textContent = parts.join("；");
     el.coverage.hidden = false;
@@ -1307,7 +1168,6 @@ try {
     });
     var total = FIELDS.reduce(function (acc, field) { return acc + sums[field]; }, 0);
 
-    host.textContent = "";
     addKpiTo(host, "总 Token", fmtCompact(total), fmtInt(total), true);
     FIELDS.forEach(function (field) {
       addKpiTo(host, FIELD_LABELS[field], fmtCompact(sums[field]), fmtInt(sums[field]));
@@ -1367,17 +1227,7 @@ try {
     host.appendChild(card);
   }
 
-  function filteredEstimates(ignore) {
-    return EST.filter(function (row) {
-      if (state.start && row.day < state.start) return false;
-      if (state.end && row.day > state.end) return false;
-      if (ignore !== "model" && state.model && row.model !== state.model) return false;
-      if (ignore !== "project" && state.project && row.project !== state.project) return false;
-      return matchesQuery(row);
-    });
-  }
-
-  function renderCreditKpis(rows) {
+  function renderCreditKpis(host, rows) {
     var billable = 0;
     var free = 0;
     var requests = 0;
@@ -1391,23 +1241,22 @@ try {
       days[row.day] = true;
     });
     var dayCount = Object.keys(days).length;
-    el.agentKpis.textContent = "";
-    addQuotaKpi(el.agentKpis, quotaSummary());
-    addKpiTo(el.agentKpis, "区间 billable", fmtCredits(billable),
+    addQuotaKpi(host, quotaSummary());
+    addKpiTo(host, "区间 billable credits", fmtCredits(billable),
       fmtInt(requests) + " billable 请求 · 服务端计费真值");
-    addKpiTo(el.agentKpis, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求");
-    addKpiTo(el.agentKpis, "区间日均", fmtCredits(dayCount ? billable / dayCount : 0),
+    addKpiTo(host, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求");
+    addKpiTo(host, "区间日均", fmtCredits(dayCount ? billable / dayCount : 0),
       fmtInt(dayCount) + " 天有数据");
     if (state.shadow) {
-      var estRows = filteredEstimates();
-      addKpiTo(el.agentKpis, "影子 est Token",
+      var estRows = qoderEstRowsFor();
+      addKpiTo(host, "影子 est Token",
         fmtCompact(sumField(estRows, "total")),
         fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
         false, "shadow");
     }
   }
 
-  function renderEstimateKpis(rows, kind) {
+  function renderEstimateKpis(host, rows, label) {
     var input = sumField(rows, "est_input");
     var output = sumField(rows, "est_output");
     var requests = sumField(rows, "requests");
@@ -1417,19 +1266,40 @@ try {
       days[row.day] = true;
       models[row.model] = true;
     });
-    el.agentKpis.textContent = "";
-    addKpiTo(el.agentKpis, "est 总 Token", fmtCompact(input + output),
-      fmtInt(input + output), true);
-    addKpiTo(el.agentKpis, "est 输入", fmtCompact(input),
-      kind === "estimate" ? "hook 上下文累积字符 ÷ 系数" : "context_usage_ratio × 200K");
-    addKpiTo(el.agentKpis, "est 输出", fmtCompact(output),
-      kind === "estimate" ? "输出字符 ÷ 系数" : "字符数 ÷ 模型系数");
-    addKpiTo(el.agentKpis, "覆盖请求", fmtCompact(requests),
+    addKpiTo(host, "est 总 Token", fmtCompact(input + output), fmtInt(input + output), true);
+    addKpiTo(host, "est 输入", fmtCompact(input),
+      label === "trae-cn" ? "hook 上下文累积字符 ÷ 系数"
+        : "context_usage_ratio × 200K");
+    addKpiTo(host, "est 输出", fmtCompact(output),
+      label === "trae-cn" ? "输出字符 ÷ 系数" : "字符数 ÷ 模型系数");
+    addKpiTo(host, "覆盖请求", fmtCompact(requests),
       fmtInt(Object.keys(days).length) + " 天 · " + fmtInt(Object.keys(models).length) + " 模型");
   }
 
-  function renderOverviewKpis(rows) {
-    renderTokenKpis(el.kpis, rows);
+  function addKpiSection(host, text) {
+    var node = document.createElement("div");
+    node.className = "kpi-section";
+    node.textContent = text;
+    host.appendChild(node);
+  }
+
+  function renderKpis() {
+    var host = el.kpis;
+    host.textContent = "";
+    var groups = [hasTokenSelected(), hasCreditsSelected(), hasEstimateSelected()]
+      .filter(Boolean).length;
+    if (hasTokenSelected()) {
+      if (groups > 1) addKpiSection(host, "精确 Token（tokens）");
+      renderTokenKpis(host, tokenRowsFor());
+    }
+    if (hasCreditsSelected()) {
+      if (groups > 1) addKpiSection(host, "精确 Credits（credits）");
+      renderCreditKpis(host, creditRowsFor());
+    }
+    if (hasEstimateSelected()) {
+      if (groups > 1) addKpiSection(host, "仅估算（est tokens，不可相加）");
+      renderEstimateKpis(host, traeRowsFor(), "trae-cn");
+    }
   }
 
   function buildStackBuckets(rows, seriesDefs, shadowDefs, shadowRows) {
@@ -1727,79 +1597,71 @@ try {
     }
   }
 
-  function renderOverviewChart(rows) {
-    var sources = TOKEN_AGENTS.filter(function (name) { return state.sources.has(name); });
-    var buckets = buildStackBuckets(rows, sources.map(function (source) {
-      return {
-        label: source, color: COLORS[source],
-        value: function (row) { return row.source === source ? pageMetric(row) : 0; }
-      };
-    }));
-    renderStackChart({
-      host: el.chart, tooltip: el.tooltip, legend: el.legend,
-      buckets: buckets,
-      series: sources.map(function (source) {
-        return { label: source, color: COLORS[source] };
-      }),
-      metaText: "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]),
-      ariaLabel: "按来源堆叠的每日 token 用量",
-      tooltipFormat: fmtInt
-    });
-    renderMissingHint(el.hint, rows);
-  }
-
-  function renderAgentChart(agent, kind, rows) {
-    var defs;
-    var shadowDefs = [];
-    var metaText;
-    var ariaLabel;
-    var legendFormat = fmtCompact;
-    var tooltipFormat = fmtInt;
-    if (kind === "token") {
-      defs = [{
-        label: agent, color: COLORS[agent] || "var(--accent)",
-        value: function (row) { return pageMetric(row); }
-      }];
-      metaText = "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]);
-      ariaLabel = agent + " 每日 token 用量";
-    } else if (kind === "credits") {
-      defs = [
+  function renderCharts() {
+    if (hasTokenSelected()) {
+      var tokenAgents = selectedTokenAgents();
+      var tokenRows = tokenRowsFor();
+      var tokenBuckets = buildStackBuckets(tokenRows, tokenAgents.map(function (source) {
+        return {
+          label: source, color: COLORS[source],
+          value: function (row) { return row.source === source ? pageMetric(row) : 0; }
+        };
+      }));
+      renderStackChart({
+        host: el.chartToken, tooltip: el.tooltipToken, legend: el.legendToken,
+        buckets: tokenBuckets,
+        series: tokenAgents.map(function (source) {
+          return { label: source, color: COLORS[source] };
+        }),
+        metaText: "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]),
+        ariaLabel: "按 Agent 堆叠的每日 token 用量",
+        tooltipFormat: fmtInt
+      });
+      renderMissingHint(el.hintToken, tokenRows);
+    }
+    if (hasCreditsSelected()) {
+      var creditRows = creditRowsFor();
+      var creditDefs = [
         { label: "billable（计入配额）", color: CREDIT_BILLABLE_COLOR,
           value: function (row) { return row.credits; } },
         { label: "免费（不计配额）", color: CREDIT_FREE_COLOR,
           value: function (row) { return row.free_credits; } }
       ];
-      metaText = "Qoder credits（服务端计费真值，非 token）";
-      ariaLabel = "Qoder 每日 credits 用量";
-      legendFormat = fmtCredits;
-      tooltipFormat = fmtCredits;
-      if (state.shadow) {
-        shadowDefs = [{ value: function (row) { return row.total; } }];
-      }
-    } else {
-      defs = [
+      var shadowRows = state.shadow ? qoderEstRowsFor() : null;
+      var creditBuckets = buildStackBuckets(creditRows, creditDefs,
+        state.shadow ? [{ value: function (row) { return row.total; } }] : [],
+        shadowRows);
+      renderStackChart({
+        host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
+        buckets: creditBuckets,
+        series: creditDefs,
+        shadowLabel: state.shadow ? "Qoder est" : "",
+        metaText: "Qoder credits 为服务端计费真值，非 token",
+        ariaLabel: "Qoder 每日 credits 用量",
+        legendFormat: fmtCredits,
+        tooltipFormat: fmtCredits
+      });
+      renderMissingHint(el.hintCredits, creditRows.concat(shadowRows || []));
+    }
+    if (hasEstimateSelected()) {
+      var traeRows = traeRowsFor();
+      var estDefs = [
         { label: "est 输入", color: EST_INPUT_COLOR,
           value: function (row) { return row.est_input; } },
         { label: "est 输出", color: EST_OUTPUT_COLOR,
           value: function (row) { return row.est_output; } }
       ];
-      metaText = TRAE_NOTE + " · 非 token 真值";
-      ariaLabel = "Trae CN 每日弱估算 token";
+      var estBuckets = buildStackBuckets(traeRows, estDefs);
+      renderStackChart({
+        host: el.chartEst, tooltip: el.tooltipEst, legend: el.legendEst,
+        buckets: estBuckets,
+        series: estDefs,
+        metaText: TRAE_NOTE + " · 非 token 真值",
+        ariaLabel: "Trae CN 每日弱估算 token",
+        tooltipFormat: fmtInt
+      });
+      renderMissingHint(el.hintEst, traeRows);
     }
-    var sourceRows = rows;
-    var shadowRows = state.shadow && kind === "credits" ? filteredEstimates() : null;
-    var buckets = buildStackBuckets(sourceRows, defs, shadowDefs, shadowRows);
-    renderStackChart({
-      host: el.agentChart, tooltip: el.agentTooltip, legend: el.agentLegend,
-      buckets: buckets,
-      series: defs,
-      shadowLabel: state.shadow && kind === "credits" ? "est token" : "",
-      metaText: metaText,
-      ariaLabel: ariaLabel,
-      legendFormat: legendFormat,
-      tooltipFormat: tooltipFormat
-    });
-    renderMissingHint(el.agentHint, rows);
   }
 
   function renderMissingHint(hintEl, rows) {
@@ -1816,22 +1678,92 @@ try {
       return;
     }
     var shown = missing.slice(0, 10).join("、");
-    hintEl.textContent = "范围内 " + missing.length + " 天无本页数据（图表按 0 显示）：" +
+    hintEl.textContent = "范围内 " + missing.length + " 天无对应数据（图表按 0 显示）：" +
       shown + (missing.length > 10 ? " …" : "");
   }
 
-  function estTotalsBy(dimension, ignore) {
-    var map = {};
-    filteredEstimates(ignore).forEach(function (row) {
-      var key = row[dimension] || "-";
-      map[key] = (map[key] || 0) + row.total;
+  function aggregateTop(key, ignore) {
+    var map = new Map();
+    function entry(name) {
+      if (!map.has(name)) {
+        map.set(name, { key: name, tokens: 0, turns: 0, credits: 0,
+                        creditRequests: 0, est: 0, estRequests: 0,
+                        shadowEst: 0, shadowRequests: 0 });
+      }
+      return map.get(name);
+    }
+    tokenRowsFor(ignore).forEach(function (row) {
+      var item = entry(row[key] || "-");
+      item.tokens += pageMetric(row);
+      item.turns += number(row.turns);
     });
-    return map;
+    creditRowsFor(ignore).forEach(function (row) {
+      var item = entry(row[key] || "-");
+      item.credits += row.credits;
+      item.creditRequests += row.requests;
+    });
+    traeRowsFor(ignore).forEach(function (row) {
+      var item = entry(row[key] || "-");
+      item.est += row.total;
+      item.estRequests += row.requests;
+    });
+    qoderEstRowsFor(ignore).forEach(function (row) {
+      var item = entry(row[key] || "-");
+      item.shadowEst += row.total;
+      item.shadowRequests += row.requests;
+    });
+    return Array.from(map.values());
   }
 
-  function renderBarList(host, items, grandTotal, selected, onPick, opts) {
-    opts = opts || {};
-    var format = opts.format || fmtCompact;
+  function primaryUnit() {
+    if (hasTokenSelected()) return "tokens";
+    if (hasCreditsSelected()) return "credits";
+    return "est";
+  }
+
+  function primaryGrandTotal(unit) {
+    if (unit === "tokens") {
+      return tokenRowsFor().reduce(function (acc, row) { return acc + pageMetric(row); }, 0);
+    }
+    if (unit === "credits") {
+      return creditRowsFor().reduce(function (acc, row) { return acc + row.credits; }, 0);
+    }
+    return traeRowsFor().reduce(function (acc, row) {
+      return acc + row.total;
+    }, 0);
+  }
+
+  function topValue(item, unit) {
+    if (unit === "tokens") return item.tokens;
+    if (unit === "credits") return item.credits;
+    return item.est;
+  }
+
+  function topValueText(item, unit) {
+    if (unit === "tokens") return fmtCompact(item.tokens) + " tokens";
+    if (unit === "credits") return fmtCredits(item.credits) + " credits";
+    return fmtCompact(item.est) + " est";
+  }
+
+  function topSecondary(item, unit) {
+    var parts = [];
+    if (unit !== "tokens" && item.tokens > 0) {
+      parts.push(fmtCompact(item.tokens) + " tokens");
+    }
+    if (unit !== "credits" && item.credits > 0) {
+      parts.push(fmtCredits(item.credits) + " credits · " +
+        fmtInt(item.creditRequests) + " 请求");
+    }
+    if (unit !== "est" && item.est > 0) {
+      parts.push("trae 弱 est " + fmtCompact(item.est) + "（不可相加）");
+    }
+    if (item.shadowEst > 0) {
+      parts.push("影子 est " + fmtCompact(item.shadowEst) + "（不可相加）");
+    }
+    return parts.join(" · ");
+  }
+
+  function renderTopList(host, items, grandTotal, unit, selected, onPick) {
     host.textContent = "";
     if (!items.length) {
       var empty = document.createElement("div");
@@ -1840,8 +1772,9 @@ try {
       host.appendChild(empty);
       return;
     }
-    var maximum = Math.max(items[0].total, 1);
+    var maximum = Math.max(topValue(items[0], unit), 1);
     items.forEach(function (item) {
+      var value = topValue(item, unit);
       var button = document.createElement("button");
       button.type = "button";
       button.className = "bar-row" + (item.key === selected ? " selected" : "");
@@ -1852,25 +1785,26 @@ try {
       name.className = "bar-name";
       name.textContent = item.key === "-" ? "（未标注）" : item.key;
       name.title = item.key;
-      var value = document.createElement("span");
-      value.className = "bar-value";
-      value.textContent = format(item.total) + " · " +
-        pct(grandTotal ? item.total / grandTotal : 0);
+      var amount = document.createElement("span");
+      amount.className = "bar-value";
+      amount.textContent = topValueText(item, unit) + " · " +
+        pct(grandTotal ? value / grandTotal : 0);
       top.appendChild(name);
-      top.appendChild(value);
+      top.appendChild(amount);
       button.appendChild(top);
-      if (opts.shadowMap && opts.shadowMap[item.key] > 0) {
-        var shadow = document.createElement("div");
-        shadow.className = "bar-shadow";
-        shadow.textContent = "影子 est " + fmtCompact(opts.shadowMap[item.key]);
-        button.appendChild(shadow);
+      var secondary = topSecondary(item, unit);
+      if (secondary) {
+        var sub = document.createElement("div");
+        sub.className = "bar-shadow";
+        sub.textContent = secondary;
+        button.appendChild(sub);
       }
       var track = document.createElement("div");
       track.className = "bar-track";
       var fill = document.createElement("div");
       fill.className = "bar-fill";
-      fill.style.width = item.total > 0
-        ? Math.max(item.total / maximum * 100, 1.5).toFixed(1) + "%" : "0%";
+      fill.style.width = value > 0
+        ? Math.max(value / maximum * 100, 1.5).toFixed(1) + "%" : "0%";
       track.appendChild(fill);
       button.appendChild(track);
       button.title = "筛选：" + item.key;
@@ -1879,58 +1813,31 @@ try {
     });
   }
 
-  function renderOverviewBars(modelRows, projectRows) {
-    var modelTotal = modelRows.reduce(function (acc, row) { return acc + pageMetric(row); }, 0);
-    var modelItems = metricItems(modelRows, "model", pageMetric);
-    renderBarList(el.models, modelItems, modelTotal, state.model, function (key) {
+  function renderTopLists() {
+    var unit = primaryUnit();
+    var total = primaryGrandTotal(unit);
+    var tag = unit === "tokens" ? "tokens" : unit === "credits" ? "credits" : "trae 弱 est";
+    if (activeUnits().size > 1) tag = "主单位 " + tag;
+    el.modelUnit.textContent = tag;
+    el.projectUnit.textContent = tag;
+    var modelItems = aggregateTop("model").sort(function (a, b) {
+      return topValue(b, unit) - topValue(a, unit);
+    }).slice(0, 8);
+    var projectItems = aggregateTop("project").sort(function (a, b) {
+      return topValue(b, unit) - topValue(a, unit);
+    }).slice(0, 8);
+    renderTopList(el.models, modelItems, total, unit, state.model, function (key) {
       state.model = state.model === key ? "" : key;
       el.model.value = state.model;
       state.page = 0;
       renderAll();
     });
-    var projectTotal = projectRows.reduce(function (acc, row) { return acc + pageMetric(row); }, 0);
-    var projectItems = metricItems(projectRows, "project", pageMetric);
-    renderBarList(el.projects, projectItems, projectTotal, state.project, function (key) {
+    renderTopList(el.projects, projectItems, total, unit, state.project, function (key) {
       state.project = state.project === key ? "" : key;
       el.project.value = state.project;
       state.page = 0;
       renderAll();
     });
-  }
-
-  function metricItems(rows, key, valueFn) {
-    var map = new Map();
-    rows.forEach(function (row) {
-      var name = row[key] || "-";
-      if (!map.has(name)) map.set(name, { key: name, total: 0 });
-      map.get(name).total += number(valueFn ? valueFn(row) : row.total);
-    });
-    return Array.from(map.values()).sort(byTotal).slice(0, 8);
-  }
-
-  function renderAgentBars(agent, kind, modelRows, projectRows) {
-    var shadowByModel = kind === "credits" && state.shadow
-      ? estTotalsBy("model", "model") : null;
-    var shadowByProject = kind === "credits" && state.shadow
-      ? estTotalsBy("project", "project") : null;
-    var format = kind === "credits" ? fmtCredits : fmtCompact;
-    var valueFn = kind === "token" ? pageMetric : function (row) { return number(row.total); };
-    var modelItems = metricItems(modelRows, "model", valueFn);
-    var projectItems = metricItems(projectRows, "project", valueFn);
-    var modelTotal = modelRows.reduce(function (acc, row) { return acc + number(valueFn(row)); }, 0);
-    var projectTotal = projectRows.reduce(function (acc, row) { return acc + number(valueFn(row)); }, 0);
-    renderBarList(el.agentModels, modelItems, modelTotal, state.model, function (key) {
-      state.model = state.model === key ? "" : key;
-      el.model.value = state.model;
-      state.page = 0;
-      renderAll();
-    }, { format: format, shadowMap: shadowByModel });
-    renderBarList(el.agentProjects, projectItems, projectTotal, state.project, function (key) {
-      state.project = state.project === key ? "" : key;
-      el.project.value = state.project;
-      state.page = 0;
-      renderAll();
-    }, { format: format, shadowMap: shadowByProject });
   }
 
   function columnFmt(column, value) {
@@ -1952,10 +1859,18 @@ try {
     var sorted = rows.slice().sort(function (a, b) {
       var av = a[state.sortKey];
       var bv = b[state.sortKey];
+      var aNull = av === null || av === undefined || av === "";
+      var bNull = bv === null || bv === undefined || bv === "";
+      if (aNull || bNull) {
+        if (aNull && bNull) return 0;
+        return aNull ? 1 : -1;
+      }
       var cmp;
       if (numericKeys[state.sortKey]) cmp = number(av) - number(bv);
       else cmp = String(av).localeCompare(String(bv), "zh-CN");
-      if (cmp === 0 && state.sortKey !== "total") cmp = number(a.total) - number(b.total);
+      if (cmp === 0 && state.sortKey !== "day") {
+        cmp = String(a.unitLabel || "").localeCompare(String(b.unitLabel || ""), "zh-CN");
+      }
       return state.sortDir === "asc" ? cmp : -cmp;
     });
     var pages = Math.max(1, Math.ceil(sorted.length / state.pageSize));
@@ -2027,7 +1942,10 @@ try {
           var value = row[column.key];
           if (column.type === "num") td.className = "num";
           if (column.shadow) td.classList.add("shadow-col");
-          if (column.key === "project") {
+          if (column.unit && row.unit !== column.unit) {
+            td.textContent = "—";
+            td.classList.add("zero");
+          } else if (column.key === "project") {
             td.textContent = value === "-" ? "（未标注）" : value;
             td.title = value;
           } else if (column.key === "model") {
@@ -2059,200 +1977,132 @@ try {
     return row.cost_equiv_usd !== null && row.cost_equiv_usd !== undefined;
   });
 
-  function tokenColumns(includeSource) {
-    var columns = [{ key: "day", label: "日期", type: "text" }];
-    if (includeSource) columns.push({ key: "source", label: "来源", type: "text" });
-    columns.push({ key: "model", label: "模型", type: "text" });
-    columns.push({ key: "project", label: "项目", type: "text" });
-    FIELDS.forEach(function (field) {
-      columns.push({ key: field, label: FIELD_LABELS[field], type: "num" });
+  function estimateRows() {
+    var rows = [];
+    traeRowsFor().forEach(function (row) {
+      rows.push({
+        day: row.day, source: "trae-cn", model: row.model, project: row.project,
+        unit: "est", unitLabel: "trae-cn 弱估算",
+        est_input: row.est_input, est_output: row.est_output,
+        est_total: row.total, est_requests: row.requests
+      });
     });
-    columns.push({ key: "total", label: "合计", type: "num" });
-    columns.push({ key: "turns", label: "轮次", type: "num" });
-    if (COST_KNOWN) columns.push({ key: "cost_equiv_usd", label: "等价成本", type: "num" });
-    return columns;
+    qoderEstRowsFor().forEach(function (row) {
+      rows.push({
+        day: row.day, source: "qoder", model: row.model, project: row.project,
+        unit: "est", unitLabel: "qoder 影子 est",
+        est_input: row.est_input, est_output: row.est_output,
+        est_total: row.total, est_requests: row.requests
+      });
+    });
+    return rows;
   }
 
-  function creditColumns(shadow) {
+  function reportRows() {
+    var rows = tokenRowsFor().map(function (row) {
+      var copy = {};
+      Object.keys(row).forEach(function (key) { copy[key] = row[key]; });
+      copy.unit = "token";
+      copy.unitLabel = "tokens";
+      return copy;
+    });
+    creditRowsFor().forEach(function (row) {
+      rows.push({
+        day: row.day, source: "qoder", model: row.model, project: row.project,
+        unit: "credit", unitLabel: "credits",
+        credits: row.credits, free_credits: row.free_credits,
+        credit_requests: row.requests, free_requests: row.free_requests
+      });
+    });
+    return rows.concat(estimateRows());
+  }
+
+  function activeUnits() {
+    var units = new Set();
+    if (hasTokenSelected()) units.add("token");
+    if (hasCreditsSelected()) units.add("credit");
+    if (hasEstimateSelected() || (state.shadow && hasCreditsSelected())) units.add("est");
+    return units;
+  }
+
+  function reportColumns(units) {
     var columns = [
       { key: "day", label: "日期", type: "text" },
-      { key: "model", label: "模型", type: "text" },
-      { key: "project", label: "项目", type: "text" },
-      { key: "credits", label: "billable", type: "num", fmt: fmtCredits },
-      { key: "requests", label: "请求", type: "num" },
-      { key: "free_credits", label: "免费 credits", type: "num", fmt: fmtCredits },
-      { key: "free_requests", label: "免费请求", type: "num" }
+      { key: "source", label: "Agent", type: "text" }
     ];
-    if (shadow) {
-      columns.push({ key: "est_input", label: "影子 est 输入", type: "num", shadow: true });
-      columns.push({ key: "est_output", label: "影子 est 输出", type: "num", shadow: true });
-      columns.push({ key: "est_total", label: "影子 est 合计", type: "num", shadow: true });
-      columns.push({ key: "est_requests", label: "影子请求", type: "num", shadow: true });
+    if (units.size > 1) columns.push({ key: "unitLabel", label: "单位", type: "text" });
+    columns.push({ key: "model", label: "模型", type: "text" });
+    columns.push({ key: "project", label: "项目", type: "text" });
+    if (units.has("token")) {
+      FIELDS.forEach(function (field) {
+        columns.push({ key: field, label: FIELD_LABELS[field], type: "num", unit: "token" });
+      });
+      columns.push({ key: "total", label: "Tokens 合计", type: "num", unit: "token" });
+      columns.push({ key: "turns", label: "轮次", type: "num", unit: "token" });
+    }
+    if (units.has("credit")) {
+      columns.push({ key: "credits", label: "billable credits", type: "num",
+                     unit: "credit", fmt: fmtCredits });
+      columns.push({ key: "free_credits", label: "免费 credits", type: "num",
+                     unit: "credit", fmt: fmtCredits });
+      columns.push({ key: "credit_requests", label: "billable 请求", type: "num", unit: "credit" });
+      columns.push({ key: "free_requests", label: "免费请求", type: "num", unit: "credit" });
+    }
+    if (units.has("est")) {
+      columns.push({ key: "est_input", label: "est 输入", type: "num", unit: "est" });
+      columns.push({ key: "est_output", label: "est 输出", type: "num", unit: "est" });
+      columns.push({ key: "est_total", label: "est 合计", type: "num", unit: "est" });
+      columns.push({ key: "est_requests", label: "请求", type: "num", unit: "est" });
+    }
+    if (units.has("token") && COST_KNOWN) {
+      columns.push({ key: "cost_equiv_usd", label: "等价成本", type: "num", unit: "token" });
     }
     return columns;
   }
 
-  function estimateColumns() {
-    return [
-      { key: "day", label: "日期", type: "text" },
-      { key: "model", label: "模型", type: "text" },
-      { key: "project", label: "项目", type: "text" },
-      { key: "est_input", label: "est 输入", type: "num" },
-      { key: "est_output", label: "est 输出", type: "num" },
-      { key: "total", label: "est 合计", type: "num" },
-      { key: "requests", label: "请求", type: "num" },
-      { key: "chars_in", label: "上下文字符", type: "num" },
-      { key: "chars_out", label: "输出字符", type: "num" }
-    ];
-  }
-
-  function creditDetailRows(rows) {
-    var map = new Map();
+  function tableInfo(rows, units) {
+    var tokens = 0;
+    var credits = 0;
+    var traeEst = 0;
+    var shadowEst = 0;
     rows.forEach(function (row) {
-      var key = row.day + "|" + row.model + "|" + row.project;
-      map.set(key, {
-        day: row.day, model: row.model, project: row.project,
-        credits: row.credits, requests: row.requests,
-        free_credits: row.free_credits, free_requests: row.free_requests,
-        est_input: 0, est_output: 0, est_total: 0, est_requests: 0,
-        total: row.credits
-      });
+      if (row.unit === "token") tokens += number(row.total);
+      else if (row.unit === "credit") credits += number(row.credits);
+      else if (row.unitLabel === "qoder 影子 est") shadowEst += number(row.est_total);
+      else traeEst += number(row.est_total);
     });
-    if (state.shadow) {
-      filteredEstimates().forEach(function (row) {
-        var key = row.day + "|" + row.model + "|" + row.project;
-        var item = map.get(key);
-        if (!item) {
-          item = {
-            day: row.day, model: row.model, project: row.project,
-            credits: 0, requests: 0, free_credits: 0, free_requests: 0,
-            est_input: 0, est_output: 0, est_total: 0, est_requests: 0, total: 0
-          };
-          map.set(key, item);
-        }
-        item.est_input += row.est_input;
-        item.est_output += row.est_output;
-        item.est_total += row.total;
-        item.est_requests += row.requests;
-      });
-    }
-    return Array.from(map.values());
+    var parts = [fmtInt(rows.length) + " 行"];
+    if (units.has("token")) parts.push(fmtInt(tokens) + " tokens");
+    if (units.has("credit")) parts.push("billable " + fmtCredits(credits) + " credits");
+    if (shadowEst > 0) parts.push("影子 est " + fmtInt(shadowEst) + "（不可相加）");
+    if (traeEst > 0) parts.push("trae 弱 est " + fmtInt(traeEst) + "（不可相加）");
+    return parts.join(" · ");
   }
 
-  function renderOverviewOthers() {
-    var host = el.overviewOthers;
-    host.textContent = "";
-    var others = CREDIT_AGENTS.concat(ESTIMATE_AGENTS);
-    if (!others.length) {
-      host.hidden = true;
+  function renderShadowNote() {
+    if (!hasCreditsSelected() || !state.shadow) {
+      el.shadowNote.hidden = true;
       return;
     }
-    var tip = document.createElement("span");
-    tip.className = "chip-tip";
-    tip.textContent = "其他口径（不并入总览）：";
-    host.appendChild(tip);
-    others.forEach(function (agent) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "chip";
-      button.title = "打开 " + agent + " 报告页（" + KIND_LABELS[agentKind(agent)] + "）";
-      var name = document.createElement("span");
-      name.textContent = agent + " · " + KIND_LABELS[agentKind(agent)];
-      var total = document.createElement("small");
-      total.textContent = navTotalText(agent);
-      button.appendChild(name);
-      button.appendChild(total);
-      button.addEventListener("click", function () { setAgent(agent); });
-      host.appendChild(button);
-    });
-    host.hidden = false;
+    el.shadowNote.hidden = false;
+    el.shadowNote.textContent = "影子 est 由转录文本与 context_usage_ratio 推算（" +
+      EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 聚合；仅覆盖带 ratio 的请求，" +
+      "不可与 credits 相加。";
   }
 
-  function renderOverview() {
-    var rows = overviewRows();
-    el.tokenEmpty.hidden = true;
-    renderOverviewOthers();
-    renderOverviewKpis(rows);
-    renderOverviewChart(rows);
-    renderOverviewBars(overviewRows("model"), overviewRows("project"));
+  function renderReport() {
+    renderKpis();
+    renderCharts();
+    renderTopLists();
+    var units = activeUnits();
+    var rows = reportRows();
     renderDataTable({
       thead: el.thead, tbody: el.tbody, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
-      prev: el.prev, next: el.next, columns: tokenColumns(true), rows: rows,
+      prev: el.prev, next: el.next, columns: reportColumns(units), rows: rows,
       emptyText: "无匹配数据",
-      info: function (all) {
-        return fmtInt(all.length) + " 行 · 共 " +
-          fmtInt(all.reduce(function (acc, row) { return acc + row.total; }, 0)) + " tokens";
-      }
+      info: function (all) { return tableInfo(all, units); }
     });
-  }
-
-  function renderAgentPage() {
-    var agent = state.agent;
-    var kind = agentKind(agent);
-    var rows = pageRowsFiltered(agent);
-    if (kind === "token") {
-      renderTokenKpis(el.agentKpis, rows);
-      renderAgentChart(agent, kind, rows);
-      renderAgentBars(agent, kind, pageRowsFiltered(agent, "model"),
-                      pageRowsFiltered(agent, "project"));
-      renderDataTable({
-        thead: el.agentThead, tbody: el.agentTbody, rowinfo: el.agentRowinfo,
-        pageinfo: el.agentPageinfo, prev: el.agentPrev, next: el.agentNext,
-        columns: tokenColumns(false), rows: rows, emptyText: "无匹配数据",
-        info: function (all) {
-          return fmtInt(all.length) + " 行 · 共 " +
-            fmtInt(all.reduce(function (acc, row) { return acc + row.total; }, 0)) + " tokens";
-        }
-      });
-      el.shadowNote.hidden = true;
-    } else if (kind === "credits") {
-      renderCreditKpis(rows);
-      renderAgentChart(agent, kind, rows);
-      renderAgentBars(agent, kind, pageRowsFiltered(agent, "model"),
-                      pageRowsFiltered(agent, "project"));
-      var tableRows = creditDetailRows(rows);
-      renderDataTable({
-        thead: el.agentThead, tbody: el.agentTbody, rowinfo: el.agentRowinfo,
-        pageinfo: el.agentPageinfo, prev: el.agentPrev, next: el.agentNext,
-        columns: creditColumns(state.shadow), rows: tableRows, emptyText: "无匹配数据",
-        info: function (all) {
-          var billable = 0;
-          var free = 0;
-          var requests = 0;
-          all.forEach(function (row) {
-            billable += number(row.credits);
-            free += number(row.free_credits);
-            requests += number(row.requests);
-          });
-          return fmtInt(all.length) + " 行 · billable " + fmtCredits(billable) +
-            " · 免费 " + fmtCredits(free) + " · " + fmtInt(requests) + " 请求" +
-            (state.shadow ? " · 含影子" : "");
-        }
-      });
-      el.shadowNote.hidden = !state.shadow;
-      if (state.shadow) {
-        el.shadowNote.textContent = "影子 est 由转录文本与 context_usage_ratio 推算（" +
-          EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 与 credits 对齐；" +
-          "仅覆盖带 ratio 的请求，明细会补出只有估算、没有 billable 的行，不可与 credits 相加。";
-      }
-    } else {
-      renderEstimateKpis(rows, kind);
-      renderAgentChart(agent, kind, rows);
-      renderAgentBars(agent, kind, pageRowsFiltered(agent, "model"),
-                      pageRowsFiltered(agent, "project"));
-      renderDataTable({
-        thead: el.agentThead, tbody: el.agentTbody, rowinfo: el.agentRowinfo,
-        pageinfo: el.agentPageinfo, prev: el.agentPrev, next: el.agentNext,
-        columns: estimateColumns(), rows: rows, emptyText: "无匹配数据",
-        info: function (all) {
-          return fmtInt(all.length) + " 行 · est 总 Token " +
-            fmtInt(all.reduce(function (acc, row) { return acc + row.total; }, 0)) +
-            " · " + fmtInt(all.reduce(function (acc, row) { return acc + row.requests; }, 0)) +
-            " 请求";
-        }
-      });
-      el.shadowNote.hidden = true;
-    }
+    renderShadowNote();
     renderActivity();
   }
 
@@ -2270,7 +2120,7 @@ try {
   }
 
   function renderActivity() {
-    if (state.agent !== "qoder" || !ACTIVITY.length) return;
+    if (!hasCreditsSelected() || !ACTIVITY.length) return;
     var rows = filteredActivity();
     var totals = emptyActivityTotals();
     rows.forEach(function (row) {
@@ -2526,22 +2376,23 @@ try {
       el.footer.appendChild(line);
     });
     var classify = document.createElement("p");
-    classify.textContent = "报告按 Agent 分两类精确口径：Token（" +
+    classify.textContent = "Agent 可多选：Token 计费（" +
       (TOKEN_AGENTS.length ? TOKEN_AGENTS.join(" / ") : "无数据") +
-      "）与 Credits（Qoder）；Qoder 的 token 与 Trae CN 的用量只有估算值，作为影子指标或独立弱估算页，不与真值相加。";
+      "）与 Credits 计费（Qoder）分别按各自单位汇总，同一页面并列展示但不跨单位相加；" +
+      "Qoder 的影子 token 与 Trae CN 的弱估算单独归入 est，同样不可相加。";
     el.footer.appendChild(classify);
     if (QODER_TOKEN_ROWS.length) {
       var history = document.createElement("p");
       history.textContent = "Qoder 历史 token 真值 " +
         (qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1]) + "（" +
         fmtInt(sumField(QODER_TOKEN_ROWS, "total")) +
-        " tokens）保留在库中，不计入总览与 Qoder credits 页；可用 usage report --source qoder 查询。";
+        " tokens）保留在库中，未并入本页；可用 usage report --source qoder 查询。";
       el.footer.appendChild(history);
     }
     if (CREDIT_ROWS.length) {
       var creditNote = document.createElement("p");
       creditNote.textContent = "Qoder credits 为服务端每请求计费真值；免费 credits 不计配额；" +
-        "余额来自本地日志快照；非 token、不可与 token 相加。";
+        "余额来自本地日志快照；credits、估算与活动口径不同，不可相加。";
       el.footer.appendChild(creditNote);
     }
     if (EST.length) {
@@ -2590,14 +2441,12 @@ try {
   });
 
   function renderAll() {
-    syncPageShell();
+    syncShell();
     renderCoverage();
-    if (state.agent === "all") renderOverview();
-    else renderAgentPage();
+    renderReport();
   }
 
-  buildAgentNav();
-  buildChips();
+  buildAgentFilter();
   buildControls();
   rebuildDimensionSelects();
   applyTheme(document.documentElement.dataset.theme || "light");
