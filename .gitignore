@@ -10,3 +10,6 @@ dist/
 .DS_Store
 usage-report.html
 uv.lock
+.coverage
+coverage.json
+htmlcov/

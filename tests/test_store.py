@@ -323,6 +323,88 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(rows[0][1], "ok")
         self.assertEqual(rows[0][2], 2)
         self.assertEqual(rows[0][3], 3)
+        self.assertIsNone(self.store.source_state("missing"))
+
+    def test_fetch_records_filters(self):
+        self.store.upsert_records([
+            make_record("a", source="claude", day="2026-10-01", model="m1", project="p1"),
+            make_record("b", source="codex", day="2026-10-02", model="m2", project="p2"),
+            make_record("c", source="claude", day="2026-10-03", model="m2", project="p1"),
+        ])
+
+        def keys(**kwargs):
+            return sorted(rec.key for rec in self.store.fetch_records(**kwargs))
+
+        self.assertEqual(keys(since="2026-10-02"), ["b", "c"])
+        self.assertEqual(keys(until="2026-10-02"), ["a", "b"])
+        self.assertEqual(keys(source="claude"), ["a", "c"])
+        self.assertEqual(keys(model="m2"), ["b", "c"])
+        self.assertEqual(keys(project="p1"), ["a", "c"])
+        self.assertEqual(keys(include_daily=False), ["a", "b", "c"])
+
+    def test_fetch_records_can_exclude_daily_rollups(self):
+        self.store.upsert_records([make_record("old", day="2020-01-01", value=10)])
+        self.store.prune(keep_days=30)
+        self.assertEqual(self.store.daily_count(), 1)
+        self.assertEqual(len(self.store.fetch_records()), 1)
+        self.assertTrue(self.store.fetch_records()[0].key.startswith("daily:"))
+        self.assertEqual(self.store.fetch_records(include_daily=False), [])
+
+    def test_meta_source_helpers_and_sizes(self):
+        self.assertIsNone(self.store.get_meta("missing"))
+        self.store.set_meta("k", "v1")
+        self.store.set_meta("k", "v2")
+        self.assertEqual(self.store.get_meta("k"), "v2")
+
+        self.store.upsert_records([
+            make_record("a", source="claude"),
+            make_record("b", source="codex"),
+            make_record("c", source="claude", day="2026-10-02"),
+        ])
+        self.assertEqual(self.store.source_totals(), {"claude": 2, "codex": 1})
+        self.store.update_source_state("claude", files=2, records=2, last_mtime=123)
+        self.assertEqual(self.store.source_mtimes(), {"claude": 123})
+        self.assertGreater(self.store.db_size(), 0)
+        self.assertGreaterEqual(self.store.wal_size(), 0)
+
+    def test_replace_activity_without_targets_is_noop(self):
+        self.assertEqual(self.store.replace_activity_days("qoder.activity", set(), []), 0)
+
+    def test_credit_and_estimate_range_filters(self):
+        def credit(rid, day, source="qoder"):
+            return Credit(request_id=rid, ts=datetime.fromisoformat(day).timestamp(),
+                          day=day, project="proj", model="gfmodel", session="s1",
+                          credits=1.0, billable=True, source=source)
+
+        self.store.upsert_credits([
+            credit("r1", "2026-10-01"),
+            credit("r2", "2026-10-02"),
+            credit("r3", "2026-10-02", source="trae-cn.credit"),
+        ], [])
+        self.assertEqual(len(self.store.credit_rows(until="2026-10-01")), 1)
+        self.assertEqual(len(self.store.credit_rows(source="trae-cn.credit")), 1)
+        daily = self.store.credit_daily(since="2026-10-01", until="2026-10-02",
+                                        source="qoder")
+        self.assertEqual([row["day"] for row in daily], ["2026-10-01", "2026-10-02"])
+        self.assertEqual(self.store.credits_totals(
+            until="2026-10-01", source="qoder")["qoder"]["requests"], 1)
+
+        self.store.upsert_estimates([
+            Estimate(request_id="s1:t1", ts=1.0, day="2026-10-01", project="p1",
+                     model="gfmodel", session="s1", est_input=10, est_output=1,
+                     chars_in=1, chars_out=1, ratio=1.0),
+            Estimate(request_id="s2:t1", ts=2.0, day="2026-10-02", project="p2",
+                     model="dfmodel", session="s2", est_input=20, est_output=2,
+                     chars_in=2, chars_out=2, ratio=None),
+        ])
+        self.assertEqual(len(self.store.est_rows(until="2026-10-01")), 1)
+        fallback = self.store.est_rows(since="2026-10-02", dims=("bogus",))
+        self.assertEqual([row["day"] for row in fallback], ["2026-10-02"])
+        self.assertEqual(len(self.store.est_rows(source="*")), 2)
+        self.assertEqual(self.store.est_totals(until="2026-10-01")["requests"], 1)
+        self.assertEqual(self.store.est_totals(since="2026-10-01", source=None)["requests"], 2)
+        self.assertEqual(self.store.est_session_projects("qoder.est"),
+                         {"s1": "p1", "s2": "p2"})
 
 
 if __name__ == "__main__":
