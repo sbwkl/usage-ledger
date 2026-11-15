@@ -1,6 +1,6 @@
 # usage-ledger
 
-> macOS 上的**极轻量**跨 AI 编码工具 **token / credits 用量台账**。零 UI、零社交、零云同步、零第三方依赖。
+> macOS 上的**极轻量**跨 AI 编码工具 **token / credits 用量台账**。零常驻 UI（HTML 为单文件静态报表）、零社交、零云同步、零第三方依赖。
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
@@ -28,7 +28,7 @@
 | Cline（CLI + Desktop） | ✅ | 读 `~/.cline/data/sessions/**/<id>.messages.json` 中 assistant 的 `metrics`（input/output/cache read/write）；`inputTokens` 已含缓存，采集时扣除 |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（服务端每请求计费）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
-| WorkBuddy | ✅ | P1，需先安装核实样本 |
+| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 7 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
 | Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
@@ -39,7 +39,7 @@
 ## 核心设计要点
 
 - **源是唯一事实来源**。DB 是可插拔的"归档 + 索引"层，不是权威副本
-  - `NullStore`（零 DB、零定时任务）/ `SqliteStore`（归档 + 索引，默认）
+  - 当前实现为 `SqliteStore`（归档 + 索引，默认）；`--stateless` 提供零 DB 路径，`NullStore` 类尚未实现
   - `usage report`（读库）与 `usage --stateless report`（读源）输出必须完全一致
 - **拉取式采集**，不需要常驻进程：数据由 agent 自己落盘，任何时刻读盘都拿得到已落盘的全部数据
 - **实时性三档**：`usage live`（直读源，<0.3s）→ `--live` 合并 → 读库（自动检测新数据）
@@ -54,17 +54,27 @@
 
 ```
 usage-ledger/
+├── AGENTS.md          项目级补充约定（继承工作区根 AGENTS.md）
 ├── pyproject.toml     Python 包定义与 usage / usage-ledger 两个 CLI 入口
 ├── docs/
-│   ├── DESIGN.md       实现方案（v0.4，含 DDL / CLI / 计价 / 里程碑 / 风险）
-│   ├── QODER-DESIGN.md Qoder 双轨设计（token + 活动指标）
+│   ├── README.md        文档索引与阅读顺序（REQ / CHG / ADR / 设计文档）
+│   ├── requirements/
+│   │   └── REQ-0001-usage-ledger.md  功能卡（当前需求事实源）
+│   ├── changes/
+│   │   └── CHG-0001-docs-alignment.md 变更记录（本次文档体系对齐）
+│   ├── adr/
+│   │   ├── ADR-0001-source-of-truth-db-as-archive.md
+│   │   └── ADR-0002-pull-collection-no-daemon.md
+│   ├── rfcs/            跨团队 / 高不确定方案（按需）
+│   ├── DESIGN.md        历史设计稿（v0.4；当前需求见 requirements/REQ-0001）
+│   ├── QODER-DESIGN.md  Qoder 双轨设计（token + 活动指标）
 │   ├── QODER-CREDITS-DESIGN.md Qoder 额度 + 估算 token 设计
 │   ├── TRAE-CN-DESIGN.md Trae CN 接入与 hook 弱估算设计
 │   ├── TRAE-CN-CREDITS-DESIGN.md Trae CN credits 同步与报告改造设计（已实现）
-│   ├── CLINE-DESIGN.md Cline 会话 metrics 采集设计
-│   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
-│   ├── PROBE.md        实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
-│   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
+│   ├── CLINE-DESIGN.md  Cline 会话 metrics 采集设计
+│   ├── RESEARCH.md      调研报告（竞品横评 + 本机数据可得性实测）
+│   ├── PROBE.md         实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
+│   └── DISCUSSION.md    讨论纪要（决策链 + 文档修订记录 + 待决问题）
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
@@ -80,6 +90,14 @@ usage-ledger/
 │   └── pricing.py      模型别名与价格表（价格表当前为空）
 └── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder/Trae CN/Cline）
 ```
+
+## 需求、变更与决策
+
+- 当前功能事实源：[docs/requirements/REQ-0001-usage-ledger.md](docs/requirements/REQ-0001-usage-ledger.md)
+- 变更记录：[docs/changes/](docs/changes/)（当前 [CHG-0001](docs/changes/CHG-0001-docs-alignment.md)）
+- 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)
+- 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)
+- 新变更先建 CHG 并登记到 REQ-0001 §8；设计文档只作支撑，不再作为需求事实源。
 
 ## 安装
 
