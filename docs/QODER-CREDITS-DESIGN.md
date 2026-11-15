@@ -144,6 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_quota_day ON usage_quota(day, quota_kind);
 | 粒度 | 每请求一行，聚合时按 (day, project, model) 汇总 |
 | 系数来源 | 旧库同模型平均 completion 与转录 chars_out 的聚合标定（§2.3）；版本 `v1` 存 `meta['est_factor_version']` |
 | 已知局限 | 200k 上下文窗口为 gfmodel 实测推断，其他模型若为 1M 窗口会低估；不重建逐轮上下文、不拆分缓存 |
+| 展示 | 表内 `model` 保留原始键（系数按原始键匹配）；`est` 命令、`credits` 页内估算表与 HTML 输出时经 `qoder_models.qoder_model_label` 映射为界面名（`dfmodel` → DeepSeek-Flash 等），未收录键原样显示 |
 
 ### 4.3 新表 `usage_est`
 

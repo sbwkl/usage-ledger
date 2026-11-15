@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "session_id": "1787000100000_bbbb",
+  "source": "desktop",
+  "pid": 222,
+  "started_at": "2026-08-15T09:00:00Z",
+  "status": "idle",
+  "interactive": true,
+  "provider": "cline",
+  "model": "deepseek/deepseek-v4-flash",
+  "cwd": "/tmp/other-proj",
+  "workspace_root": "/tmp/other-proj"
+}

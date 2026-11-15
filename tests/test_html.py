@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime
@@ -79,6 +80,212 @@ class HtmlRenderTest(unittest.TestCase):
         self.assertEqual(payload["coverage"], coverage)
 
 
+class AgentSelectionTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        payload = build_payload([], ("day", "source", "model", "project"), None, None, [])
+        cls.html = render_html(payload)
+
+    def test_chip_click_semantics_present(self):
+        self.assertIn("单击只看", self.html)
+        self.assertIn("再次单击恢复全部", self.html)
+        self.assertIn("event.metaKey || event.ctrlKey || event.shiftKey", self.html)
+        self.assertIn("function resolveAgentSelection", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_resolve_agent_selection_behavior(self):
+        start = self.html.index("function resolveAgentSelection")
+        end = self.html.index("function applyAgentSelection", start)
+        source = self.html[start:end]
+        harness = """
+const AGENTS = ["a", "b", "c"];
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("普通点击只看", resolveAgentSelection(["a", "b", "c"], "b", false), ["b"]);
+eq("再次点击恢复全部", resolveAgentSelection(["b"], "b", false), ["a", "b", "c"]);
+eq("从子集普通点击", resolveAgentSelection(["a", "b"], "b", false), ["b"]);
+eq("修饰键增加", resolveAgentSelection(["a"], "b", true), ["a", "b"]);
+eq("修饰键移除", resolveAgentSelection(["a", "b"], "a", true), ["b"]);
+eq("修饰键保留最后一个", resolveAgentSelection(["a"], "a", true), ["a"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+class SourceAwareCreditsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.credit_rows = [
+            {"day": "2026-10-30", "source": "qoder", "model": "qmodel",
+             "project": "p", "credits": 2.0, "free_credits": 1.0,
+             "requests": 1, "free_requests": 1},
+            {"day": "2026-10-30", "source": "trae-cn", "model": "tmodel",
+             "project": "-", "credits": 3.0, "free_credits": 0.0,
+             "requests": 2, "free_requests": 0},
+        ]
+        payload = build_payload(
+            [], ("day", "source", "model", "project"), "2026-10-30", "2026-10-30",
+            [], credit_rows=cls.credit_rows,
+            credits={"days": cls.credit_rows, "rows": cls.credit_rows,
+                     "totals": {"qoder": {"credits": 2.0},
+                                "trae-cn": {"credits": 3.0}}},
+            coverage={"trae-cn.credits": {
+                "available": True, "last_sync_at": "2026-10-30T12:00:00+08:00",
+                "last_attempt_at": "2026-10-30T12:00:00+08:00",
+                "sessions": 2, "status": "ok", "refresh_mode": "auto",
+                "refresh_error": None, "stale": False}},
+            trae_est_rows=[{"day": "2026-10-30", "model": "tmodel", "project": "-",
+                            "est_input": 100, "est_output": 10, "requests": 2,
+                            "chars_in": 1000, "chars_out": 100,
+                            "missing_ratio": 0}])
+        cls.html = render_html(payload)
+        cls.payload = payload
+
+    def test_trae_is_classified_as_credits(self):
+        self.assertEqual(self.payload["agents"]["trae-cn"], "credits")
+        self.assertEqual(self.payload["agents"]["qoder"], "credits")
+        self.assertIn("精确 Credits", self.html)
+        self.assertIn('id="trae-status"', self.html)
+
+    def test_credit_rows_keep_source(self):
+        self.assertEqual([row["source"] for row in self.payload["credits"]["rows"]],
+                         ["qoder", "trae-cn"])
+        self.assertEqual(self.payload["coverage"]["trae-cn.credits"]["refresh_mode"],
+                         "auto")
+        self.assertIn("est 请求", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_estimate_only_rows_not_ranked_as_zero_credit(self):
+        top_start = self.html.index("function topValue(")
+        text_start = self.html.index("function topValueText", top_start)
+        filter_start = self.html.index("function filterTopItems", text_start)
+        filter_end = self.html.index("function topSecondary", filter_start)
+        source = self.html[top_start:text_start] + self.html[filter_start:filter_end]
+        harness = """
+var items = [
+  { key: "estimate-only", credits: 0, est: 2242 },
+  { key: "with-credits", credits: 1.5, est: 111 }
+];
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("zero credits hidden", filterTopItems(items, "credits").map(function (item) {
+  return item.key;
+}), ["with-credits"]);
+eq("est ranking keeps all", filterTopItems(items, "est").map(function (item) {
+  return item.key;
+}), ["estimate-only", "with-credits"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_credit_filters_respect_selected_agent(self):
+        start = self.html.index("function creditRowsFor")
+        end = self.html.index("function dimensionRows", start)
+        source = self.html[start:end]
+        harness = """
+var state = { agents: new Set(["trae-cn"]), shadow: true };
+var CREDIT_ROWS = [{ source: "qoder" }, { source: "trae-cn" }];
+var EST = [{ source: "qoder" }];
+var TRAE_EST = [{ source: "trae-cn" }];
+function hasCreditsSelected() { return true; }
+function hasQoderShadowSelected() {
+  return state.shadow && state.agents.has("qoder") && EST.length > 0;
+}
+function matchesFilters() { return true; }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("credits only selected source", creditRowsFor().map(function (row) {
+  return row.source;
+}), ["trae-cn"]);
+eq("qoder shadow hidden", qoderEstRowsFor().length, 0);
+eq("trae estimate visible", traeRowsFor().length, 1);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+class TraeStatusCopyTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        payload = build_payload([], ("day", "source", "model", "project"),
+                                None, None, [])
+        cls.html = render_html(payload)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_refresh_failure_wording_matches_cache_state(self):
+        start = self.html.index("function traeUnavailableWord")
+        end = self.html.index("function emptyActivityTotals", start)
+        source = self.html[start:end]
+        harness = """
+var COVERAGE = {};
+var classes = [];
+var node = { className: "", hidden: true, textContent: "",
+  classList: { add: function (name) { classes.push(name); } } };
+var el = { traeStatus: node };
+function fmtDateTime(value) { return value || "—"; }
+function fmtInt(value) { return String(value); }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+COVERAGE["trae-cn.credits"] = {
+  refresh_error: "API 认证失败（HTTP 401）", available: false,
+  last_sync_at: null, sessions: 0, stale: true, refresh_mode: "auto" };
+eq("failure word", traeUnavailableWord(), "刷新失败");
+renderTraeStatus();
+eq("no cache", node.textContent.indexOf("暂无缓存数据") >= 0, true);
+eq("no cache never claims cache", node.textContent.indexOf("当前为缓存数据"), -1);
+eq("no placeholder time", node.textContent.indexOf("—"), -1);
+eq("error style", classes.indexOf("error") >= 0, true);
+
+classes = [];
+COVERAGE["trae-cn.credits"] = {
+  refresh_error: "HTTP 500", available: true,
+  last_sync_at: "2026-10-30T12:00:00+08:00", sessions: 2,
+  stale: true, refresh_mode: "auto" };
+renderTraeStatus();
+eq("cached failure", node.textContent.indexOf("当前为缓存数据") >= 0, true);
+eq("cached never claims empty", node.textContent.indexOf("暂无缓存数据"), -1);
+eq("cached keeps sync time", node.textContent.indexOf("2026-10-30T12:00:00+08:00") >= 0, true);
+
+COVERAGE["trae-cn.credits"].refresh_error = null;
+eq("plain sync word", traeUnavailableWord(), "未同步");
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 class HtmlCommandTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -119,7 +326,8 @@ class HtmlCommandTest(unittest.TestCase):
         self.assertTrue(any("Trae" in notice for notice in payload["notices"]))
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
         self.assertIn("Content-Security-Policy", html)
-        self.assertIn("单击只看", html)
+        self.assertIn("点击筛选 / 再点取消", html)
+        self.assertIn('id="agent-nav"', html)
 
     def test_html_empty_source_generates_page(self):
         empty = tempfile.TemporaryDirectory()
@@ -209,12 +417,20 @@ class QoderHtmlTest(unittest.TestCase):
         _, payload = extract_payload(html)
         self.assertTrue(payload["rows"])
         self.assertTrue(all(row["source"] == "qoder" for row in payload["rows"]))
+        self.assertEqual({row["model"] for row in payload["rows"]}, {"Qwen3.7-Plus"})
         self.assertEqual(len(payload["activity"]), 2)
         self.assertTrue(all(row["source"] == "qoder" for row in payload["activity"]))
         self.assertEqual(payload["coverage"]["qoder"]["token_until"], "2026-10-02")
         self.assertEqual(payload["coverage"]["qoder"]["activity_until"], "2026-10-02")
-        self.assertIn("补充口径", html)
-        self.assertIn('data-qoder-tab="credits"', html)
+        self.assertEqual(payload["agents"]["qoder"], "credits")
+        self.assertTrue(payload["credits"]["rows"])
+        self.assertEqual({row["model"] for row in payload["credits"]["rows"]},
+                         {"GLM-5.3-Flash"})
+        self.assertIn("补充：活动指标", html)
+        self.assertIn('id="shadow-switch"', html)
+        self.assertIn('id="panel-credits"', html)
+        self.assertIn('id="panel-est"', html)
+        self.assertIn("精确 Credits", html)
         self.assertIn("不可相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 
@@ -240,19 +456,20 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertEqual((day["day"], day["credits"], day["requests"],
                           day["free_credits"], day["snapshots"]),
                          ("2026-10-01", 2.5, 1, 0.0, 1))
-        self.assertEqual(payload["credits"]["totals"]["credits"], 2.5)
+        self.assertEqual(payload["credits"]["totals"]["qoder"]["credits"], 2.5)
         self.assertEqual(payload["credits"]["quota"]["add_on"]["used"], 100)
         self.assertEqual(payload["est"]["factor_version"], "v1")
         self.assertEqual(len(payload["est"]["rows"]), 1)
         est = payload["est"]["rows"][0]
         self.assertEqual((est["day"], est["model"], est["est_input"],
                           est["est_output"], est["requests"]),
-                         ("2026-10-01", "gfmodel", 50_000, 1, 1))
+                         ("2026-10-01", "GLM-5.3-Flash", 50_000, 1, 1))
+        self.assertEqual(est["project"], "proj-x")
         self.assertEqual(payload["est"]["totals"]["requests"], 1)
-        self.assertIn("额度消耗（credits）", html)
-        self.assertIn("估算 token（est）", html)
+        self.assertIn("区间 billable", html)
+        self.assertIn("影子：Qoder 估算 token", html)
         self.assertIn("最新额度余额", html)
-        self.assertIn("活动、额度、估算与 token 真值口径不同，不可相加", html)
+        self.assertIn("Credits 按 Agent 分列", html)
         self.assertIn("不可与 token 真值或额度相加", html)
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 

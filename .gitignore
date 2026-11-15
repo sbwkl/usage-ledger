@@ -8,3 +8,5 @@ dist/
 *.db-wal
 *.db-shm
 .DS_Store
+usage-report.html
+uv.lock

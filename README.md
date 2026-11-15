@@ -1,10 +1,10 @@
 # usage-ledger
 
-> macOS 上的**极轻量**跨 AI 编码工具 **token 用量台账**。零 UI、零社交、零云同步、零第三方依赖。
+> macOS 上的**极轻量**跨 AI 编码工具 **token / credits 用量台账**。零 UI、零社交、零云同步、零第三方依赖。
 
-一个只读本地日志、只写本地 SQLite、算出"我今天每个平台每个模型花了多少 token"的离线工具。
+一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.5 已实现并通过验收——6 个源采集（含 Qoder 四轨、Trae CN hook 弱估算）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。77 个单测覆盖 PROBE 校正后的采集规则、Qoder token/活动/额度/估算四轨、Trae CN hooks/弱估算、HTML 报表与自动刷新。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。159 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -14,21 +14,22 @@
 
 现有工具都不合适：ccusage 极简但只覆盖 18 个源；tokscale 覆盖 60 个但带 TUI 和排行榜；TokenTracker / Token Monitor 带桌面宠物和多设备同步。
 
-**本项目的立场**：采集层用成熟做法，报表层自己做；不为缺失数据编造 token，不爬私有 API，无任何网络行为。Qoder 新客户端断供 token 后，额度走服务端每请求计费真值，token 另设**显式标注的估算轨**（`est`），永不与真值相加。
+**本项目的立场**：采集层用成熟做法，报表层自己做；不为缺失数据编造 token，不爬第三方私有 API，默认无任何网络行为。Qoder 新客户端断供 token 后，额度走服务端每请求计费真值，token 另设**显式标注的估算轨**（`est`），永不与真值相加。Trae CN 同理：credits 来自客户端同源 usage 接口（**唯一定向联网例外**，仅 `sync --remote` / `usage html` 前台刷新），token 仍只有 hook 弱估算。任何两轴都不相加。
 
 ---
 
 ## 覆盖能力（含现实边界）
 
-| 平台 | token 统计 | 说明 |
+| 平台 | 统计能力 | 说明 |
 |---|---|---|
 | Claude Code | ✅ | 含 cache read/write |
 | OpenCode（CLI + 桌面） | ✅ | 兼容新版 `session_message` 表（旧 `message` 表仍回读未迁移记录），与 Kilo 一个 adapter |
 | Kilo（CLI + 桌面） | ✅ | |
+| Cline（CLI + Desktop） | ✅ | 读 `~/.cline/data/sessions/**/<id>.messages.json` 中 assistant 的 `metrics`（input/output/cache read/write）；`inputTokens` 已含缓存，采集时扣除 |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（服务端每请求计费）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
 | WorkBuddy | ✅ | P1，需先安装核实样本 |
-| Trae CN | ⚠️ 弱估算 | 加密库无本地密钥、额度不落盘；通过官方 hooks 记录字符数与事件元数据，重放为 **hook 弱估算**（`trae-cn.est`）。只覆盖安装 hook 后的请求，误差可能数倍，不可与 token 真值或额度相加 |
+| Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
 > 缺口是**厂商不下发**，不是解析器写不出来。任何工具都无法凭空造出这些平台的 token 数。工具会在 `doctor` 与报告页脚显式说明，避免"看起来没花"与"没采到"混淆。Qoder 新版本客户端已不再写 token，只保留活动元数据；活动指标用于观察 agent 使用强度，不参与 token 与成本统计。
@@ -59,21 +60,25 @@ usage-ledger/
 │   ├── QODER-DESIGN.md Qoder 双轨设计（token + 活动指标）
 │   ├── QODER-CREDITS-DESIGN.md Qoder 额度 + 估算 token 设计
 │   ├── TRAE-CN-DESIGN.md Trae CN 接入与 hook 弱估算设计
+│   ├── TRAE-CN-CREDITS-DESIGN.md Trae CN credits 同步与报告改造设计（已实现）
+│   ├── CLINE-DESIGN.md Cline 会话 metrics 采集设计
 │   ├── RESEARCH.md     调研报告（竞品横评 + 本机数据可得性实测）
 │   ├── PROBE.md        实测探针报告（真实 token 台账 + 9 处规格偏差 + Q 的答案）
 │   └── DISCUSSION.md   讨论纪要（决策链 + 文档修订记录 + 待决问题）
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   6 源采集（Claude/Codex/OpenCode/Kilo/Qoder 双轨/Trae CN 弱估算）
+│   ├── collectors.py   7 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算）
 │   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
+│   ├── trae_credits.py Trae CN 同源 usage API 客户端、JWT 读取、分块/分页与幂等同步
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
 │   ├── aggregation.py  报表聚合与过滤
+│   ├── qoder_models.py Qoder 模型内部键 → 界面显示名（展示层映射，参考 perch）
 │   ├── html_report.py  离线单文件交互报表（内联 CSS/JS/SVG）
 │   ├── scheduler.py    launchd 任务生成/安装/查询
 │   ├── cli.py          命令行入口
 │   └── pricing.py      模型别名与价格表（价格表当前为空）
-└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder/Trae CN）
+└── tests/              单测 + 脱敏 fixtures（Claude/Codex/OpenCode/Qoder/Trae CN/Cline）
 ```
 
 ## 安装
@@ -91,14 +96,18 @@ usage --version
 usage backfill                  # 首次导入历史（幂等，可重复跑）
 usage report --since 7d         # 日报：天 × 源 × 模型
 usage activity --since 30d      # Qoder 活动指标：会话/提示/工具调用/时长（非 token）
-usage credits --since 7d        # Qoder 配额消耗：每请求 billable credits（服务端真值）
+usage credits --since 7d        # Qoder / Trae CN 的 credits 消耗（按 Agent 分列，不跨厂商相加）
+usage credits --source trae-cn  # 只看 Trae CN credits（会话级真值；本命令不联网）
 usage est --group-by day,model  # Qoder 估算 token（est，±30~40%，不可与真值相加）
 usage hooks install trae-cn --scope global  # 安装 Trae CN hooks（只记字符数与元数据）
 usage hooks status trae-cn      # hook 配置、事件文件、最近事件
-usage sync --source trae-cn     # 重放 hook 事件并写入 trae-cn.est
+usage sync --source trae-cn     # 只重放 hook 事件并写入 trae-cn.est（不联网）
+usage sync --source trae-cn --remote  # 显式联网刷新 Trae CN credits（默认最近 30 天）
 usage est --source trae-cn      # Trae CN 弱估算 token（只覆盖安装 hook 后）
+usage report --source cline     # Cline 会话 token（input/output/cache read/write）
 usage top models                # 模型排行
-usage html --open               # 生成 usage-report.html 并在浏览器打开
+usage html --open               # 生成 usage-report.html；含 Trae 时默认先刷新 credits
+usage html --offline --open    # 不联网，只读已有 credits 缓存
 usage live                      # 直读源的实时视图
 usage doctor                    # 源健康 + 归档自检
 usage schedule install          # 每小时增量 + 每日全量 + prune
@@ -127,7 +136,7 @@ PYTHONPATH=src python3 -m usage_ledger report --since 7d
 
 `report` / `export` / `top` / `html` 在出结果前会先做一次**新鲜度检查**：
 
-1. 取各源最新文件的 mtime（Claude/Codex 看 `*.jsonl`，OpenCode/Kilo 看 `*.db` 与 `-wal`），
+1. 取各源最新文件的 mtime（Claude/Codex 看 `*.jsonl`，OpenCode/Kilo 看 `*.db` 与 `-wal`，Cline 看会话 `*.messages.json`），
    与库中 `source_state.last_file_mtime` 比对；
 2. 只有 mtime 变新的源才触发增量 `sync`（写法与手动 `usage sync` 完全一致，幂等）；
 3. 同步提示走 **stderr**，因此 `--format json|csv` 的 stdout 始终是干净的数据。
@@ -159,32 +168,90 @@ usage est --stateless --group-by model   # 绕过数据库直读转录
 - **credits 是服务端真值**：`billable=true` 的 `usage.credits` 逐请求累计，已与 main.log 配额快照增量核对（+18.16 vs +20、+31.62 vs +32 等）；免费请求单独列出，不计配额。
 - **余额来自日志快照**：`main.log` 的 `用量响应摘要` 仅保留约一周、`used` 非单调，因此只用于展示当前余额/总量，不用来推导日消耗。
 - **est 是估算值**：`est_input = context_usage_ratio × 200K`，`est_output = 字符数 ÷ 模型系数`（gfmodel 3.85 / dfmodel 4.58 / 其他 3.8）。旧版无 `ratio` 的转录跳过，避免与历史 token 真值重复。
+- **模型显示名**：库里保留 Qoder 内部键（`dfmodel`、`gfmodel` 等），报表 / HTML / `top models` 在展示层映射为界面名
+  （如 `dfmodel` → DeepSeek-Flash、`gfmodel` → GLM-5.3-Flash，键取自 Qoder `dynamic-text/qoder.json`，与 perch 一致）；
+  未收录的历史/未知键原样显示；`--model` 过滤同时接受原始键和显示名。
 - 四轨（token 真值 / 活动 / 额度 / 估算）分表、分示，任何两轨都不相加；`doctor` 会显示 credits、快照数、估算覆盖与交叉校验。
 
 ---
 
-## Trae CN hooks 弱估算（est）
+## Cline（CLI / Desktop）
 
-Trae CN 的 token 真值与额度都不可本地读取，但官方 hooks 能看到会话、工具调用与文本**长度**。
-本项目安装一个只算字符数的 hook，把事件元数据写入本地 JSONL，再重放为 `trae-cn.est`：
+Cline 的会话文件保留了每个 assistant 响应真实返回的 `metrics`，可直接作为 token 真值：
+
+```bash
+usage report --source cline
+usage report --source cline --group-by day,model --format json
+```
+
+- **路径**：`~/.cline/data/sessions/<session>/<session>.messages.json`；只提取 assistant 消息的
+  `metrics`（`inputTokens` / `outputTokens` / `cacheReadTokens` / `cacheWriteTokens`），不落正文。
+- **口径**：Cline 的 `inputTokens` **包含**缓存 token，入库时按
+  `input = inputTokens − cacheRead − cacheWrite` 拆分，与 Claude/Codex 的非重叠口径一致；
+  `outputTokens` 含推理 token，暂不单列。
+- **归属**：`model` 取消息的 `modelInfo.id`，缺失时回退会话元数据的 `model`；`project` 取
+  `workspace_root`/`cwd` 的 basename；去重键 `cline:<message.id>`。
+- **缺失**：没有 `metrics` 的消息（中断/失败）跳过并计数，不伪造 0；Cline 压缩后移出
+  `.messages.json` 的历史会由每日全量 sync 标记 `archived=1` 保留，不会重复计入。
+- **边界**：当前只接入 Cline CLI/Desktop 的会话文件；VS Code 扩展旧版
+  `saoudrizwan.claude-dev/tasks/*/ui_messages.json` 形态尚无本机样本，未接入。
+
+---
+
+## Trae CN credits（真值）与 hooks 弱估算（est）
+
+Trae CN 的本机加密库不可读、额度不落盘；本系统有两条互不相加的数据轨：
+
+### Credits（服务端会话级真值，定向联网）
+
+```bash
+usage sync --source trae-cn --remote          # 显式联网刷新最近 30 天
+usage sync --source trae-cn --remote --days 365   # 首次回填一年
+usage sync --source trae-cn --remote --dry-run    # 只打印计划，不读凭证、不请求
+usage credits --source trae-cn                # 查看缓存（本命令不联网）
+usage html --open                             # 含 Trae 时默认先刷新再出报告
+usage html --offline --open                   # 只读缓存，不联网
+usage html --max-age 300 --open               # 300 秒内成功同步过则复用
+usage html --strict-refresh --open            # 刷新失败时命令非 0（仍写回退报告）
+```
+
+- **入口**：只有 `usage sync --source trae-cn --remote` 与 `usage html`（Trae 在报告范围内）会联网；
+  `report` / `credits` / `doctor` / `live` / 自动同步 / `html --offline` 全部离线。
+- **凭证**：默认读取 Trae CN 客户端登录态 `~/Library/Application Support/Trae CN/User/globalStorage/storage.json`
+  中的 `iCubeAuthInfo://icube.cloudide`（tc v5，本地解密）；优先级 `--jwt-file` > `TRAE_CN_JWT` >
+  `TRAE_CN_JWT_FILE` > `storage.json`。`~/.trae-cn/trae-jwt-token` 是客户端临时 token，usage 接口会返回 401，
+  不再作为默认来源。凭证只在刷新进程内使用，不落库、不写日志、不进 HTML；不读 Keychain、不读浏览器 Cookie、
+  不解密 SQLCipher 库。凭证过期后需重新登录 Trae CN。
+- **口径**：API 是**会话级**，credits 归属 `usage_time` 所在本地日；一个会话跨天无法拆分。
+  `request_id = trae-cn:<session_id>`，重复拉取幂等覆盖；报告按 Agent 分列，不与 Qoder credits 相加。
+- **项目维度**：API 无 project 字段，用 hook 事件的 `session → project` 尽力映射，未命中显示 `-`；2026-11-15 本机实测两者 session 零重叠，当前项目维度实际不可用。
+- **失败**：`html` 默认软回退缓存并在页面/命令行标注刷新失败与数据时间；`--strict-refresh` 才非 0。
+  HTML 是生成时快照，旧文件不会因再次打开而更新。
+- **边界**：首版不做 Trae 余额/套餐配额，不落 API 的 token 字段，不做后台轮询、多账号或自动登录。
+  详见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md)。
+
+### Hooks 弱估算（token 影子，离线）
+
+官方 hooks 能看到会话、工具调用与文本**长度**。本项目安装一个只算字符数的 hook，
+把事件元数据写入本地 JSONL，再重放为 `trae-cn.est`：
 
 ```bash
 usage hooks install trae-cn --scope global   # 合并写入 /Users/wayne/.trae-cn/hooks.json（带备份）
 usage hooks status trae-cn                   # 配置、事件文件、最近事件、覆盖会话
-usage sync --source trae-cn                  # 幂等重放事件文件
+usage sync --source trae-cn                  # 幂等重放事件文件（不联网）
 usage est --source trae-cn --group-by day,model
 usage hooks uninstall trae-cn --scope global # 只删除本项目安装的 hook 组
 ```
 
 - **隐私**：hook 只写 `event`、`session`、`project` basename、`tool`、`chars_in/out`、可选 `model` 与时间戳；
-  不落 prompt、tool_input、tool_response、last_assistant_message 正文，不读加密库、JWT 或私有 API。
+  不落 prompt、tool_input、tool_response、last_assistant_message 正文；hook 本身不读加密库、JWT 或私有 API。
 - **口径**：每个 `PreToolUse` 与 `Stop` 各记一次模型调用边界；`est_input = min(上下文累积字符 ÷ factor, window)`，
   `est_output = 输出字符 ÷ factor`。默认 `factor=3.8`、`overhead=0`、`window=200000`，可用
   `USAGE_LEDGER_TRAE_EST_FACTOR/_OVERHEAD/_WINDOW` 校准。
 - **边界**：hook 看不到系统提示、工具定义、Skills/Memory/MCP schema，也看不到工具调用之间的 assistant 文本；
   并行工具会重复计输入。该轨是**弱估算/可见内容下限 + 部分重复**，误差可能数倍且方向不定，
-  只适合看趋势，**永不与 token 真值或额度相加**。
-- **覆盖**：只从安装 hook 之后的会话开始记录，不回溯加密库历史；额度仍不可得。
+  只适合看趋势，**永不与 credits 真值或 token 相加**。
+- **覆盖**：只从安装 hook 之后的会话开始记录，不回溯加密库历史。
 - 未安装 hook 时 `usage doctor` 会显示未安装/事件目录不存在，不影响其他源。
 
 ---
@@ -192,32 +259,35 @@ usage hooks uninstall trae-cn --scope global # 只删除本项目安装的 hook 
 ## 交互式 HTML 报表
 
 ```bash
-usage html                                  # 生成 ./usage-report.html（打印绝对路径）
+usage html                                  # 生成 ./usage-report.html；含 Trae 时默认先刷新 credits
+usage html --offline                        # 强制离线，只读 credits 缓存
+usage html --max-age 300                    # 成功同步未超过 300 秒且窗口覆盖时复用缓存
+usage html --strict-refresh                 # 刷新失败时命令非 0（仍写回退报告）
 usage html --open                           # 生成后自动在浏览器打开
 usage html --range 2026-10-01..2026-10-29 --output /tmp/usage.html
 usage html --source codex --live            # 只看 codex，并合并源里的最新数据
-usage --stateless html --output /tmp/usage.html   # 不读库，直接读源
+usage --stateless html --output /tmp/usage.html   # 不读库、不联网；Trae credits 显示需缓存
 ```
 
-页面是**单文件、离线、零外部请求**（CSP `default-src 'none'`，CSS/JS/SVG 全内联），
-可随时发给别人或归档，不需要起服务。内容：
+生成后的页面是**单文件、零外部请求**（CSP `default-src 'none'`，CSS/JS/SVG 全内联），
+可随时发给别人或归档，不需要起服务。注意它是**生成时快照**：再次打开旧文件不会更新；
+生成过程中 `usage html` 可能按上文规则刷新 Trae credits，`--offline` / `--stateless` 可完全避免联网。
+所有 Agent 共用一处多选与同一页报告：
 
-- KPI：总 token、输入/输出/缓存读/缓存写/推理、缓存占比、轮次
-- 可切换指标的每日堆叠柱状图（按来源），悬停查看当天明细；区间超过 200 天自动按周聚合
-- **补充口径（非 token）区块**：置于主明细表之后，按可用数据显示来源切换：「Qoder」与「Trae CN」
-  - Qoder：页头标签页切换「活动 / 额度 / 估算」三个面板，与主报表同一套卡片/图表样式
-    - 活动：KPI（活跃会话/提示/assistant 调用/工具调用/运行时长）、可切换指标的每日活动柱状图、按天 × 项目的活动明细表
-    - 额度：最新余额卡片（余额/已用/总量/进度条/快照日）+ 区间 billable/免费/日均 KPI、每日 billable + 免费堆叠柱状图、按天明细表（credits/请求/免费/快照）。credits 为服务端真值，非 token
-    - 估算：est 总/输入/输出、覆盖请求；按天 × 模型明细表，固定标注 `est` 与误差范围
-  - Trae CN：hook 弱估算 KPI（est 总/输入/输出、覆盖请求）与按天 × 模型明细表，
-    固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与 token 真值或额度相加」
-- 顶部覆盖提示：Qoder token、活动、额度、估算与 Trae CN 弱估算各自的时间范围，并注明口径不可相加；有补充数据时提供「查看补充 ↓」跳转
-- 模型 Top 8 / 项目 Top 8，点击筛选、再点取消（列表不会被自身筛选折叠）
-- 快捷区间：今日 / 全部 / 近 7·30·90 天；日期选择上界为打开页面的当天（数据未产生也能选"今日"）
-- 来源 chip：单击只看该来源、再点恢复全部；⌘/Ctrl/Shift+单击多选。Trae CN 没有 token 真值，只出现在补充区来源切换中，不作为 token 来源 chip
-- 日期范围、来源、模型、项目、全文搜索联合过滤
-- 可排序、可分页的明细表；缺失日期显式标注（图表按 0 显示）
-- 浅色/深色主题，选择记在 `localStorage`
+- **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder、trae-cn（精确 credits），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个；Trae credits 未同步时 chip 显示 `—` 而不是伪造 0
+- **点击语义**：单击只看该 Agent，再次单击恢复全选；⌘/Ctrl/Shift+单击增减成员；另有“全选”按钮
+- **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
+- **KPI 按 Agent 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder：额度余额/区间 billable/免费/日均；Trae CN：区间 credits/会话数/覆盖天数/模型数）；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令，hook 弱估算只作为 Trae credits 的影子卡片
+- **每日用量**：每个单位一块图——Token 按 Agent 堆叠；credits 单选时单序列/堆叠，Qoder + Trae 同时选中时改为**分组柱状图**，不堆叠成一个总数；Trae 弱估算为 est 输入/输出堆叠
+- **模型 Top 8 / 项目 Top 8**：按主单位（优先 tokens → credits → est）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；估算仅作为同一 Agent 行的次要标注，不会把只有估算的行显示成 `0 credits`
+- **明细**：统一一张表，`Agent` 与 `单位` 列区分来源和口径，不适用该单位的列显示 `—`；Trae credits 计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，可排序、可分页，`行数/各口径合计` 按 Agent 分列
+- **Qoder 影子 est**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子 est、明细追加影子行，始终注明不可与 credits 相加
+- **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」
+- **数据新鲜度**：页首显示 `Trae credits 已刷新 / 离线缓存 / 刷新失败（当前为缓存数据或暂无缓存数据）/ 未同步`，由 `coverage["trae-cn.credits"]` 驱动，不在前端猜测
+- **活动指标**（会话/提示/工具调用/时长）：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算
+- **日期范围**：默认取全部数据覆盖；「全部」为全量，避免把单日/短周期 Agent 的图压成一条线
+- 可排序、可分页的明细表；缺失日期显式标注（图表按 0 显示）；浅色/深色主题记在 `localStorage`
+- 页首覆盖提示与页脚说明 token 真值 / credits / 估算 / 活动的口径边界，Qoder 历史 token 真值（2026-06-01 ~ 09-16）只在说明中披露，不并入本页
 
 数据来自与 `report` 相同的聚合链路（天 × 来源 × 模型 × 项目），所以页面数字与 CLI 报表一致。
 
@@ -232,12 +302,16 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 ## 下一步
 
 1. 安装 launchd：`usage schedule install`（hourly sync / 00:15 full rescan / 00:20 prune）
-2. Trae CN H0 真实捕获验收：`usage hooks install trae-cn --scope global` 后，在 Trae CN 设置 > Hooks 确认已加载，
+2. Trae CN credits 验收：登录 Trae CN 后确认 `usage doctor --probe trae-cn` 显示
+   `source=storage.json readable=True`，运行
+   `usage sync --source trae-cn --remote --days 7`，再运行 `usage credits --source trae-cn` 与
+   `usage html --source trae-cn --open`，核对会话数、credits 与 Trae 控制台一致
+3. Trae CN H0 hook 真实捕获验收：`usage hooks install trae-cn --scope global` 后，在 Trae CN 设置 > Hooks 确认已加载，
    发一条带工具调用的 prompt，再运行 `usage hooks status trae-cn` / `usage sync --source trae-cn` /
    `usage est --source trae-cn` 核对事件字段与估算结果
-3. 计价（可选）：价格表目前为空，`cost_equiv_usd` 恒为 `unknown`——PROBE 证明本机 18/21 个模型是 free/别名，成本列价值低
-4. WorkBuddy collector（需先安装 WorkBuddy 采集样本）
-5. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon；Qoder 估算系数用新样本定期校准
+4. 计价（可选）：价格表目前为空，`cost_equiv_usd` 恒为 `unknown`——PROBE 证明本机 18/21 个模型是 free/别名，成本列价值低
+5. WorkBuddy collector（需先安装 WorkBuddy 采集样本）
+6. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon；Qoder 估算系数用新样本定期校准
 
 > 完整快照随时可复现：`python3 scripts/probe.py`
 > 验收命令：`python3 -m unittest discover -s tests -t .`

@@ -316,9 +316,9 @@ class QoderCliTest(unittest.TestCase):
         code, out, err = self.run_cli(["credits", "--format", "json"])
         self.assertEqual(code, 0, err)
         payload = json.loads(out)
-        self.assertEqual(payload["totals"]["credits"], 2.5)
-        self.assertEqual(payload["totals"]["free_credits"], 1.0)
-        self.assertEqual(payload["totals"]["requests"], 2)
+        self.assertEqual(payload["totals"]["qoder"]["credits"], 2.5)
+        self.assertEqual(payload["totals"]["qoder"]["free_credits"], 1.0)
+        self.assertEqual(payload["totals"]["qoder"]["requests"], 2)
         self.assertEqual([row["day"] for row in payload["days"]], ["2026-10-01"])
         self.assertEqual(payload["days"][0]["credits"], 2.5)
         self.assertEqual(payload["days"][0]["requests"], 1)
@@ -333,7 +333,7 @@ class QoderCliTest(unittest.TestCase):
         rows = json.loads(out)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["day"], "2026-10-01")
-        self.assertEqual(rows[0]["model"], "gfmodel")
+        self.assertEqual(rows[0]["model"], "GLM-5.3-Flash")
         self.assertEqual(rows[0]["est_input"], 150_000)
         self.assertEqual(rows[0]["est_output"], 4)
         self.assertEqual(rows[0]["requests"], 2)
@@ -342,7 +342,7 @@ class QoderCliTest(unittest.TestCase):
         code, out, err = self.run_cli(["--stateless", "credits", "--format", "json"])
         self.assertEqual(code, 0, err)
         stateless = json.loads(out)
-        self.assertEqual(stateless["totals"]["credits"], 2.5)
+        self.assertEqual(stateless["totals"]["qoder"]["credits"], 2.5)
         self.assertEqual(stateless["days"][0]["snapshots"], 1)
 
         shutil.rmtree(os.path.dirname(log_path(self.home)))
@@ -352,6 +352,20 @@ class QoderCliTest(unittest.TestCase):
         self.assertEqual(store.quota_count(), 2)
         self.assertEqual(store.est_count(), 2)
         store.close()
+
+    def test_model_labels_follow_qoder_display_names(self):
+        self.run_cli(["backfill"])
+        for name in ("Qwen3.7-Plus", "qmodel"):
+            code, out, _ = self.run_cli(
+                ["report", "--source", "qoder", "--format", "json", "--model", name])
+            self.assertEqual(code, 0)
+            rows = json.loads(out)
+            self.assertTrue(rows)
+            self.assertEqual({row["model"] for row in rows}, {"Qwen3.7-Plus"})
+
+        code, out, _ = self.run_cli(["top", "models", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertIn("Qwen3.7-Plus", {row["model"] for row in json.loads(out)})
 
     def test_sync_skips_token_scan_when_mtime_unchanged(self):
         self.run_cli(["backfill"])
@@ -392,12 +406,82 @@ class QoderCliTest(unittest.TestCase):
         self.assertIn("qoder.activity:", out)
         self.assertIn("token 覆盖 2026-10-01..2026-10-02", out)
         self.assertIn("活动覆盖 2026-10-01..2026-10-02", out)
-        self.assertIn("credits: requests=2 quota_snapshots=2 est_rows=2 missing_ratio=0", out)
+        self.assertIn("credits: qoder_requests=2 trae_sessions=0 quota_snapshots=2 "
+                      "est_rows=2 missing_ratio=0", out)
         self.assertIn("qoder.credits: files=1 credits=2 est=2 quota=2", out)
         self.assertIn("ratio 缺失响应 1", out)
         self.assertIn("warning: 额度日志解析失败 1 行", out)
         self.assertIn("warning: 额度快照已", out)
         self.assertIn(">24h", out)
+
+
+class ClineCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        shutil.copytree(os.path.join(FIXTURES, "cline", "sessions"),
+                        os.path.join(self.home, ".cline", "data", "sessions"))
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_backfill_and_report_match_stateless(self):
+        code, _, _ = self.run_cli(["backfill"])
+        self.assertEqual(code, 0)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 3)
+        store.close()
+
+        code, db_json, _ = self.run_cli(
+            ["report", "--source", "cline", "--format", "json"])
+        self.assertEqual(code, 0)
+        code, source_json, _ = self.run_cli(
+            ["--stateless", "report", "--source", "cline", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(db_json), json.loads(source_json))
+
+        rows = json.loads(db_json)
+        self.assertEqual(sum(row["input"] for row in rows), 450)
+        self.assertEqual(sum(row["output"] for row in rows), 240)
+        self.assertEqual(sum(row["cache_read"] for row in rows), 800)
+        self.assertEqual(sum(row["cache_write"] for row in rows), 100)
+
+    def test_report_auto_syncs_new_cline_messages(self):
+        self.run_cli(["backfill"])
+        path = os.path.join(self.home, ".cline", "data", "sessions",
+                            "1787000000000_aaaa",
+                            "1787000000000_aaaa.messages.json")
+        with open(path, "r", encoding="utf-8") as fh:
+            obj = json.load(fh)
+        obj["messages"].append({
+            "id": "msg_a9", "role": "assistant",
+            "ts": max(msg["ts"] for msg in obj["messages"]) + 60000,
+            "modelInfo": {"id": "anthropic/claude-sonnet-4", "provider": "anthropic"},
+            "metrics": {"inputTokens": 70, "outputTokens": 7,
+                        "cacheReadTokens": 0, "cacheWriteTokens": 0}})
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh)
+        os.utime(path, ns=(os.stat(path).st_atime_ns,
+                           os.stat(path).st_mtime_ns + 1_000_000_000))
+
+        code, out, err = self.run_cli(["report", "--source", "cline", "--format", "json"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("auto-sync", err)
+        rows = json.loads(out)
+        self.assertEqual(sum(row["input"] for row in rows), 520)
 
 
 if __name__ == "__main__":

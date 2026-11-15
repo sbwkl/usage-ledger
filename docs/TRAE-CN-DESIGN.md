@@ -1,11 +1,12 @@
 # TRAE-CN-DESIGN.md —— Trae CN 用量统计接入设计（已实现 Plan H）
 
-> 日期：2026-10-30（初测）/ 2026-10-31（竞品复测）/ 2026-11-01（额度、hooks 与估算方案）/ 2026-11-02（Plan H 实现） ｜ 状态：**Phase 0 不通过 → 加密库路径维持 §4.3 方案 D；Plan H（Hooks 弱估算）H1–H3 已实现并通过 77 个单测，H0 真实捕获待用户验收** ｜ 基线：usage-ledger v0.4.0（2ec136e）
+> 日期：2026-10-30（初测）/ 2026-10-31（竞品复测）/ 2026-11-01（额度、hooks 与估算方案）/ 2026-11-02（Plan H 实现） ｜ 状态：**Phase 0 不通过 → 加密库路径维持 §4.3 方案 D；Plan H（Hooks 弱估算）H1–H3 已实现并通过 86 个单测，H0 真实捕获待用户验收** ｜ 基线：usage-ledger v0.4.0（2ec136e）
 > Phase 0 实测：加密库无法在本地只读解密（密钥由运行时 `db_persistence` 配置下发，本地无明文落盘；详见 [PROBE.md](PROBE.md) §6）。§5–§10 保留作记录，不实施。
 > 竞品复测（2026-10-31）：竞品的内存扫描取密钥方案已在 macOS 端口端到端自测通过（HMAC + sqlcipher 打开），但对 Trae CN 被 hardened runtime 阻断——全进程 `flags=0x10000` 且无 `com.apple.security.get-task-allow`，`task_for_pid`/lldb/Apple debugserver 均被拒（受控实验证实签名是唯一变量）；备份旁路也关闭且即使开启仍为加密导出。详见 [PROBE.md](PROBE.md) §6.6。
 > 额度复测（2026-11-01）：本地没有额度真值可读——用量接口响应不落盘，日志只有 URL + HTTP 200，`storage.json` / localStorage 仅套餐权益与活动配置，无 used/remaining；维持不做额度轴。详见 [PROBE.md](PROBE.md) §6.7。
 > Hooks 复测（2026-11-01）：Trae CN 提供项目级 `.trae/hooks.json` 与全局 `~/.trae-cn/hooks.json`（六个官方事件），但 hook stdin 只有会话/工具/文本元数据，没有 token、credits、quota 或 transcript 路径；不能用于真值统计（只能做弱估算，见 §12）。详见 [PROBE.md](PROBE.md) §6.8。
 > Plan H（2026-11-01 设计 / 2026-11-02 实现）：按用户决定改用 Hooks 做 **token 估算**，复用 Qoder `est` 轨的呈现方式；只记录字符数与事件元数据，不落正文。因 hook 不可见系统提示/工具定义/上下文比例，该轨是**弱估算/下限**，误差可能数倍（未校准），仅看趋势，永不与真值或额度相加。详见 §12。
+> **后续（2026-11-14）**：credits 轴已由 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 定向修订并实现——通过客户端同源 usage 接口获取会话级 credits，报告改为 credits 主指标。2026-11-15 凭证来源再修正：默认读取 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5 本地解密），`~/.trae-cn/trae-jwt-token` 是临时 token（usage 接口 401）已弃用；详见 [PROBE.md](PROBE.md) §6.10。本文 §1.2/§4.3/§5 中“不读登录态 / 不做 credits 轴”的结论仅代表当时阶段；**hook 弱估算（§12）仍是 Trae CN token 影子的唯一来源**，两条轨互不相加。
 > 一句话结论：加密库路径仍不可行；Trae CN 的 token 只能走 Hooks 可见内容的**弱估算**（Plan H），额度仍不可得。
 
 ---
@@ -543,7 +544,7 @@ usage trae-cn-setup [--keychain-account "Trae CN Key"] [--key-file PATH] [--no-c
 >
 > **实现状态（2026-11-02）**：H1–H3 已完成，`tests/test_trae_hooks.py`、
 > `tests/test_trae_collector.py`、`tests/test_cli_trae.py`、`tests/test_store.py` 覆盖安装/卸载、
-> 重放、分源存储、CLI 与 HTML；全量 77 个单测通过。H0 真实捕获仍需用户安装 hook 并操作 Trae CN 验收。
+> 重放、分源存储、CLI 与 HTML；全量 86 个单测通过。H0 真实捕获仍需用户安装 hook 并操作 Trae CN 验收。
 
 ### 12.1 边界与口径
 
@@ -749,12 +750,15 @@ usage doctor                                    # 显示 hook 安装状态/覆�
 - `usage est` 新增 `--source {qoder,trae-cn}`，默认 `qoder`（保持兼容）；
   `trae-cn` 不支持 `ratio`，提示改为「无上下文比例，仅字符估算」。
 - `usage report --source trae-cn` 没有 token 真值，只显示提示；
-  Trae 估算只在 `usage est` 与 `usage html` 的补充区展示。
+  Trae 估算在 `usage est` 与 `usage html` 中展示（HTML 中作为独立 agent chip）。
 - `usage sync`（不带 `--source`）默认包含 `trae-cn`；无 hook 日志时 `available=False`，不报错。
 
 **HTML（Phase H3）**：
 
-- 现有「Qoder 补充口径」区增加来源切换：`Qoder（活动/额度/估算）` 与 `Trae CN（估算）`；
+- 来源 chip 增加 `trae-cn`：无 token 真值，chip 显示弱估算总量（`est`）；
+  单独选中时隐藏 token 主视图，只显示弱估算补充区；
+- 「补充口径」区保留来源切换：`Qoder（活动/额度/估算）` 与 `Trae CN（估算）`；
+  补充区跟随来源筛选，Qoder 只在 Qoder 选中时出现，Trae 只在 Trae CN 选中时出现；
 - Trae 面板复用 est 卡片/表格，固定标注「弱估算、不可相加」；
 - 无数据时不显示该来源。
 
@@ -767,7 +771,7 @@ usage doctor                                    # 显示 hook 安装状态/覆�
 | `src/usage_ledger/models.py` | `Estimate.source` 默认值 |
 | `src/usage_ledger/store.py` | `usage_est.source` schema + 迁移、upsert、按 source 查询 |
 | `src/usage_ledger/cli.py` | `hooks` 子命令、`SOURCES`、`est --source`、`sync`/`doctor` 接入 |
-| `src/usage_ledger/html_report.py` | 补充区来源切换与 Trae 估算面板（H3） |
+| `src/usage_ledger/html_report.py` | Trae 来源 chip、补充区来源切换与弱估算面板（H3） |
 | `tests/fixtures/trae_hooks/`（新增） | 脱敏事件序列 |
 | `tests/test_trae_hooks.py`（新增） | 安装合并、长度记录、隐私、重放、幂等 |
 | `tests/test_store.py` / `test_cli.py` / `test_html.py` | source 迁移、`est --source`、doctor、HTML |

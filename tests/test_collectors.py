@@ -7,7 +7,8 @@ import unittest
 from datetime import date, datetime, time, timedelta
 from unittest.mock import patch
 
-from src.usage_ledger.collectors import (scan_claude, scan_codex, scan_qoder_activity,
+from src.usage_ledger.collectors import (scan_claude, scan_cline, scan_codex,
+                                       scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
                                        scan_qoder_tokens, scan_qoder_transcripts,
                                        scan_sqlite_agent, source_signatures)
@@ -92,6 +93,61 @@ class CodexTest(unittest.TestCase):
             self.assertEqual(sum(rec.counts.total() for rec in result.records), 400)
 
 
+class ClineTest(unittest.TestCase):
+    def test_metrics_mapping_and_fallbacks(self):
+        result = scan_cline(os.path.join(FIXTURES, "cline", "sessions"))
+        self.assertTrue(result.healthy)
+        self.assertEqual(result.files, 2)
+        self.assertEqual(len(result.records), 3)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.key_kinds["assistant"], 5)
+        self.assertEqual(result.key_kinds["skipped:no_metrics"], 1)
+        self.assertEqual(result.key_kinds["zero-usage"], 1)
+
+        by_key = {rec.key: rec for rec in result.records}
+        first = by_key["cline:msg_a1"]
+        self.assertEqual((first.counts.input, first.counts.output, first.counts.cache_read,
+                          first.counts.cache_write), (300, 200, 600, 100))
+        self.assertEqual(first.model, "anthropic/claude-sonnet-4")
+        self.assertEqual(first.provider, "anthropic")
+        self.assertEqual(first.project, "proj-cline")
+        self.assertEqual(first.session, "1787000000000_aaaa")
+
+        fallback = by_key["cline:msg_a2"]
+        self.assertEqual((fallback.counts.input, fallback.counts.output), (50, 10))
+        self.assertEqual(fallback.model, "cline-free/step-5-preview")
+        self.assertEqual(fallback.provider, "cline")
+
+        second = by_key["cline:msg_b1"]
+        self.assertEqual(second.counts.input, 100)
+        self.assertEqual(second.counts.cache_read, 200)
+        self.assertEqual(second.project, "other-proj")
+        self.assertEqual(second.model, "deepseek/deepseek-v4-flash")
+
+        totals = [sum(getattr(rec.counts, field) for rec in result.records)
+                  for field in ("input", "output", "cache_read", "cache_write")]
+        self.assertEqual(totals, [450, 240, 800, 100])
+
+    def test_missing_root_is_unavailable(self):
+        result = scan_cline("/nonexistent/usage-ledger-cline")
+        self.assertFalse(result.available)
+        self.assertFalse(result.healthy)
+        self.assertEqual(result.records, [])
+
+    def test_broken_session_file_is_isolated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = os.path.join(tmp, "bad_session")
+            os.makedirs(bad)
+            with open(os.path.join(bad, "bad_session.messages.json"), "w",
+                      encoding="utf-8") as fh:
+                fh.write("{not json")
+            result = scan_cline(tmp)
+            self.assertTrue(result.available)
+            self.assertFalse(result.healthy)
+            self.assertEqual(len(result.errors), 1)
+            self.assertEqual(result.records, [])
+
+
 class SignatureTest(unittest.TestCase):
     def test_latest_mtime_and_missing_source(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,6 +163,17 @@ class SignatureTest(unittest.TestCase):
             bumped = (first + 1_000_000) * 1_000
             os.utime(path, ns=(bumped, bumped))
             self.assertGreater(source_signatures(tmp, ["claude"])["claude"], first)
+
+    def test_cline_signature(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = os.path.join(tmp, ".cline", "data", "sessions", "s1")
+            os.makedirs(session_dir)
+            with open(os.path.join(session_dir, "s1.messages.json"), "w",
+                      encoding="utf-8") as fh:
+                fh.write("{}")
+            self.assertIsNotNone(source_signatures(tmp, ["cline"])["cline"])
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(source_signatures(tmp, ["cline"])["cline"])
 
 
 class SqliteAgentTest(unittest.TestCase):

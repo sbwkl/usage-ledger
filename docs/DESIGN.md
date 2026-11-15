@@ -284,10 +284,12 @@ usage --stateless report  → 强制走 NullStore（临时验证用） 实时，
 - **状态**：**本机未安装，字段形状待安装后核实**（TokenTracker/tokscale 均标注为 JSONL，推测与 Claude 同形）
 - **计划**：安装后先做一次 `doctor --probe workbuddy` 探测，输出样本键名，再据此实现 parser；**不照抄推测**
 
-### 5.5 cline_jsonl — Cline（可选，P2）
+### 5.5 cline — Cline（已实现）
 
-- **路径**：`~/.cline/data/sessions/**`（本机 345MB）
-- **状态**：可选，不进 v1 验收标准
+- **路径**：`~/.cline/data/sessions/<session>/<session>.messages.json`
+- **状态**：已实现（2026-11-11），读取 assistant 消息的 `metrics`（input/output/cache read/write）
+- **口径**：`input = inputTokens − cacheReadTokens − cacheWriteTokens`（Cline 的 `inputTokens` 含缓存）
+- **详见**：[CLINE-DESIGN.md](CLINE-DESIGN.md)
 
 ---
 

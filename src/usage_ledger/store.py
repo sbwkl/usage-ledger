@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS price_override (
 );
 CREATE TABLE IF NOT EXISTS usage_credit (
   request_id TEXT PRIMARY KEY,
+  source TEXT NOT NULL DEFAULT 'qoder',
   ts REAL NOT NULL,
   day TEXT NOT NULL,
   project TEXT NOT NULL DEFAULT '',
@@ -138,12 +139,19 @@ class SqliteStore:
         self.conn.commit()
 
     def _migrate(self):
-        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(usage_est)")}
-        if "source" not in columns:
+        est_columns = {row[1] for row in self.conn.execute("PRAGMA table_info(usage_est)")}
+        if "source" not in est_columns:
             self.conn.execute(
                 "ALTER TABLE usage_est ADD COLUMN source TEXT NOT NULL DEFAULT 'qoder.est'")
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_est_source_day ON usage_est(source, day)")
+        credit_columns = {
+            row[1] for row in self.conn.execute("PRAGMA table_info(usage_credit)")}
+        if "source" not in credit_columns:
+            self.conn.execute(
+                "ALTER TABLE usage_credit ADD COLUMN source TEXT NOT NULL DEFAULT 'qoder'")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_credit_source_day ON usage_credit(source, day)")
 
     def close(self):
         self.conn.close()
@@ -372,30 +380,37 @@ class SqliteStore:
 
     def upsert_credits(self, credits, quota) -> tuple[int, int]:
         now = datetime.now(timezone.utc).timestamp()
-        for row in credits:
-            self.conn.execute(
-                """INSERT INTO usage_credit
-                (request_id,ts,day,project,model,session_id,credits,billable,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(request_id) DO UPDATE SET
-                 ts=excluded.ts, day=excluded.day, project=excluded.project,
-                 model=excluded.model, session_id=excluded.session_id,
-                 credits=excluded.credits, billable=excluded.billable,
-                 updated_at=excluded.updated_at""",
-                (row.request_id, row.ts, row.day, row.project, row.model,
-                 row.session, row.credits, 1 if row.billable else 0, now))
-        for row in quota:
-            self.conn.execute(
-                """INSERT INTO usage_quota
-                (request_id,quota_kind,ts,day,total,used,remaining,unit,raw_pct,expires_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(request_id,quota_kind) DO UPDATE SET
-                 ts=excluded.ts, day=excluded.day, total=excluded.total,
-                 used=excluded.used, remaining=excluded.remaining,
-                 unit=excluded.unit, raw_pct=excluded.raw_pct,
-                 expires_at=excluded.expires_at""",
-                (row.request_id, row.quota_kind, row.ts, row.day, row.total,
-                 row.used, row.remaining, row.unit, row.raw_pct, row.expires_at))
+        self.conn.execute("BEGIN")
+        try:
+            for row in credits:
+                self.conn.execute(
+                    """INSERT INTO usage_credit
+                    (request_id,source,ts,day,project,model,session_id,credits,
+                     billable,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(request_id) DO UPDATE SET
+                     source=excluded.source, ts=excluded.ts, day=excluded.day,
+                     project=excluded.project, model=excluded.model,
+                     session_id=excluded.session_id, credits=excluded.credits,
+                     billable=excluded.billable, updated_at=excluded.updated_at""",
+                    (row.request_id, getattr(row, "source", "qoder"), row.ts, row.day,
+                     row.project, row.model, row.session, row.credits,
+                     1 if row.billable else 0, now))
+            for row in quota:
+                self.conn.execute(
+                    """INSERT INTO usage_quota
+                    (request_id,quota_kind,ts,day,total,used,remaining,unit,raw_pct,expires_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(request_id,quota_kind) DO UPDATE SET
+                     ts=excluded.ts, day=excluded.day, total=excluded.total,
+                     used=excluded.used, remaining=excluded.remaining,
+                     unit=excluded.unit, raw_pct=excluded.raw_pct,
+                     expires_at=excluded.expires_at""",
+                    (row.request_id, row.quota_kind, row.ts, row.day, row.total,
+                     row.used, row.remaining, row.unit, row.raw_pct, row.expires_at))
+        except Exception:
+            self.conn.rollback()
+            raise
         self.conn.commit()
         return len(credits), len(quota)
 
@@ -420,8 +435,9 @@ class SqliteStore:
         self.conn.commit()
         return len(estimates)
 
-    def credit_daily(self, since: str | None = None,
-                     until: str | None = None) -> list[dict]:
+    @staticmethod
+    def _credit_filters(since: str | None, until: str | None,
+                        source: str | None) -> tuple[str, list]:
         clauses, params = [], []
         if since:
             clauses.append("day >= ?")
@@ -429,43 +445,84 @@ class SqliteStore:
         if until:
             clauses.append("day <= ?")
             params.append(until)
-        where_sql = " AND ".join(clauses) if clauses else "1=1"
-        snapshots = {
-            row[0]: row[1] for row in self.conn.execute(
-                "SELECT day, COUNT(DISTINCT request_id) FROM usage_quota "
-                "WHERE %s GROUP BY day" % where_sql, params)
-        }
+        if source:
+            clauses.append("source = ?")
+            params.append(source)
+        return (" AND ".join(clauses) if clauses else "1=1", params)
+
+    def credit_daily(self, since: str | None = None,
+                     until: str | None = None,
+                     source: str | None = None) -> list[dict]:
+        where_sql, params = self._credit_filters(since, until, source)
+        snapshots = {}
+        if source in (None, "qoder"):
+            day_clauses, day_params = [], []
+            if since:
+                day_clauses.append("day >= ?")
+                day_params.append(since)
+            if until:
+                day_clauses.append("day <= ?")
+                day_params.append(until)
+            day_where = " AND ".join(day_clauses) if day_clauses else "1=1"
+            snapshots = {
+                row[0]: row[1] for row in self.conn.execute(
+                    "SELECT day, COUNT(DISTINCT request_id) FROM usage_quota "
+                    "WHERE %s GROUP BY day" % day_where, day_params)
+            }
         rows = []
-        for day, credits, requests, free_credits in self.conn.execute(
-                """SELECT day,
+        for day, row_source, credits, requests, free_credits in self.conn.execute(
+                """SELECT day, source,
                    COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN billable=1 THEN 1 ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0)
-                   FROM usage_credit WHERE %s GROUP BY day ORDER BY day""" % where_sql,
-                params):
-            rows.append({"day": day, "credits": round(credits, 6),
-                         "requests": requests,
+                   FROM usage_credit WHERE %s GROUP BY day, source
+                   ORDER BY day, source""" % where_sql, params):
+            rows.append({"day": day, "source": row_source,
+                         "credits": round(credits, 6), "requests": requests,
                          "free_credits": round(free_credits, 6),
-                         "snapshots": snapshots.get(day, 0)})
+                         "snapshots": snapshots.get(day, 0)
+                         if row_source == "qoder" else 0})
+        return rows
+
+    def credit_rows(self, since: str | None = None,
+                    until: str | None = None,
+                    source: str | None = None) -> list[dict]:
+        where_sql, params = self._credit_filters(since, until, source)
+        rows = []
+        for (day, row_source, model, project, credits, free_credits, requests,
+             free_requests) in self.conn.execute(
+                """SELECT day, source, model, COALESCE(project,''),
+                   COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=1 THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=0 THEN 1 ELSE 0 END),0)
+                   FROM usage_credit WHERE %s GROUP BY day, source, model, project
+                   ORDER BY day, source, model, project""" % where_sql, params):
+            rows.append({"day": day, "source": row_source, "model": model,
+                         "project": project or "-",
+                         "credits": round(credits, 6), "free_credits": round(free_credits, 6),
+                         "requests": requests, "free_requests": free_requests})
         return rows
 
     def credits_totals(self, since: str | None = None,
-                       until: str | None = None) -> dict:
-        clauses, params = [], []
-        if since:
-            clauses.append("day >= ?")
-            params.append(since)
-        if until:
-            clauses.append("day <= ?")
-            params.append(until)
-        where_sql = " AND ".join(clauses) if clauses else "1=1"
-        row = self.conn.execute(
-            """SELECT COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
-               COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0),
-               COUNT(*), COUNT(DISTINCT day), COUNT(DISTINCT model)
-               FROM usage_credit WHERE %s""" % where_sql, params).fetchone()
-        return {"credits": row[0], "free_credits": row[1], "requests": row[2],
-                "days": row[3], "models": row[4]}
+                       until: str | None = None,
+                       source: str | None = None) -> dict:
+        where_sql, params = self._credit_filters(since, until, source)
+        totals = {}
+        for (row_source, credits, free_credits, requests, days,
+             models) in self.conn.execute(
+                """SELECT source,
+                   COALESCE(SUM(CASE WHEN billable=1 THEN credits ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN billable=0 THEN credits ELSE 0 END),0),
+                   COUNT(*), COUNT(DISTINCT day), COUNT(DISTINCT model)
+                   FROM usage_credit WHERE %s GROUP BY source
+                   ORDER BY source""" % where_sql, params):
+            totals[row_source] = {
+                "credits": round(credits, 6),
+                "free_credits": round(free_credits, 6),
+                "requests": requests, "days": days, "models": models,
+            }
+        return totals
 
     def latest_quota(self) -> dict:
         result = {}
@@ -483,12 +540,21 @@ class SqliteStore:
     def quota_count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM usage_quota").fetchone()[0]
 
-    def credit_count(self) -> int:
+    def credit_count(self, source: str | None = None) -> int:
+        if source:
+            return self.conn.execute(
+                "SELECT COUNT(*) FROM usage_credit WHERE source=?", (source,)
+            ).fetchone()[0]
         return self.conn.execute("SELECT COUNT(*) FROM usage_credit").fetchone()[0]
 
-    def credit_bounds(self) -> tuple[str | None, str | None]:
-        row = self.conn.execute(
-            "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_credit").fetchone()
+    def credit_bounds(self, source: str | None = None) -> tuple[str | None, str | None, float | None]:
+        if source:
+            row = self.conn.execute(
+                "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_credit WHERE source=?",
+                (source,)).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT MIN(day), MAX(day), MAX(ts) FROM usage_credit").fetchone()
         return (row[0], row[1], row[2]) if row else (None, None, None)
 
     def est_count(self, source: str | None = "qoder.est") -> int:
@@ -624,6 +690,38 @@ class SqliteStore:
             """SELECT source,status,files_seen,records_total,last_sync_at,last_error
             FROM source_state ORDER BY source"""
         ).fetchall()
+
+    def source_state(self, source: str) -> dict | None:
+        row = self.conn.execute(
+            """SELECT source,status,files_seen,records_total,last_sync_at,
+               last_error,last_event_ts,last_file_mtime,parser_version
+            FROM source_state WHERE source=?""", (source,)).fetchone()
+        if not row:
+            return None
+        keys = ("source", "status", "files_seen", "records_total", "last_sync_at",
+                "last_error", "last_event_ts", "last_file_mtime", "parser_version")
+        return dict(zip(keys, row))
+
+    def mark_source_error(self, source: str, error: str):
+        self.conn.execute(
+            """INSERT INTO source_state
+            (source,parser_version,last_sync_at,last_event_ts,last_file_mtime,
+             files_seen,records_total,status,last_error)
+            VALUES (?,1,NULL,NULL,NULL,0,0,'error',?)
+            ON CONFLICT(source) DO UPDATE SET
+             status='error', last_error=excluded.last_error""",
+            (source, error),
+        )
+        self.conn.commit()
+
+    def est_session_projects(self, source: str = "trae-cn.est") -> dict[str, str]:
+        return {
+            row[0]: row[1] for row in self.conn.execute(
+                """SELECT session_id, project, MAX(day) FROM usage_est
+                WHERE source=? AND session_id IS NOT NULL AND project != ''
+                GROUP BY session_id""", (source,))
+            if row[0] and row[1]
+        }
 
     def source_mtimes(self) -> dict[str, int]:
         return {
