@@ -13,6 +13,10 @@
 
 > 本文是**当前需求事实源**。设计沿革见 [DESIGN.md](../DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
 
+## 摘要
+
+usage-ledger 是 macOS 上的本地 AI 编码工具用量台账，统一采集 Claude Code、Codex、OpenCode、Kilo、Cline、Qoder 与 Trae CN 的 token、credits、估算和活动数据。它默认离线、只读源、只写本地 SQLite，并通过 CLI 与单文件 HTML 报表提供按天 / 源 / 模型 / 项目的视图。核心约束是 token 真值、credits、估算与活动分轨展示，任何两轨都不相加；Trae CN credits 的两条显式刷新路径是唯一联网例外。本文记录 v0.6.0 的当前事实与验收，不承担历史变更记录。
+
 ---
 
 ## 1. 问题与证据
@@ -257,7 +261,7 @@ usage est --source trae-cn --group-by day,model
 - **只读源**：JSONL 以只读方式打开；OpenCode / Kilo / Qoder 的 SQLite 以 `mode=ro` 和 `PRAGMA query_only` 打开；不写源目录、不修改源数据库。
 - **不落正文**：DB 只存 token、模型、项目 basename、会话 id、时间等元数据；不存 prompt、assistant 文本、tool input / response。Qoder est 只在内存中统计字符数；Trae hook 只落事件元数据与字符数。
 - **项目标识**：当前只存项目目录 basename；路径哈希模式未实现（后续 opt-in）。
-- **凭证**：Trae JWT 只在刷新进程内使用，不落库、不写日志、不进 HTML；拒绝符号链接和 world-writable 凭证文件；认证 / API 错误经脱敏后输出。凭证过期需重新登录 Trae CN。
+- **凭证**：Trae JWT 只在刷新进程内使用，不落库、不写日志、不进 HTML；拒绝符号链接和 group/world-writable（`mode & 0o022`）凭证文件；认证 / API 错误经脱敏后输出。凭证过期需重新登录 Trae CN。
 - **联网**：默认零网络；唯一例外是 `usage sync --source trae-cn --remote` 与包含 Trae 的 `usage html`。`--offline` / `--stateless` 可完全避免联网。
 - **HTML**：CSP 禁止外部资源；所有注入页面的数据做转义；页面本身不发起网络请求。
 - **无遥测**：不向任何服务发送使用数据；不读浏览器 Cookie、不读 Keychain、不解密 SQLCipher、不逆向私有 API。
@@ -317,7 +321,7 @@ usage est --source trae-cn --group-by day,model
 | ID | 需求（EARS） | 验收 / 测试映射 |
 |---|---|---|
 | R11 | When the user explicitly runs `usage sync --source trae-cn --remote` or `usage html` with Trae CN in scope, the system shall fetch session-level credits from the Trae CN same-origin usage API using the local login credential; all other commands shall remain offline. It shall persist credits idempotently by `trae-cn:<session_id>`, attribute them to the local day of `usage_time`, reuse cache within `--max-age`, and soft-fallback with explicit warning on failure (`--strict-refresh` exits non-zero). | `test_sync_remote_calls_trae_refresh`、`test_sync_without_remote_does_not_call_network`、`test_html_default_refreshes_trae_credits`、`test_html_source_qoder_skips_trae_refresh`、`test_html_stateless_skips_trae_refresh`、`tests/test_trae_credits.py::SyncTest.test_sync_is_idempotent_and_maps_project`、`test_html_max_age_reuses_fresh_cache`、`test_html_refresh_failure_uses_cache_and_strict_exits_nonzero` |
-| R12 | While reading Trae CN credentials, the system shall read them only in-process, never persist/log/embed them in HTML, reject symlinked or world-writable credential files, and redact auth/API errors. Credential precedence shall be `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`. | `StorageCredentialTest`、`test_rejects_symlinked_file`、`test_rejects_world_writable_file`、`test_storage_info_is_secret_free`、`test_remote_sync_failure_is_redacted`、`test_html_refresh_error_and_cli_errors_are_redacted`、`tests/test_trae_credits.py::JwtTest` |
+| R12 | While reading Trae CN credentials, the system shall read them only in-process, never persist/log/embed them in HTML, reject symlinked or group/world-writable (`mode & 0o022`) credential files, and redact auth/API errors. Credential precedence shall be `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`. | `StorageCredentialTest`、`test_rejects_symlinked_file`、`test_rejects_world_writable_file`、`test_storage_info_is_secret_free`、`test_remote_sync_failure_is_redacted`、`test_html_refresh_error_and_cli_errors_are_redacted`、`tests/test_trae_credits.py::JwtTest` |
 | R13 | When Trae CN hooks are installed and events are recorded, the system shall record only event/session/project basename/tool/char counts/optional model/timestamp (never prompt, tool input/output, or assistant text), replay them into `trae-cn.est` as a weak estimate, and never add them to credits or token truth. | `tests/test_trae_hooks.py::HookInstallTest`、`HookScriptTest.test_capture_is_private_and_counts_chars`、`tests/test_trae_collector.py::TraeReplayTest.test_design_example`、`test_env_factor_overhead_and_window`、`test_capture_replays_through_collector` |
 
 ### 5.4 Cline、HTML 与调度

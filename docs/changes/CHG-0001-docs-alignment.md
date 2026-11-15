@@ -8,9 +8,13 @@
 | Owner | wayne |
 | 所属模块 / 入口 | `docs/`、`README.md`、`AGENTS.md` |
 | 功能卡 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md) |
-| 关联 | [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../ARCHITECTURE.md) §11、commit 见 `git log --grep CHG-0001` |
+| 关联 | [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../ARCHITECTURE.md) §11、commit `02e8473`（评审修订见后续 CHG-0001 提交） |
 
 > 说明：本变更已在本地完成验证（159 tests + 链接检查），尚未合并 main，因此状态为“已验证”，不是“已发布”。
+
+## 摘要
+
+本变更按工作区轻量需求规范建立 usage-ledger 的固定文档体系：新增功能卡 REQ-0001、变更记录 CHG-0001、两项 ADR 和文档索引，并把 README / ARCHITECTURE / DESIGN / QODER-DESIGN 对齐到 v0.6.0 当前事实。运行时代码、CLI 行为、数据库 schema 与 HTML 报表均无变化；本次只修正文档事实源和既有漂移。验证证据为全量测试、相对链接检查和文档首部 / 目录核对。
 
 ---
 
@@ -96,4 +100,5 @@
 | 2026-11-15 | 提议 → 就绪 → 开发中 | wayne | 本文件；REQ-0001 建立 |
 | 2026-11-15 | 开发中 → 已验证 | wayne | 159 tests OK；目录 / 链接 / 首部检查通过；待合并 main |
 | 2026-11-15 | 已验证（补充） | wayne | REQ-0001 §3 补齐 As-Built 功能说明（源契约 / 命令 / 字段 / 存储 / HTML / 调度 / 隐私），与 v0.6.0 源码逐项核对；159 tests OK、117 个相对链接全部可达 |
-| 2026-11-15 | 已验证（待 code review） | wayne | 提交到 `feat/req-docs` 并合入 `sit`；commit 见 `git log --grep CHG-0001`；尚未合并 `main` |
+| 2026-11-15 | 已验证（待 code review） | wayne | 提交 `02e8473` 到 `feat/req-docs` 并合入 `sit`；尚未合并 `main` |
+| 2026-11-15 | 已验证（评审修订） | wayne | 补齐 REQ / CHG 摘要、修正 group/world-writable 措辞、登记 commit `02e8473`；159 tests OK，117 links OK；本修订提交见 PR 提交列表 |
