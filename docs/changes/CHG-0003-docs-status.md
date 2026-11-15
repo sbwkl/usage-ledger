@@ -45,8 +45,8 @@ grep -R "尚未合并 main" docs/changes/CHG-0001-docs-alignment.md \
 
 ## 6. 关联与证据
 
-- issue/PR：本 CHG 的 PR 待创建；CHG-0001 的 PR #2 已合并。
-- commit：待提交（`feat/docs-status`，基于 `main` `5b5f987`）。
+- issue/PR：[PR #4](https://github.com/sbwkl/usage-ledger/pull/4) 已创建（head `feat/docs-status`）；CHG-0001 的 PR #2 已合并。PR #4 基于 `main` `5b5f987`，该基线尚无 `.github/workflows/test.yml`，因此 PR 检查会等测试 workflow 进入 `main` 后才出现；本 CHG 的验证证据不依赖 CI。
+- commit：`a701422`（`feat/docs-status`，基于 `main` `5b5f987`）。
 - release：不涉及。
 
 ## 7. 变更记录
