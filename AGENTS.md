@@ -16,7 +16,7 @@
 - 快速测试：`python3 -m unittest discover -s tests -t .`；需要 Python ≥3.11 与 Node 24（HTML/JS 行为测试）。Node 缺失时 `check_test_policy.py` 会因未授权 skip 失败，不要把它当作“环境问题”忽略。
 - 覆盖率：`uv run --with coverage python -m coverage run --branch --source=src/usage_ledger -m unittest discover -s tests -t .`，再 `uv run --with coverage python -m coverage json -o coverage.json` 与 `python3 scripts/check_coverage.py coverage.json`。
 - 测试门禁：`python3 scripts/check_test_policy.py`（skip / expectedFailure 白名单、5 秒预算）与 `python3 scripts/check_ac_map.py`（REQ-0001 §5 AC→测试映射）。
-- CI：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24；分支保护的 required checks 需要仓库管理员在 GitHub 上启用。
+- CI：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24；`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
 - 直接运行：`PYTHONPATH=src python3 -m usage_ledger <cmd>`。
 - 本地重装：`uv tool install --force --no-cache .`。
 - 分支：从最新 `main` 切 `feat/<特性名>`；集成走 `sit`；合并 `main` 前必须获得用户同意。

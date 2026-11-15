@@ -1,7 +1,7 @@
 # CHG-0002 测试门禁与覆盖率基线
 
 类型：CHG
-状态：开发中
+状态：已验证
 Owner：wayne
 所属模块/入口：`tests/`、`scripts/`、`.github/workflows/`、`pyproject.toml`
 功能卡：[REQ-0002 测试体系完善](../requirements/REQ-0002-testing.md)
@@ -26,7 +26,7 @@ Owner：wayne
 
 本次实现 REQ-0002 的以下需求：
 
-- **R2（本地 workflow 部分）**：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上运行；矩阵 Python 3.11/3.12/3.13/3.14，Node 24；任一检查失败即 job 失败。远程 required checks 需仓库管理员在 GitHub 上启用并验证失败 PR 被阻止（见 §5.4/§7）。
+- **R2**：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上运行；矩阵 Python 3.11/3.12/3.13/3.14，Node 24；任一检查失败即 job 失败。`main` 已启用 5 个 required checks（`tests (py3.11)`–`(py3.14)`、`test policy`），strict + enforce_admins；PR #3 5/5 通过，故意失败 PR #5 被 BLOCKED（见 §5.4）。
 - **R3**：`scripts/check_test_policy.py` 运行完整套件并检查 skip / expectedFailure 是否有白名单条目（owner、reason、expires）；无条目、条目过期、条目未被使用、重复条目或零测试均失败。白名单文件 `tests/skip_allowlist.json`，当前为空。
 - **R4（Python 覆盖率部分）**：`coverage.py --branch` + `scripts/check_coverage.py`；总覆盖 ≥85%，store/collectors ≥85%，CLI ≥80%，scheduler ≥80%；任一关键模块较 v0.6.0 基线下降超过 1 个百分点即失败。浏览器/JS 关键旅程覆盖率不在本 CHG，见 §7。
 - **R5（REQ-0001 映射部分）**：`tests/ac_map.json` + `scripts/check_ac_map.py`；解析 REQ-0001 §5 的 R1–R18，校验每条 AC 至少映射一个真实存在的测试标识，缺失或孤立映射即失败。REQ-0002 自身 R1–R20 的映射不在本 CHG，见 §7。
@@ -113,9 +113,14 @@ python3 scripts/check_ac_map.py
   - `tests/ac_map.json` 曾引用不存在的 `test_trae_collector...test_capture_replays_through_collector`；门禁报 unknown identifier，修正为 `tests.test_trae_hooks.HookScriptTest...` 后通过。
   - 重复白名单条目与零测试套件均验证为 exit 1（`duplicate allowlist entry` / `no tests were run`）。
 - review 后续修复：workflow 上传 `coverage.json` + `test.log`，增加 `permissions: contents: read`、job timeout 与 `pipefail`；策略脚本增加零测试、重复白名单检查；YAML 通过解析校验；CHG 的 R4/R5/R2 范围已标注为部分实现。
-- 未完成的外部证据：`.github/workflows/test.yml` 尚未在 GitHub 实际运行；`main` 分支保护 required checks 未配置（需管理员）。因此本 CHG 保持“开发中”，不标“已验证”。
-- 远程 required checks 配置命令（需仓库管理员执行）：
-  `gh api -X PATCH repos/sbwkl/usage-ledger/branches/main/protection ...`（具体 payload 见 §7）。
+- 首次远程运行（commit `b81f9d7`，run [43775884697](https://github.com/sbwkl/usage-ledger/actions/runs/43775884697)）：5 个 job 在排队阶段被取消，注解为 `The configuration 'macos-14-arm64-us-default' is not supported`；GitHub 已于 2026-11-07 退役 `macos-14`，改用 `macos-15` 后重跑。
+- 远程门禁通过（2026-11-16，commit `f748a32`，run [43776180116](https://github.com/sbwkl/usage-ledger/actions/runs/43776180116)，GitHub-hosted `macos-15` arm64）：
+  - 5/5 checks 通过：`tests (py3.11)` 20s、`py3.12` 22s、`py3.13` 18s、`py3.14` 23s、`test policy` 12s。
+  - 每个 Python 版本均 `Ran 244 tests ... OK`；Python 3.11/3.12/3.13 覆盖率 93.54%，3.14 为 93.56%；store 97.07%、collectors 96.32%、CLI 93.33%、scheduler 98.23%、aggregation 100%。
+  - artifacts `test-report-py3.11`–`test-report-py3.14` 各含 `coverage.json` 与 `test.log`（与 run 同页）。
+- 分支保护已启用（2026-11-16）：`main` required checks 为上述 5 个上下文，`strict=true`、`enforce_admins=true`，禁止 force push 与删除；PR #3 状态 `CLEAN`。
+- 门禁反向验证：临时 PR #5 只增加一个失败测试，5/5 checks 均为 `FAILURE`，`mergeStateStatus=BLOCKED` 且 `mergeable=MERGEABLE`；验证后关闭 PR 并删除探针分支。
+- 未合并 `main`：PR #3 保持 open，等待用户批准；因此本 CHG 标“已验证”，不标“已发布”。
 
 ## 6. 回滚方案
 
@@ -125,12 +130,13 @@ python3 scripts/check_ac_map.py
 
 ## 7. 风险与未决问题
 
-- **分支保护需要管理员权限**：workflow 只能提供检查，required checks 必须在 GitHub 仓库设置里启用。若当前 token 无 Administration RW，需要 wayne 在网页执行；这是 R2 完全验收的外部前置。
+- **分支保护已启用**：`main` 已配置 5 个 required checks、`strict=true`、`enforce_admins=true`；需要回滚时在 GitHub 仓库设置中关闭对应保护。注意 enforce_admins=true 时管理员也不能在 checks 失败时合并。
 - **CI runner 选择**：按 REQ 的 macOS 平台边界使用 macOS runner。`macos-14` 已于 2026-11-07 被 GitHub 退役，首次触发报 `The configuration 'macos-14-arm64-us-default' is not supported`；现改用 `macos-15`，不改成 Linux。若镜像再次退役，按同一原则换当前受支持的 macOS 镜像并在此记录。
 - **覆盖率门槛可达性**：本地已达标（总 93.57%，最低关键模块 store 97.07%）。后续若因新代码下降超过基线 1pp，门禁会失败；不得通过排除文件掩盖。
 - **Node 缺失时的本地体验**：4 个 JS 测试会变成未授权 skip，`check_test_policy.py` 会失败；README 明确要求 Node 24，跳过需白名单 + 到期日。
 - **CI 时长**：4 个 Python 版本 × 完整套件 + policy 重跑；快速套件当前 <1.5s，预计可接受。
-- **CI 尚未实际运行**：workflow 只在本地创建，未经 GitHub 触发；R2 的“PR 必过”与 R6 的 CI artifact 证据仍待远程验证。首次推送后需观察 4 个矩阵 job + policy job。
+- **PR #4 暂无 checks**：`feat/docs-status` 基于 `main` `5b5f987`，该基线尚无 `.github/workflows/test.yml`，因此 PR #4 要等 PR #3 合并 `main` 后重新触发才有检查；CHG-0003 为纯文档变更，验证不依赖 CI。
+- **Actions Node 20 弃用告警**：`actions/checkout@v4`、`actions/setup-python@v5`、`actions/setup-node@v4` 被 GitHub 强制以 Node 24 运行并产生 warning；不影响 5/5 通过，升级 action 主版本留给独立 CHG。
 - **R4/R5 仍是部分实现**：本 CHG 只发布 Python 覆盖率，不含浏览器/JS 覆盖率；AC 映射只覆盖 REQ-0001，未覆盖 REQ-0002 自身 R1–R20。完整验收留给后续 CHG，不得用本 CHG 宣称 R4/R5 全部完成。
 - **CI 硬化**：workflow 已限制 `permissions: contents: read` 并设置 job timeout；actions 仍按 major tag 引用，未按 commit SHA 固定，后续可按供应链要求收紧。
 - **未决**：REQ-0002 §5.1 的“20/20 条 R”与 REQ-0001 的 R1–R18 数量口径不一致；本次按 REQ-0001 的 18 条 AC 建映射，待 REQ-0002 自身 AC 的实施 CHG 落地后追加映射。
@@ -138,10 +144,11 @@ python3 scripts/check_ac_map.py
 ## 8. 关联与证据
 
 - RFC/ADR：无（工具选型已在 REQ-0002 §9 决策）。
-- issue/PR：无；仓库本地流程，commit 引用 CHG-0002。
-- commit：`c3902ad`（`feat/test-system`，基于 `5b5f987`）。
-- release：不涉及。
-- 日志：本地命令输出见 §5.4；CI artifact 待首次 GitHub run 后回填。
+- issue/PR：[PR #3](https://github.com/sbwkl/usage-ledger/pull/3)（本 CHG）、[PR #4](https://github.com/sbwkl/usage-ledger/pull/4)（CHG-0003 文档）、[PR #5](https://github.com/sbwkl/usage-ledger/pull/5)（失败门禁演练，已关闭）。
+- commit：`c3902ad`、`fcc974a`、`b81f9d7`、`f748a32`（`feat/test-system`，基于 `5b5f987`）。
+- release：不涉及；尚未合并 `main`。
+- 日志：CI run [43776180116](https://github.com/sbwkl/usage-ledger/actions/runs/43776180116)（5/5 通过，artifacts 同页）；首次取消 run [43775884697](https://github.com/sbwkl/usage-ledger/actions/runs/43775884697)；失败门禁演练 run [43776333098](https://github.com/sbwkl/usage-ledger/actions/runs/43776333098)。
+- 分支保护：`main` required checks + strict + enforce_admins（2026-11-16）。
 
 ## 9. 变更记录
 
@@ -151,3 +158,4 @@ python3 scripts/check_ac_map.py
 | 就绪 | wayne | 待用户确认 CHG 后进入开发 |
 | 开发中 | wayne | 2026-11-15 本地实现：244 tests OK、coverage 93.57%、三项门禁通过、反向验证通过；CI 与分支保护待远程验证 |
 | 开发中 | wayne | 2026-11-15 按 code review 修复：artifact 增加 test.log、workflow 权限/timeout/pipefail、策略脚本零测试与重复白名单检查、收窄 R2/R4/R5 范围；远程门禁待验证 |
+| 已验证 | wayne | 2026-11-16 远程 CI 5/5 通过（4×244 tests，coverage 93.54–93.56%，artifacts 完整）；`main` required checks + strict + enforce_admins 已启用；失败 PR #5 被 BLOCKED；PR #3 待用户批准合并，未发布 |
