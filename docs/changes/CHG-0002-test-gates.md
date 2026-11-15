@@ -126,7 +126,7 @@ python3 scripts/check_ac_map.py
 ## 7. 风险与未决问题
 
 - **分支保护需要管理员权限**：workflow 只能提供检查，required checks 必须在 GitHub 仓库设置里启用。若当前 token 无 Administration RW，需要 wayne 在网页执行；这是 R2 完全验收的外部前置。
-- **CI runner 选择**：按 REQ 的 macOS 平台边界使用 `macos-14`；若 3.14 在 runner 上不可用，先回退到可用版本并在 CHG 记录偏差，不改成 Linux。
+- **CI runner 选择**：按 REQ 的 macOS 平台边界使用 macOS runner。`macos-14` 已于 2026-11-07 被 GitHub 退役，首次触发报 `The configuration 'macos-14-arm64-us-default' is not supported`；现改用 `macos-15`，不改成 Linux。若镜像再次退役，按同一原则换当前受支持的 macOS 镜像并在此记录。
 - **覆盖率门槛可达性**：本地已达标（总 93.57%，最低关键模块 store 97.07%）。后续若因新代码下降超过基线 1pp，门禁会失败；不得通过排除文件掩盖。
 - **Node 缺失时的本地体验**：4 个 JS 测试会变成未授权 skip，`check_test_policy.py` 会失败；README 明确要求 Node 24，跳过需白名单 + 到期日。
 - **CI 时长**：4 个 Python 版本 × 完整套件 + policy 重跑；快速套件当前 <1.5s，预计可接受。

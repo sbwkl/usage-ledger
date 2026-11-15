@@ -19,7 +19,7 @@ env:
 jobs:
   tests:
     name: tests (py${{ matrix.python-version }})
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -57,7 +57,7 @@ jobs:
 
   policy:
     name: test policy
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
