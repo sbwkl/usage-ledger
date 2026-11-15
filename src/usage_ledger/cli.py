@@ -1355,7 +1355,7 @@ def cmd_html(args):
                                 jwt_file=args.jwt_file)
                         except (trae_credits.TraeCreditsError, ValueError,
                                 OSError) as exc:
-                            refresh_error = str(exc)
+                            refresh_error = trae_credits.safe_error(exc)
                     state = store.source_state(TRAE_CREDITS_SOURCE) or {}
                     cached_at = state.get("last_sync_at")
                 finally:
@@ -1947,7 +1947,7 @@ def main(argv=None):
     try:
         return args.func(args)
     except ValueError as exc:
-        print("error:", exc, file=sys.stderr)
+        print("error:", trae_credits.safe_error(exc), file=sys.stderr)
         return 2
 
 

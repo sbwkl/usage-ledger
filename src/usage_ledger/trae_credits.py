@@ -197,6 +197,9 @@ def window_bounds(start_day: date, end_day: date) -> tuple[int, int]:
     tz = datetime.now().astimezone().tzinfo
     start = datetime.combine(start_day, dt_time.min, tzinfo=tz)
     end = datetime.combine(end_day, dt_time.max, tzinfo=tz)
+    now = datetime.now(tz)
+    if end > now:
+        end = now
     return int(start.timestamp()), int(end.timestamp())
 
 
@@ -347,9 +350,11 @@ class TraeCreditsClient:
                 total = parsed_total
                 if total > PAGE_SIZE * MAX_PAGES:
                     raise WindowTooLarge("窗口超过 %d 条" % total)
-            if len(items) < PAGE_SIZE:
-                break
             if total is not None and seen >= total:
+                break
+            if not items:
+                break
+            if len(items) < PAGE_SIZE and total is None:
                 break
             if page == MAX_PAGES:
                 raise WindowTooLarge("窗口超过 %d 页" % MAX_PAGES)
@@ -395,7 +400,7 @@ class TraeCreditsClient:
             windows=windows, start_ts=start_ts, end_ts=end_ts)
 
 
-def _safe_error(exc: BaseException) -> str:
+def safe_error(exc: BaseException) -> str:
     text = str(exc).strip() or exc.__class__.__name__
     text = re.sub(r"(?i)(cloud-ide-jwt|bearer)\s+\S+", r"\1 <redacted>", text)
     text = re.sub(r"eyJ[\w\-.]{10,}", "<redacted>", text)
@@ -438,7 +443,7 @@ def sync_trae_credits(store, since_day: str, until_day: str,
             requests=result.requests, since=since_day, until=until_day,
             jwt_warning=credential.warning)
     except Exception as exc:
-        store.mark_source_error(TRAE_CREDITS_SOURCE, _safe_error(exc))
+        store.mark_source_error(TRAE_CREDITS_SOURCE, safe_error(exc))
         store.set_meta("trae_credits_last_attempt", attempted_at)
         raise
 

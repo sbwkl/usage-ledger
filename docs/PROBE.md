@@ -409,7 +409,7 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
    - `content-type: application/json`；`origin: https://www.trae.cn`、`referer: https://www.trae.cn/`；
      `sec-fetch-dest: empty`、`mode: cors`、`site: same-site`；浏览器 UA（对齐客户端 Web 路由）。
    - body 关键字段：`start_time` / `end_time`（Unix 秒）、`page_num`（从 1）、`page_size`（实现取 20）。
-   - 实现按 30 天分块，从当前时刻向过去切；每页间隔 0.3s；30s 超时；429/5xx 最多重试 1 次（2s）。
+   - 实现按 30 天分块，结束时间不晚于当前时刻；每页间隔 0.3s；30s 超时；429/5xx 最多重试 1 次（2s）。
 4. **响应形态**
    - 列表键：`user_usage_group_by_sessions`（必须是 list）。
    - 行内关键字段：`session_id`、`usage_time`（秒；>1e11 视为毫秒）、`model_name`、

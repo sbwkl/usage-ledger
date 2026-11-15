@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。129 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。156 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -277,13 +277,13 @@ usage --stateless html --output /tmp/usage.html   # 不读库、不联网；Trae
 - **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder、trae-cn（精确 credits），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个；Trae credits 未同步时 chip 显示 `—` 而不是伪造 0
 - **点击语义**：单击只看该 Agent，再次单击恢复全选；⌘/Ctrl/Shift+单击增减成员；另有“全选”按钮
 - **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
-- **KPI 按 Agent 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder：额度余额/区间 billable/免费/日均；Trae CN：区间 credits/会话数/覆盖天数/模型数）、`仅估算（est tokens，不可相加）`；Trae 无缓存时显示“未同步”卡片与刷新命令
+- **KPI 按 Agent 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder：额度余额/区间 billable/免费/日均；Trae CN：区间 credits/会话数/覆盖天数/模型数）；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令，hook 弱估算只作为 Trae credits 的影子卡片
 - **每日用量**：每个单位一块图——Token 按 Agent 堆叠；credits 单选时单序列/堆叠，Qoder + Trae 同时选中时改为**分组柱状图**，不堆叠成一个总数；Trae 弱估算为 est 输入/输出堆叠
 - **模型 Top 8 / 项目 Top 8**：按主单位（优先 tokens → credits → est）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；估算仅作为同一 Agent 行的次要标注，不会把只有估算的行显示成 `0 credits`
 - **明细**：统一一张表，`Agent` 与 `单位` 列区分来源和口径，不适用该单位的列显示 `—`；Trae credits 计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，可排序、可分页，`行数/各口径合计` 按 Agent 分列
 - **Qoder 影子 est**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子 est、明细追加影子行，始终注明不可与 credits 相加
 - **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」
-- **数据新鲜度**：页首显示 `Trae credits 已刷新 / 离线缓存 / 刷新失败，当前为缓存数据 / 未同步`，由 `coverage["trae-cn.credits"]` 驱动，不在前端猜测
+- **数据新鲜度**：页首显示 `Trae credits 已刷新 / 离线缓存 / 刷新失败（当前为缓存数据或暂无缓存数据）/ 未同步`，由 `coverage["trae-cn.credits"]` 驱动，不在前端猜测
 - **活动指标**（会话/提示/工具调用/时长）：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算
 - **日期范围**：默认取全部数据覆盖；「全部」为全量，避免把单日/短周期 Agent 的图压成一条线
 - 可排序、可分页的明细表；缺失日期显式标注（图表按 0 显示）；浅色/深色主题记在 `localStorage`

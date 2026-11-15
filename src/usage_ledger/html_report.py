@@ -7,8 +7,7 @@ from .models import ACTIVITY_FIELDS, FIELDS
 
 PLACEHOLDER = "__USAGE_LEDGER_PAYLOAD__"
 
-# token：源日志里逐调用 token 真值；credits：服务端逐请求计费真值（token 仅可估算）；
-# estimate：本地无真值，仅 hook 可见字符弱估算。
+# token：源日志里逐调用 token 真值；credits：服务端逐请求计费真值（token 仅可估算）。
 AGENT_KINDS = {
     "claude": "token",
     "codex": "token",
@@ -553,7 +552,6 @@ try {
     }).sort());
   var TOKEN_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "token"; });
   var CREDIT_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "credits"; });
-  var ESTIMATE_AGENTS = AGENTS.filter(function (name) { return agentKind(name) === "estimate"; });
   var COLORS = {};
   AGENTS.forEach(function (name, index) {
     COLORS[name] = KNOWN_COLORS[name] || PALETTE[index % PALETTE.length];
@@ -619,9 +617,6 @@ try {
   function hasCreditsSelected() { return selectedCreditAgents().length > 0; }
   function hasCreditAgent(name) {
     return state.agents.has(name) && agentKind(name) === "credits";
-  }
-  function hasEstimateSelected() {
-    return ESTIMATE_AGENTS.some(function (name) { return state.agents.has(name); });
   }
   function hasTraeEstimateSelected() {
     return state.agents.has("trae-cn") && TRAE_EST.length > 0;
@@ -1146,7 +1141,6 @@ try {
       }
       units.push(creditUnits.join(" / "));
     }
-    if (hasEstimateSelected()) units.push("est");
     el.panelToken.hidden = !hasTokenSelected();
     el.panelCredits.hidden = !hasCreditsSelected();
     el.panelEst.hidden = !hasTraeEstimateSelected();
@@ -1172,7 +1166,7 @@ try {
     var unitNames = [];
     if (hasTokenSelected()) unitNames.push("tokens");
     if (hasCreditsSelected()) unitNames.push("credits");
-    if (hasEstimateSelected() || hasTraeEstimateSelected() || hasQoderShadowSelected()) {
+    if (hasTraeEstimateSelected() || hasQoderShadowSelected()) {
       unitNames.push("est");
     }
     if (unitNames.length > 1) {
@@ -1191,7 +1185,7 @@ try {
     if (state.agents.has("trae-cn") && hasCreditsSelected()) {
       var traeCredit = creditBoundsBySource["trae-cn"] || ["", ""];
       if (traeCredit[0]) parts.push("Trae credits " + traeCredit[0] + " ~ " + traeCredit[1]);
-      else parts.push("Trae credits 未同步");
+      else parts.push("Trae credits " + traeUnavailableWord());
       if (traeEstBounds[0]) {
         parts.push("Trae 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
           "（仅覆盖安装 hook 后的请求）");
@@ -1200,11 +1194,16 @@ try {
     if (qoderToken && state.agents.has("qoder")) {
       parts.push("Qoder 历史 token 真值 " + qoderToken + "，未并入本页");
     }
-    if (hasEstimateSelected() || hasTraeEstimateSelected() || state.shadow) {
+    if (hasTraeEstimateSelected() || state.shadow) {
       parts.push("估算不与 token 真值或 credits 相加");
     }
     el.coverage.textContent = parts.join("；");
     el.coverage.hidden = false;
+  }
+
+  function traeUnavailableWord() {
+    var cov = COVERAGE["trae-cn.credits"] || {};
+    return cov.refresh_error ? "刷新失败" : "未同步";
   }
 
   function renderTraeStatus() {
@@ -1218,7 +1217,10 @@ try {
     var last = cov.last_sync_at ? fmtDateTime(cov.last_sync_at) : "—";
     var text;
     if (cov.refresh_error) {
-      text = "Trae credits 刷新失败，当前为缓存数据 · " + last + " · " + cov.refresh_error;
+      text = "Trae credits 刷新失败，" +
+        (cov.available ? "当前为缓存数据" : "暂无缓存数据");
+      if (cov.available) text += " · " + last;
+      text += " · " + cov.refresh_error;
       node.classList.add("error");
     } else if (!cov.available) {
       text = "Trae credits 未同步 · 运行 usage html（默认刷新）或 " +
@@ -1362,9 +1364,11 @@ try {
     var cov = COVERAGE["trae-cn.credits"] || {};
     var estRows = traeRowsFor();
     if (!rows.length) {
-      addKpiTo(host, "区间 credits", "未同步",
-        "运行 usage html（默认刷新）或 usage sync --source trae-cn --remote", true,
-        "credit");
+      addKpiTo(host, "区间 credits", traeUnavailableWord(),
+        cov.refresh_error
+          ? "暂无缓存数据 · " + cov.refresh_error
+          : "运行 usage html（默认刷新）或 usage sync --source trae-cn --remote",
+        true, "credit");
       if (estRows.length) {
         addKpiTo(host, "弱 est Token", fmtCompact(sumField(estRows, "total")),
           fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
@@ -1418,26 +1422,6 @@ try {
     });
   }
 
-  function renderEstimateKpis(host, rows, label) {
-    var input = sumField(rows, "est_input");
-    var output = sumField(rows, "est_output");
-    var requests = sumField(rows, "requests");
-    var days = {};
-    var models = {};
-    rows.forEach(function (row) {
-      days[row.day] = true;
-      models[row.model] = true;
-    });
-    addKpiTo(host, "est 总 Token", fmtCompact(input + output), fmtInt(input + output), true);
-    addKpiTo(host, "est 输入", fmtCompact(input),
-      label === "trae-cn" ? "hook 上下文累积字符 ÷ 系数"
-        : "context_usage_ratio × 200K");
-    addKpiTo(host, "est 输出", fmtCompact(output),
-      label === "trae-cn" ? "输出字符 ÷ 系数" : "字符数 ÷ 模型系数");
-    addKpiTo(host, "覆盖请求", fmtCompact(requests),
-      fmtInt(Object.keys(days).length) + " 天 · " + fmtInt(Object.keys(models).length) + " 模型");
-  }
-
   function addKpiSection(host, text) {
     var node = document.createElement("div");
     node.className = "kpi-section";
@@ -1448,7 +1432,7 @@ try {
   function renderKpis() {
     var host = el.kpis;
     host.textContent = "";
-    var groups = [hasTokenSelected(), hasCreditsSelected(), hasEstimateSelected()]
+    var groups = [hasTokenSelected(), hasCreditsSelected()]
       .filter(Boolean).length;
     if (hasTokenSelected()) {
       if (groups > 1) addKpiSection(host, "精确 Token（tokens）");
@@ -1459,10 +1443,6 @@ try {
         addKpiSection(host, "精确 Credits（credits）");
       }
       renderCreditKpis(host, creditRowsFor());
-    }
-    if (hasEstimateSelected()) {
-      if (groups > 1) addKpiSection(host, "仅估算（est tokens，不可相加）");
-      renderEstimateKpis(host, traeRowsFor(), "trae-cn");
     }
   }
 
@@ -2346,7 +2326,7 @@ try {
     var units = new Set();
     if (hasTokenSelected()) units.add("token");
     if (hasCreditsSelected()) units.add("credit");
-    if (hasEstimateSelected() || hasTraeEstimateSelected() || hasQoderShadowSelected()) {
+    if (hasTraeEstimateSelected() || hasQoderShadowSelected()) {
       units.add("est");
     }
     return units;

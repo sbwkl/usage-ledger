@@ -1,6 +1,6 @@
 # TRAE-CN-CREDITS-DESIGN.md —— Trae CN 以 Credits 为主轴的报告改造（已实现）
 
-> 日期：2026-11-14 ｜ 版本：**v2.1（D1–D9 已批准并实现）** ｜ 状态：**已实现并通过 129 个单测** ｜ 基线：usage-ledger v0.5.0 / `feat/cline` @ `2eb8764` → 实现分支 `feat/trae-cn-credits`
+> 日期：2026-11-14 ｜ 版本：**v2.1（D1–D9 已批准并实现）** ｜ 状态：**已实现并通过 156 个单测** ｜ 基线：usage-ledger v0.5.0 / `feat/cline` @ `2eb8764` → 实现分支 `feat/trae-cn-credits`
 >
 > 用户目标原话：
 >
@@ -363,7 +363,7 @@ usage credits --source trae-cn
 - **Trae 在范围内**：`--source` 为空，或为 `trae-cn`；`--filter source=trae-cn` 同样视为在范围内。只选 `qoder`/`claude` 等不会触发 Trae 远程请求。
 - **刷新窗口**：使用本次报告的 `--since/--until`（或默认 30 天）；`usage html` 不额外拉 365 天历史。
 - **刷新成功**：写 `usage_credit`，更新 `source_state.last_sync_at`；stdout/stderr 打印本次同步的会话数/credits/覆盖区间，并写入 HTML 的 coverage。
-- **刷新失败**：默认不阻断报告生成；stderr 打印脱敏警告，HTML coverage 标记 `refresh_error` + `last_sync_at`，UI 显示“当前为缓存数据”。`--strict-refresh` 时仍生成回退报告，但命令返回非 0。
+- **刷新失败**：默认不阻断报告生成；stderr 打印脱敏警告，HTML coverage 标记 `refresh_error` + `last_sync_at`，UI 按有无缓存显示“当前为缓存数据”或“暂无缓存数据”，不伪造同步时间。`--strict-refresh` 时仍生成回退报告，但命令返回非 0。
 - **离线**：`--offline` 不读登录凭证、不请求；UI 标记“离线缓存”，并显示缓存时间；没有缓存时显示空状态和同步命令。
 - **静态快照**：`usage html` 每次运行都会重新生成文件；已经生成的 HTML 不会因为再次打开而更新。需要最新数据时重新运行命令。
 - `usage credits` 默认展示所有 credit source；输出 source 列；Trae 的计数列叫“会话”，Qoder 叫“请求”；它不自动联网，需要最新数据时先 `usage sync --remote` 或跑一次 `usage html`。
@@ -379,8 +379,8 @@ usage credits --source trae-cn
 
 - 纯标准库：`urllib.request` + `json` + `datetime`；不新增依赖。
 - 时间：`start_time`/`end_time` 为 Unix 秒；本地日期用现有 `local_day()` 归日。
-- 分块：从 `end_ts` 向过去切，每块 `CHUNK_DAYS=30`，边界不重叠；`end_time` 取当前时刻（不取未来）。
-- 分页：`page_size=20`；`page_num` 从 1 递增；读到空页或累计行数 ≥ `total` 停止；`MAX_PAGES=100`。
+- 分块：从 `end_ts` 向过去切，每块 `CHUNK_DAYS=30`，边界不重叠；`end_time` 不取未来：结束日为当天时取当前时刻，历史日期取当天 23:59:59。
+- 分页：`page_size=20`；`page_num` 从 1 递增；累计行数 ≥ `total` 或读到空页时停止；短页但 `total` 未达时继续翻页，避免静默漏行；`MAX_PAGES=100`。
 - 超限：若 `total > page_size * MAX_PAGES`，把当前 30 天窗口二分，最多 4 层；仍超限则失败并给出“缩短 --days”提示。
 - 限速：每页之间 `sleep(0.3s)`；不并发。
 - 超时：30 秒/请求。
@@ -587,8 +587,9 @@ source_state.source = 'trae-cn.credits'
 - `refresh_mode`：`auto`（html 默认刷新）、`offline`（`--offline`）、`stateless`（`--stateless`）、`disabled`（Trae 不在范围内）。
 - `refresh_error`：本次刷新失败的脱敏原因；成功/离线为 `null`。不含登录凭证/请求头/响应体。
 - `stale`：本次刷新失败、或 `last_sync_at` 超过 2 天、或 `--offline` 且缓存较旧时为 `true`。
-- 没有同步数据时 `available=false`，UI 显示“未同步”与命令提示，不显示 0 作为真实值。
-- 刷新失败但已有缓存时仍展示缓存，并在 HTML 顶部显示“Trae credits 刷新失败，当前为缓存数据（last_sync_at）”。
+- 没有同步数据时 `available=false`：无刷新错误显示“未同步”，刷新失败显示“刷新失败，暂无缓存数据”；不显示 0 作为真实值。
+- 刷新失败但已有缓存时仍展示缓存，并在 HTML 状态条显示“Trae credits 刷新失败，当前为缓存数据 · last_sync_at”。
+- 顶部覆盖摘要、KPI 空状态与状态条统一按 `refresh_error` 使用“刷新失败”，否则使用“未同步”。
 
 ### 8.4 不进入 payload 的内容
 
@@ -649,8 +650,7 @@ function hasTraeEstimateSelected() {
   - Qoder：`区间 billable credits`、`免费 credits`、`区间日均`、`最新额度余额`、可选影子 est。
   - Trae：`区间 credits`、`会话数`、`覆盖天数`、`模型数`、可选 `trae 弱 est` 影子卡片。
   - 多选时两个块并列，不出现“总 credits”。
-- 没有 Trae credits 缓存时：显示“未同步”空状态卡片，文案包含：
-  `usage html`（默认刷新）或 `usage sync --source trae-cn --remote`
+- 没有 Trae credits 缓存时：显示“未同步”空状态卡片；若本次刷新失败则显示“刷新失败 + 暂无缓存数据 + 脱敏原因”；文案包含 `usage html`（默认刷新）或 `usage sync --source trae-cn --remote`
 - 刷新失败但已有缓存：显示“缓存数据”徽标 + `last_sync_at`，并保留数值；不要显示成“当前实时”。
 - 没有 hook 弱估算时：Trae 影子卡片显示“无 hook 估算”，不显示 0 作为真实值。
 
@@ -662,7 +662,7 @@ function hasTraeEstimateSelected() {
 - 图表下方提示：
   - Trae 是会话级归属日，不是逐请求日；
   - 未同步时显示“缺 Trae credits，运行 `usage html` 或 `usage sync --source trae-cn --remote`”；
-  - 刷新失败时显示“当前为缓存数据（last_sync_at）”。
+  - 刷新失败且已有缓存时显示“当前为缓存数据（last_sync_at）”；无缓存时不显示缓存字样。
 
 实现上可以给现有 `renderStackChart` 增加 `mode: "stacked" | "grouped"`，复用坐标轴、tooltip、图例；不引入新图表库。
 
@@ -696,8 +696,9 @@ function hasTraeEstimateSelected() {
 - 报告顶部/筛选区旁增加 Trae 数据状态：
   - 刷新成功：`Trae credits 已刷新 · HH:MM:SS`（低调显示，不抢主指标）。
   - `--offline`：`Trae credits 离线缓存 · last_sync_at`。
-  - 刷新失败：`Trae credits 刷新失败，当前为缓存数据 · last_sync_at`；用警示色，但不遮挡报告。
-  - 无缓存：`Trae credits 未同步`，附 `usage html` / `usage sync --source trae-cn --remote`。
+  - 刷新失败且有缓存：`Trae credits 刷新失败，当前为缓存数据 · last_sync_at · 原因`；用警示色，但不遮挡报告。
+  - 刷新失败且无缓存：`Trae credits 刷新失败，暂无缓存数据 · 原因`，不显示虚假同步时间。
+  - 无缓存且未失败：`Trae credits 未同步`，附 `usage html` / `usage sync --source trae-cn --remote`。
 - footer 增加一行：
   `Trae credits 来源：本机 opt-in API 同步；最近成功同步 <last_sync_at>；本次模式 <auto/offline/stateless>`
 - `coverage["trae-cn.credits"]` 驱动上述状态；不要在 JS 里猜测新鲜度。
@@ -760,7 +761,7 @@ function hasTraeEstimateSelected() {
 |---|---|
 | 登录凭证头 | `Authorization: Cloud-IDE-JWT <token>`；token 不出现在 stdout/stderr/DB/HTML |
 | 请求体 | Unix 秒；`usage_type:[7]`；`page_size:20`；30 天分块 |
-| 分页 | `total` 到达即停；空页停止；超过 100 页报错/二分 |
+| 分页 | `total` 到达即停；空页停止；短页未达 `total` 继续翻页；超过 100 页报错/二分 |
 | 幂等 | 同一 session 二次同步仍只有一行，credits 被更新而非累加 |
 | 缺字段 | 缺 `session_id`/`usage_time` 跳过；缺 credits 跳过并计数 |
 | 凭证错误 | 401/403 提示重新登录，无 token 泄露；旧缓存保留 |
@@ -849,7 +850,7 @@ README 政策建议文案：
 | 跨厂商 credits 相加 | 误导 | KPI/图表/Top/表合计全部按 source 分列 |
 | 会话跨天 | 日归属偏差 | 文案注明“会话归属日”；不假装逐请求 |
 | 项目维度缺失 | Trae Top 项目多为 `-` | hook session->project 尽力映射；文案说明 |
-| 缓存过期 | 报告看起来旧 | `usage html` 默认刷新；`--offline`/刷新失败时显示 last_sync_at 与“缓存数据”徽标；`stale=true` |
+| 缓存过期 | 报告看起来旧 | `usage html` 默认刷新；`--offline`/刷新失败且已有缓存时显示 last_sync_at 与“缓存数据”徽标；无缓存时明确显示“暂无缓存数据”；`stale=true` |
 | 重复计数 | 数据虚高 | `request_id=trae-cn:<session_id>` upsert；同批去重 |
 | feat/cline 未合并 | 分支冲突 | 先合并 feat/cline（需同意）或从 feat/cline 切分支 |
 
@@ -869,7 +870,7 @@ README 政策建议文案：
 | **D8** | Trae 项目维度 | **已批准推荐项**：hook session→project 尽力映射；未命中显示 `-`；不做额外本地探针 |
 | **D9** | `usage html` 刷新策略 | **已批准推荐项**：默认每次刷新；`--offline` 跳过；`--max-age N` 复用；`--strict-refresh` 失败非 0 |
 
-实现状态（2026-11-15）：D1–D9 全部落地；凭证默认来源已修正为 `storage.json` 的 tc v5 登录凭证（临时 token 401）；`python3 -m unittest discover -s tests -t .` 通过 152 个测试，报告 JS 通过 `node --check`。分支 `feat/trae-cn-credits`，按 AGENTS.md 保留提交记录并推送；合并到 `main` 前仍需用户明确同意。
+实现状态（2026-11-15）：D1–D9 全部落地；凭证默认来源已修正为 `storage.json` 的 tc v5 登录凭证（临时 token 401），30 天真实同步 200 会话 / 829.23 credits；`python3 -m unittest discover -s tests -t .` 通过 156 个测试。评审修订已补齐：无缓存刷新失败文案、汇总/KPI/状态条措辞统一、结束时间不取未来、短页未达 `total` 继续翻页、移除不可达 estimate Agent 分支、CLI 错误统一脱敏。版本升至 0.6.0。分支 `feat/trae-cn-credits`，按 AGENTS.md 保留提交记录并推送；合并到 `main` 前仍需用户明确同意。
 
 ---
 

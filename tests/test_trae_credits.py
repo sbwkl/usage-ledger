@@ -176,6 +176,14 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(local_day(end), "2026-10-30")
         self.assertGreater(end, start)
 
+    def test_window_bounds_do_not_request_future(self):
+        today = date.today()
+        before = int(datetime.now().timestamp())
+        _, end = window_bounds(today, today + timedelta(days=1))
+        after = int(datetime.now().timestamp())
+        self.assertGreaterEqual(end, before)
+        self.assertLessEqual(end, after)
+
 
 class ClientTest(unittest.TestCase):
     def test_request_shape_and_pagination(self):
@@ -212,6 +220,19 @@ class ClientTest(unittest.TestCase):
         result = TraeCreditsClient("jwt", transport=transport,
                                    sleep=lambda _: None).fetch_window(1, 2)
         self.assertEqual(len(result.rows), 1)
+
+    def test_short_page_with_unmet_total_keeps_paging(self):
+        pages = [
+            {"total": 5, "user_usage_group_by_sessions": [
+                usage_item("s%d" % i) for i in range(3)]},
+            {"total": 5, "user_usage_group_by_sessions": []},
+        ]
+        transport = FakeTransport(pages)
+        result = TraeCreditsClient("jwt", transport=transport,
+                                   sleep=lambda _: None).fetch_window(1, 2)
+        self.assertEqual(len(result.rows), 3)
+        self.assertEqual(result.pages, 2)
+        self.assertEqual(result.requests, 2)
 
     def test_retry_on_server_error_once(self):
         calls = {"n": 0}

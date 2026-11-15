@@ -316,6 +316,27 @@ class TraeCliTest(unittest.TestCase):
         self.assertEqual(payload["coverage"]["trae-cn.credits"]["refresh_mode"],
                          "stateless")
 
+    def test_html_refresh_error_and_cli_errors_are_redacted(self):
+        self._seed_trae_credit()
+        output = os.path.join(self.home, "redacted.html")
+        error = TraeCreditsError(
+            "API 认证失败 Cloud-IDE-JWT super-secret-jwt", status=401)
+        with patch("src.usage_ledger.cli.sync_trae_credits", side_effect=error):
+            code, _, err = self.run_cli(["html", "--output", output])
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("super-secret-jwt", err)
+        with open(output, encoding="utf-8") as fh:
+            coverage = extract_payload(fh.read())["coverage"]["trae-cn.credits"]
+        self.assertNotIn("super-secret-jwt", coverage["refresh_error"])
+        self.assertIn("<redacted>", coverage["refresh_error"])
+
+        code, _, err = self.run_cli(
+            ["--stateless", "html", "--range",
+             "Cloud-IDE-JWT super-secret-jwt..2026-10-01", "--output", output])
+        self.assertEqual(code, 2)
+        self.assertNotIn("super-secret-jwt", err)
+        self.assertIn("<redacted>", err)
+
     def test_html_refresh_failure_uses_cache_and_strict_exits_nonzero(self):
         day = self._seed_trae_credit()
         output = os.path.join(self.home, "fallback.html")

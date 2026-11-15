@@ -229,6 +229,63 @@ eq("trae estimate visible", traeRowsFor().length, 1);
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
+class TraeStatusCopyTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        payload = build_payload([], ("day", "source", "model", "project"),
+                                None, None, [])
+        cls.html = render_html(payload)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_refresh_failure_wording_matches_cache_state(self):
+        start = self.html.index("function traeUnavailableWord")
+        end = self.html.index("function emptyActivityTotals", start)
+        source = self.html[start:end]
+        harness = """
+var COVERAGE = {};
+var classes = [];
+var node = { className: "", hidden: true, textContent: "",
+  classList: { add: function (name) { classes.push(name); } } };
+var el = { traeStatus: node };
+function fmtDateTime(value) { return value || "—"; }
+function fmtInt(value) { return String(value); }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+COVERAGE["trae-cn.credits"] = {
+  refresh_error: "API 认证失败（HTTP 401）", available: false,
+  last_sync_at: null, sessions: 0, stale: true, refresh_mode: "auto" };
+eq("failure word", traeUnavailableWord(), "刷新失败");
+renderTraeStatus();
+eq("no cache", node.textContent.indexOf("暂无缓存数据") >= 0, true);
+eq("no cache never claims cache", node.textContent.indexOf("当前为缓存数据"), -1);
+eq("no placeholder time", node.textContent.indexOf("—"), -1);
+eq("error style", classes.indexOf("error") >= 0, true);
+
+classes = [];
+COVERAGE["trae-cn.credits"] = {
+  refresh_error: "HTTP 500", available: true,
+  last_sync_at: "2026-10-30T12:00:00+08:00", sessions: 2,
+  stale: true, refresh_mode: "auto" };
+renderTraeStatus();
+eq("cached failure", node.textContent.indexOf("当前为缓存数据") >= 0, true);
+eq("cached never claims empty", node.textContent.indexOf("暂无缓存数据"), -1);
+eq("cached keeps sync time", node.textContent.indexOf("2026-10-30T12:00:00+08:00") >= 0, true);
+
+COVERAGE["trae-cn.credits"].refresh_error = null;
+eq("plain sync word", traeUnavailableWord(), "未同步");
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 class HtmlCommandTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
