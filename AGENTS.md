@@ -9,7 +9,7 @@
 - 决策：`docs/adr/ADR-XXXX-*.md`。只有已做出、难回退的架构 / 技术选型才建。
 - RFC：`docs/rfcs/`。跨团队、不可逆、技术不确定、影响公共接口 / 数据模型 / 安全隐私时建。
 - 设计文档与阅读顺序：`docs/README.md`。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
-- ID 按类型递增、不复用。当前下一批：`REQ-0002`、`CHG-0002`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0004`、`ADR-0003`。
 
 ## 开发与验证
 

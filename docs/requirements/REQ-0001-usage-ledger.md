@@ -6,10 +6,10 @@
 | 类型 | 功能卡 |
 | 状态 | 活跃 |
 | Owner | wayne |
-| 关联 | [CHG-0001](../changes/CHG-0001-docs-alignment.md)、[ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../ARCHITECTURE.md) |
+| 关联 | [CHG-0001](../changes/CHG-0001-docs-alignment.md)、[CHG-0003](../changes/CHG-0003-docs-status.md)、[ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../ARCHITECTURE.md) |
 | 代码基线 | usage-ledger v0.6.0（main `820a6f2`，2026-11-15） |
 | 平台 | macOS（Apple Silicon），单机、单用户、本地 |
-| 最后更新 | 2026-11-15 |
+| 最后更新 | 2026-11-16 |
 
 > 本文是**当前需求事实源**。设计沿革见 [DESIGN.md](../DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
 
@@ -396,8 +396,9 @@ usage est --source trae-cn --group-by day,model
 | CHG ID | 标题 | 状态 | 链接 |
 |---|---|---|---|
 | CHG-0001 | 需求 / 变更文档体系对齐 | 已验证 | [CHG-0001](../changes/CHG-0001-docs-alignment.md) |
+| CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../changes/CHG-0003-docs-status.md) |
 
-> REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已在本地验证，尚未合并 main，未标“已发布”。
+> REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
 ---
 
