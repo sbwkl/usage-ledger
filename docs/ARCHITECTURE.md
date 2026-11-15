@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | 文档状态 | v1.4（2026-11-15 二次评审修订） |
-| 代码基线 | `usage-ledger 0.6.0`；main `a2c9fce` + `feat/cline` + `feat/trae-cn-credits` |
-| 文档定位 | 描述**当前实现如何工作**，不是新方案。设计沿革与动机见 [DESIGN.md](DESIGN.md)、[QODER-DESIGN.md](QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](CLINE-DESIGN.md) |
+| 代码基线 | `usage-ledger 0.6.0`；main `820a6f2`（PR #1 已合入） |
+| 文档定位 | 描述**当前实现如何工作**，不是新方案。当前需求 / AC 见 [requirements/REQ-0001-usage-ledger.md](requirements/REQ-0001-usage-ledger.md)，变更记录见 [changes/CHG-0001-docs-alignment.md](changes/CHG-0001-docs-alignment.md)；设计沿革与动机见 [DESIGN.md](DESIGN.md)、[QODER-DESIGN.md](QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](CLINE-DESIGN.md) |
 | 验收基线 | `python3 -m unittest discover -s tests -t .` → **159 tests OK** |
 | 阅读顺序 | 审核者先看 §0、§10、§11、§12；实现细节按需查 §4–§9 |
 
@@ -20,7 +20,7 @@
   1. **P0：`prune` 后再 `sync` 会重放旧记录，下一次 `prune` 把同一段数据重复累加进 `usage_daily`**，已用最小用例复现（100 → 200）。
   2. **P1：`usage live` 实际约 2.3s**（本机实测），与 README 的 `<0.3s` 不符；原因是它顺带全量扫描了 1.65GB Qoder 旧 token 库与全部转录。
   3. **P1：读命令的降级行为不一致**：`report` 在库不存在时降级为读源，`credits` / `est` 会静默新建一个空库。
-  4. **P2：设计文档与实现漂移**：`DESIGN.md` 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy、zstd 等均未实现。
+  4. **P2：设计文档与实现漂移（已处理）**：`DESIGN.md` 已标注为历史设计稿，当前需求 / AC 见 REQ-0001（CHG-0001）；`NullStore`、计价、预算告警、WorkBuddy、zstd 等仍未实现，但不再作为当前 AC。
 
 ---
 
@@ -712,12 +712,12 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 请重点确认以下事项；确认后我再改代码或文档。
 
-1. **架构文档的定位**：`docs/ARCHITECTURE.md` 作为“当前实现基线”长期维护；`DESIGN.md` 是否降级为历史方案（加 `Superseded` 标记）？还是把 DESIGN 更新到 v0.5？
+1. **架构文档的定位（已定，2026-11-15）**：`docs/ARCHITECTURE.md` 作为“当前实现基线”长期维护；`DESIGN.md` 已标注为历史设计稿（CHG-0001），当前需求 / AC 见 REQ-0001。
 2. **P0-1 修复方向**：选 A（prune 水位）、B（区间重算）、C（不物理删）、D（daily 仅存 archived），还是组合？我倾向 **A + B**，代价是新增一个 meta 水位与 prune 重建逻辑。
 3. **`live` 性能**：是否按 P1-1 让 `live` 默认跳过 Qoder 四轨（只保留 token 源），把完整四轨留给 `doctor` / `report` / `html`？
 4. **读命令建库**：`credits` / `est` 是否改为与 `report` 一致的“库不存在 → 直读 + warning”？
 5. **四轨展示边界**：`report --live` 是否要保证活动/额度也实时（P1-3），还是明确“只有 token 实时”？
-6. **未实现项**：计价、预算告警、WorkBuddy、zstd、`paths.mode` 是否继续搁置？本次文档是否把它们标为“明确不做 / 待排期”？
+6. **未实现项（已定，2026-11-15）**：计价、预算告警、WorkBuddy、zstd、`paths.mode` 继续搁置；REQ-0001 §2.2 已标为“当前不做（后续 opt-in）”，不是永久非目标。
 
 ---
 
