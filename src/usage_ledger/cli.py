@@ -497,6 +497,8 @@ def cmd_sync(args):
                    trae_credits.API_URL))
             if info.get("error"):
                 print("warning: %s" % info["error"])
+            if info.get("warning"):
+                print("warning: %s" % info["warning"])
             print("dry-run: 未读取登录凭证、未发起网络请求、未写库")
         return 0
 
@@ -508,8 +510,8 @@ def cmd_sync(args):
                 result = sync_trae_credits(store, window[0], window[1],
                                           jwt_file=args.jwt_file)
             except (trae_credits.TraeCreditsError, ValueError, OSError) as exc:
-                print("trae-cn.credits: sync failed（%s）；本地 hook 估算已保留" % exc,
-                      file=sys.stderr)
+                print("trae-cn.credits: sync failed（%s）；本地 hook 估算已保留"
+                      % trae_credits.safe_error(exc), file=sys.stderr)
                 return 1
             print("trae-cn.credits: refreshed %d sessions / %.2f credits（%s..%s）" %
                   (result.sessions, result.credits, result.since, result.until))

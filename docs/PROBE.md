@@ -460,8 +460,7 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
      `doctor` / `--dry-run` 只做 stat 元数据检查，不解密，因此不显示过期时间。
 5. **安全边界**
    - 只读取 storage.json 中 `iCubeAuthInfo://*` 的值；拒绝符号链接、非普通文件、group/world 可写
-     （`mode & 0o022`）；0644 允许读取，但不强制 0600。`doctor` / `--dry-run` 只 `lstat` 检查，
-     不打开文件、不解密。
+     （`mode & 0o022`）；group/world 可读（`mode & 0o044`）时 `doctor` / `--dry-run` 输出告警并建议 `chmod 600`，但不阻断刷新。`doctor` / `--dry-run` 只 `lstat` 检查，不打开文件、不解密。
    - token 只在刷新进程内存中存在；不落库、不写 meta、不写日志、不进 HTML；`StorageCredential.token`
      使用 `repr=False`；错误信息只输出路径、HTTP 状态和脱敏后的错误码。
    - 不读 Keychain、不读浏览器 Cookie、不解密 SQLCipher 库（`ModularData/ai-agent/database.db` 仍不可读）。

@@ -1,6 +1,6 @@
 # TRAE-CN-CREDITS-DESIGN.md —— Trae CN 以 Credits 为主轴的报告改造（已实现）
 
-> 日期：2026-11-14 ｜ 版本：**v2.1（D1–D9 已批准并实现）** ｜ 状态：**已实现并通过 156 个单测** ｜ 基线：usage-ledger v0.5.0 / `feat/cline` @ `2eb8764` → 实现分支 `feat/trae-cn-credits`
+> 日期：2026-11-14 ｜ 版本：**v2.1（D1–D9 已批准并实现）** ｜ 状态：**已实现并通过 159 个单测** ｜ 基线：起始 usage-ledger v0.5.0 / `feat/cline` @ `2eb8764`，当前实现 0.6.0 / `feat/trae-cn-credits`
 >
 > 用户目标原话：
 >
@@ -404,7 +404,7 @@ usage credits --source trae-cn
 - 不做游标：每次按窗口重拉并 upsert，避免“会话后续更新/跨天”导致漏数；30 天窗口通常 1 个块，成本可控。
 - 不做删除：API 不再返回的旧会话保留在本地，避免历史突然消失；如需清理，用现有 `prune` 另行设计（本设计不改 prune）。
 - 日粒度限制：API 是**会话级**，credits 归属 `usage_time` 所在本地日；不是逐请求日粒度。若一个会话跨天，无法拆分。报告需注明这一点。
-- 项目维度：API 没有 project 字段；首版用 hook 事件的 `session -> project` 做**尽力映射**，未命中显示 `-`。若必须完整项目维度，另立“本地会话元数据只读探针”任务，不读正文。
+- 项目维度：API 没有 project 字段；首版用 hook 事件的 `session -> project` 做**尽力映射**，未命中显示 `-`。2026-11-15 本机实测 200 个 credits session 与 hook session **零重叠**，当前无法关联、全部显示 `-`；若必须完整项目维度，另立“本地会话元数据只读探针”任务，不读正文。
 
 ### 6.5 Token 处理
 
@@ -672,7 +672,7 @@ function hasTraeEstimateSelected() {
 - 同时选中 Qoder + Trae：
   - 按 Agent 分组展示（两个小节或带 Agent 标签的组），各自排名；
   - 不把 Qoder credits 和 Trae credits 相加后排名；
-  - 项目维度 Trae 未映射时显示 `-`，并在 footnote 说明“Trae API 无 project 字段，项目为 hook 尽力映射”。
+  - 项目维度 Trae 未映射时显示 `-`，并在 footnote 说明“Trae API 无 project 字段；当前 hook session 与 credits session 无法关联，项目维度不可用”。
 - token + credits 同时选中：保持现有双单位逻辑；不要因为 credits 主指标而隐藏 token Top。
 
 ### 9.6 明细表
@@ -759,7 +759,7 @@ function hasTraeEstimateSelected() {
 
 | 测试 | 断言 |
 |---|---|
-| 登录凭证头 | `Authorization: Cloud-IDE-JWT <token>`；token 不出现在 stdout/stderr/DB/HTML |
+| 登录凭证头 | `Authorization: Cloud-IDE-JWT <token>`；token 不出现在 stdout/stderr/DB/HTML；`storage.json` 0644 等宽权限由 `doctor` 告警 |
 | 请求体 | Unix 秒；`usage_type:[7]`；`page_size:20`；30 天分块 |
 | 分页 | `total` 到达即停；空页停止；短页未达 `total` 继续翻页；超过 100 页报错/二分 |
 | 幂等 | 同一 session 二次同步仍只有一行，credits 被更新而非累加 |
@@ -849,7 +849,7 @@ README 政策建议文案：
 | 保存用户内容 | 隐私 | 丢弃 `user_input_preview`，不存 prompt/工具参数/响应体 |
 | 跨厂商 credits 相加 | 误导 | KPI/图表/Top/表合计全部按 source 分列 |
 | 会话跨天 | 日归属偏差 | 文案注明“会话归属日”；不假装逐请求 |
-| 项目维度缺失 | Trae Top 项目多为 `-` | hook session->project 尽力映射；文案说明 |
+| 项目维度缺失 | Trae Top 项目全部为 `-` | 当前 hook/credits session 零重叠；文案明确“无法关联”，后续另立探针 |
 | 缓存过期 | 报告看起来旧 | `usage html` 默认刷新；`--offline`/刷新失败且已有缓存时显示 last_sync_at 与“缓存数据”徽标；无缓存时明确显示“暂无缓存数据”；`stale=true` |
 | 重复计数 | 数据虚高 | `request_id=trae-cn:<session_id>` upsert；同批去重 |
 | feat/cline 未合并 | 分支冲突 | 先合并 feat/cline（需同意）或从 feat/cline 切分支 |
@@ -870,7 +870,7 @@ README 政策建议文案：
 | **D8** | Trae 项目维度 | **已批准推荐项**：hook session→project 尽力映射；未命中显示 `-`；不做额外本地探针 |
 | **D9** | `usage html` 刷新策略 | **已批准推荐项**：默认每次刷新；`--offline` 跳过；`--max-age N` 复用；`--strict-refresh` 失败非 0 |
 
-实现状态（2026-11-15）：D1–D9 全部落地；凭证默认来源已修正为 `storage.json` 的 tc v5 登录凭证（临时 token 401），30 天真实同步 200 会话 / 829.23 credits；`python3 -m unittest discover -s tests -t .` 通过 156 个测试。评审修订已补齐：无缓存刷新失败文案、汇总/KPI/状态条措辞统一、结束时间不取未来、短页未达 `total` 继续翻页、移除不可达 estimate Agent 分支、CLI 错误统一脱敏。版本升至 0.6.0。分支 `feat/trae-cn-credits`，按 AGENTS.md 保留提交记录并推送；合并到 `main` 前仍需用户明确同意。
+实现状态（2026-11-15）：D1–D9 全部落地；凭证默认来源已修正为 `storage.json` 的 tc v5 登录凭证（临时 token 401），30 天真实同步 200 会话 / 829.23 credits；`python3 -m unittest discover -s tests -t .` 通过 159 个测试。评审修订已补齐：无缓存刷新失败文案、汇总/KPI/状态条措辞统一、结束时间不取未来、短页未达 `total` 继续翻页、移除不可达 estimate Agent 分支、CLI 错误统一脱敏（含 `sync --remote`）、`storage.json` group/world 可读告警、项目维度明确为当前不可关联。版本升至 0.6.0。分支 `feat/trae-cn-credits`，按 AGENTS.md 保留提交记录并推送；合并到 `main` 前仍需用户明确同意。
 
 ---
 

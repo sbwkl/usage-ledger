@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。156 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。159 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -224,7 +224,7 @@ usage html --strict-refresh --open            # 刷新失败时命令非 0（仍
   不解密 SQLCipher 库。凭证过期后需重新登录 Trae CN。
 - **口径**：API 是**会话级**，credits 归属 `usage_time` 所在本地日；一个会话跨天无法拆分。
   `request_id = trae-cn:<session_id>`，重复拉取幂等覆盖；报告按 Agent 分列，不与 Qoder credits 相加。
-- **项目维度**：API 无 project 字段，用 hook 事件的 `session → project` 尽力映射，未命中显示 `-`。
+- **项目维度**：API 无 project 字段，用 hook 事件的 `session → project` 尽力映射，未命中显示 `-`；2026-11-15 本机实测两者 session 零重叠，当前项目维度实际不可用。
 - **失败**：`html` 默认软回退缓存并在页面/命令行标注刷新失败与数据时间；`--strict-refresh` 才非 0。
   HTML 是生成时快照，旧文件不会因再次打开而更新。
 - **边界**：首版不做 Trae 余额/套餐配额，不落 API 的 token 字段，不做后台轮询、多账号或自动登录。

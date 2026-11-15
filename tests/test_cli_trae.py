@@ -148,12 +148,12 @@ class TraeCliTest(unittest.TestCase):
         self.assertIn("trae_est_rows=2", out)
         self.assertIn("trae-cn.est: files=1", out)
 
-    def write_storage(self):
+    def write_storage(self, mode=0o600):
         from tests.test_trae_auth import VALID_B64
         path = os.environ["TRAE_CN_STORAGE"]
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"iCubeAuthInfo://icube.cloudide": VALID_B64}, fh)
-        os.chmod(path, 0o600)
+        os.chmod(path, mode)
         return path
 
     def test_doctor_reports_storage_auth(self):
@@ -162,6 +162,14 @@ class TraeCliTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("trae-cn auth: source=storage.json", out)
         self.assertIn("readable=True", out)
+        self.assertNotIn("test-token-not-real", out)
+
+    def test_doctor_warns_group_or_world_readable_storage(self):
+        self.write_storage(0o644)
+        code, out, err = self.run_cli(["doctor", "--probe", "trae-cn"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("warning:", out)
+        self.assertIn("chmod 600", out)
         self.assertNotIn("test-token-not-real", out)
 
     def test_remote_dry_run_reports_missing_auth(self):
@@ -315,6 +323,16 @@ class TraeCliTest(unittest.TestCase):
             payload = extract_payload(fh.read())
         self.assertEqual(payload["coverage"]["trae-cn.credits"]["refresh_mode"],
                          "stateless")
+
+    def test_remote_sync_failure_is_redacted(self):
+        error = TraeCreditsError(
+            "API 认证失败 Cloud-IDE-JWT super-secret-jwt", status=401)
+        with patch("src.usage_ledger.cli.sync_trae_credits", side_effect=error):
+            code, _, err = self.run_cli(
+                ["sync", "--source", "trae-cn", "--remote"])
+        self.assertEqual(code, 1)
+        self.assertNotIn("super-secret-jwt", err)
+        self.assertIn("<redacted>", err)
 
     def test_html_refresh_error_and_cli_errors_are_redacted(self):
         self._seed_trae_credit()

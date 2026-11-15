@@ -355,4 +355,8 @@ def storage_info(env: dict | None = None, home: str | None = None) -> dict:
     info["readable"] = os.access(target, os.R_OK)
     info["mode"] = stat_info.st_mode & 0o777
     info["size"] = stat_info.st_size
+    if stat_info.st_mode & 0o044:
+        info["warning"] = (
+            "Trae CN 登录凭证权限过宽（%04o），其他用户可读；建议 chmod 600 %s"
+            % (info["mode"], target))
     return info

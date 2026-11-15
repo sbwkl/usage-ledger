@@ -2,10 +2,10 @@
 
 | 项 | 内容 |
 |---|---|
-| 文档状态 | v1.3（2026-11-15 评审修订） |
+| 文档状态 | v1.4（2026-11-15 二次评审修订） |
 | 代码基线 | `usage-ledger 0.6.0`；main `a2c9fce` + `feat/cline` + `feat/trae-cn-credits` |
 | 文档定位 | 描述**当前实现如何工作**，不是新方案。设计沿革与动机见 [DESIGN.md](DESIGN.md)、[QODER-DESIGN.md](QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](CLINE-DESIGN.md) |
-| 验收基线 | `python3 -m unittest discover -s tests -t .` → **156 tests OK** |
+| 验收基线 | `python3 -m unittest discover -s tests -t .` → **159 tests OK** |
 | 阅读顺序 | 审核者先看 §0、§10、§11、§12；实现细节按需查 §4–§9 |
 
 ---
@@ -433,9 +433,9 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 - **入口**：只有 `usage sync --source trae-cn --remote` 与 `usage html`（Trae 在报告范围内）会调用；`report` / `credits` / `doctor` / `live` / 自动同步 / `html --offline` 均走缓存。
 - **API**：`POST https://api.trae.cn/trae/api/v1/pay/query_user_usage_group_by_session`；`authorization: Cloud-IDE-JWT <jwt>`；分页 `page_num/page_size=20`，按 30 天窗口切分且结束时间不晚于当前时刻；每页 0.3s 间隔；30s 超时；429/5xx 最多重试 1 次，401/403 不重试。
-- **凭证**：默认从 `~/Library/Application Support/Trae CN/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide` 本地解密 tc v5 登录凭证（纯标准库 AES-128-CBC + SHA-512 完整性校验）；优先级 `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`。`~/.trae-cn/trae-jwt-token` 是临时 token，不被 usage 接口接受（401），不再作为默认。凭证只在刷新进程内存中存在，不落库/日志/HTML；不读 Keychain/Cookie，不解密 SQLCipher 库。`jwt_file_info()` / `storage_info()` 只做元数据检查（存在性、大小、mode、可读性），不解密凭证。
+- **凭证**：默认从 `~/Library/Application Support/Trae CN/User/globalStorage/storage.json` 的 `iCubeAuthInfo://icube.cloudide` 本地解密 tc v5 登录凭证（纯标准库 AES-128-CBC + SHA-512 完整性校验）；group/world 可写直接拒绝，group/world 可读由 `doctor` / `--dry-run` 告警；优先级 `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`。`~/.trae-cn/trae-jwt-token` 是临时 token，不被 usage 接口接受（401），不再作为默认。凭证只在刷新进程内存中存在，不落库/日志/HTML；不读 Keychain/Cookie，不解密 SQLCipher 库。`jwt_file_info()` / `storage_info()` 只做元数据检查（存在性、大小、mode、可读性），不解密凭证。
 - **归一**：`session_id` 空或 `usage_time` 非法的行跳过；`credits_float` 优先、`amount_float` 回退；`usage_time > 1e11` 视为毫秒；同一批重复 session 保留最新行；`user_input_preview` 丢弃；`request_id='trae-cn:<session_id>'` 幂等覆盖。
-- **项目映射**：用 `store.est_session_projects('trae-cn.est')` 的 hook session→project 尽力映射；未命中 `-`。
+- **项目映射**：用 `store.est_session_projects('trae-cn.est')` 的 hook session→project 尽力映射；未命中 `-`。2026-11-15 本机实测 200 个 credits session 与 hook session 零重叠，因此当前全部显示 `-`，属于已知的不可关联状态而非部分映射。
 - **写库**：整批成功后才 `upsert_credits`；`billable=1`、`free_credits=0`、`source='trae-cn'`；失败保留旧缓存并更新 `source_state` 错误；不写部分结果。
 - **窗口/新鲜度**：`trae_credits_last_window` + `trae_credits_last_attempt` 写入 meta；`can_reuse_last_sync()` 同时检查 `--max-age` 与窗口覆盖；`credits_coverage()` 输出 `last_sync_at` / `refresh_mode` / `refresh_error` / `stale`。
 - 详见 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 与 [PROBE.md](PROBE.md) §6.9。
@@ -537,7 +537,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 ### 7.5 `doctor` 检查项
 
 - DB 路径、明细/日聚合行数、`archived` 保全数、活动汇总、credits（Qoder 请求 / Trae 会话）/est 计数、最新额度快照及年龄（>24h 告警）。
-- `source_state` 每源状态、`full_scan_at`、WAL 大小（>1MB 告警）；Trae credits 的 `last_sync_at` / 错误 / 登录凭证存在性、权限与可读性（只做 stat 元数据，不解密 token）。
+- `source_state` 每源状态、`full_scan_at`、WAL 大小（>1MB 告警）；Trae credits 的 `last_sync_at` / 错误 / 登录凭证存在性、权限与可读性（只做 stat 元数据，不解密 token；group/world 可读输出告警）。
 - 逐源扫描：文件数、记录数、token 总量、近 7 天记录数、错误、状态。
 - 异常提示：token 全 0、记录数较上次下降 >50%、>26h 未成功同步、Qoder token 库 >30 天未更新、活动连续 3 次 cursor 未推进、额度日志解析失败、credits 与快照增量偏差 >20%。
 - `--probe <source>`：打印模型/活动月度分布。
@@ -584,7 +584,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | Qoder credits/est/quota | 1,509ms | — |
 | `collect_all`（全源，2026-11-01 数据量） | **2.25s** | `live` <0.3s（未达标） |
 | cline 采集（1,806 记录 / 20 会话） | 108ms | —（2026-11-11 实测） |
-| 156 项单测 | 0.75s | —（2026-11-15 实测） |
+| 159 项单测 | 0.77s | —（2026-11-15 实测） |
 
 > `live` 慢的根因不是解析算法，而是它调用 `collect_all()`：即使只需要 token 记录，也会扫描 Qoder 旧库（1.7s）和全部转录（1.5s），并计算活动与额度。
 
@@ -609,15 +609,15 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-156 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+159 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|
 | `tests/test_collectors.py` | 24 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、Cline metrics 映射/回退/坏文件隔离、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、子源签名独立 |
 | `tests/test_store.py` | 9 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state、credit source 分列与旧库迁移 |
 | `tests/test_cli.py` | 15 | backfill 幂等、report 与 stateless 一致、stateless 不写库、分组过滤、自动刷新、单源刷新、Cline 回填与自动刷新、doctor 缺口、源不可用时不归档、Qoder 四轨落库、token mtime 跳过、活动单独刷新、doctor 双台账 |
-| `tests/test_cli_trae.py` | 17 | Trae CN hook 安装/状态/同步、est 查询、credits 远程同步、html 默认/offline/stateless 刷新、max-age 复用、失败回退与 strict 退出、credits 按 source 展示、doctor 凭证来源与 dry-run 未登录提示、错误脱敏 |
-| `tests/test_trae_auth.py` | 17 | storage.json tc v5 解密（含 NIST AES 向量、完整性/格式/过期/缺 token）、符号链接与过宽权限拒绝、路径覆盖、元数据不泄漏凭证且只 stat 不解密 |
+| `tests/test_cli_trae.py` | 19 | Trae CN hook 安装/状态/同步、est 查询、credits 远程同步、html 默认/offline/stateless 刷新、max-age 复用、失败回退与 strict 退出、credits 按 source 展示、doctor 凭证来源与 dry-run 未登录提示、错误脱敏、宽权限告警 |
+| `tests/test_trae_auth.py` | 18 | storage.json tc v5 解密（含 NIST AES 向量、完整性/格式/过期/缺 token）、符号链接与过宽权限拒绝、路径覆盖、元数据不泄漏凭证且只 stat 不解密、group/world 可读告警 |
 | `tests/test_trae_credits.py` | 33 | 凭证优先级/权限/不泄漏、storage.json 默认与过期、窗口不取未来、分页（短页未达 total 继续）/重试/401、响应归一、重复会话、超限拆分、幂等同步、项目映射、coverage/max-age/stale |
 | `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
 | `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |

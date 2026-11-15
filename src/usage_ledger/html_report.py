@@ -2746,7 +2746,12 @@ try {
         ? traeCov.refresh_mode : "—"));
       bits.push("usage html 默认刷新，失败时回退缓存");
       bits.push("不保存 prompt/正文");
-      bits.push("Trae API 无 project 字段，项目为 hook 尽力映射");
+      var traeMapped = CREDIT_ROWS.some(function (row) {
+        return row.source === "trae-cn" && row.project && row.project !== "-";
+      });
+      bits.push("Trae API 无 project 字段，" + (traeMapped
+        ? "项目为 hook 尽力映射"
+        : "当前 hook session 与 credits session 无法关联，项目显示 -"));
       traeCreditNote.textContent = bits.join("；") + "。";
       el.footer.appendChild(traeCreditNote);
     }

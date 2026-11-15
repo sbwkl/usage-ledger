@@ -128,9 +128,19 @@ class StorageCredentialTest(unittest.TestCase):
         self.assertIsNone(info["user_id"])
         self.assertIsNone(info["expires_at"])
         self.assertIsNone(info["error"])
+        self.assertIsNone(info["warning"])
         dumped = json.dumps(info)
         self.assertNotIn("test-token", dumped)
         self.assertNotIn("refresh", dumped.lower())
+
+    def test_storage_info_warns_group_or_world_readable(self):
+        self.write_storage(VALID_B64)
+        os.chmod(self.path, 0o644)
+        info = storage_info(env={"TRAE_CN_STORAGE": self.path})
+        self.assertIsNone(info["error"])
+        self.assertIn("chmod 600", info["warning"])
+        self.assertIn("0644", info["warning"])
+        self.assertNotIn("test-token", json.dumps(info))
 
     def test_storage_info_does_not_decrypt(self):
         self.write_storage(VALID_B64)
