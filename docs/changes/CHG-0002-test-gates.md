@@ -135,7 +135,7 @@ python3 scripts/check_ac_map.py
 
 - RFC/ADR：无（工具选型已在 REQ-0002 §9 决策）。
 - issue/PR：无；仓库本地流程，commit 引用 CHG-0002。
-- commit：待提交（worktree `feat/test-system`，基于 `5b5f987`）。
+- commit：`c3902ad`（`feat/test-system`，基于 `5b5f987`）。
 - release：不涉及。
 - 日志：本地命令输出见 §5.4；CI artifact 待首次 GitHub run 后回填。
 
