@@ -82,9 +82,13 @@ def main() -> int:
 
     failures: list[str] = []
     allowed: dict[tuple[str, str], dict] = {}
+    seen_tests: set[str] = set()
     for index, entry in enumerate(load_allowlist()):
         key = validate_entry(index, entry, failures)
         if key is not None:
+            if key[1] in seen_tests:
+                failures.append("duplicate allowlist entry: %s" % key[1])
+            seen_tests.add(key[1])
             allowed[key] = entry
 
     observed = {("skip", test): reason for test, reason in result.skips.items()}
@@ -102,6 +106,8 @@ def main() -> int:
              len(result.skips), len(result.expectedFailures)))
     print("fast suite: %.3fs (budget %.1fs)" % (elapsed, BUDGET_SECONDS))
 
+    if result.testsRun == 0:
+        failures.append("no tests were run")
     if elapsed > BUDGET_SECONDS:
         failures.append("fast suite %.3fs exceeds %.1fs budget" % (elapsed, BUDGET_SECONDS))
     if result.unexpectedSuccesses:

@@ -26,10 +26,10 @@ Owner：wayne
 
 本次实现 REQ-0002 的以下需求：
 
-- **R2**：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上运行；矩阵 Python 3.11/3.12/3.13/3.14，Node 24；任一检查失败即 job 失败。分支保护 required checks 需仓库管理员在 GitHub 上启用（见 §7）。
-- **R3**：`scripts/check_test_policy.py` 运行完整套件并检查 skip / expectedFailure 是否有白名单条目（owner、reason、expires）；无条目、条目过期或条目未被使用均失败。白名单文件 `tests/skip_allowlist.json`，当前为空。
-- **R4**：`coverage.py --branch` + `scripts/check_coverage.py`；总覆盖 ≥85%，store/collectors ≥85%，CLI ≥80%，scheduler ≥80%；任一关键模块较 v0.6.0 基线下降超过 1 个百分点即失败。为达到阈值新增行为级测试（见 §5）。
-- **R5**：`tests/ac_map.json` + `scripts/check_ac_map.py`；解析 REQ-0001 §5 的 R1–R18，校验每条 AC 至少映射一个真实存在的测试标识，缺失或孤立映射即失败。
+- **R2（本地 workflow 部分）**：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上运行；矩阵 Python 3.11/3.12/3.13/3.14，Node 24；任一检查失败即 job 失败。远程 required checks 需仓库管理员在 GitHub 上启用并验证失败 PR 被阻止（见 §5.4/§7）。
+- **R3**：`scripts/check_test_policy.py` 运行完整套件并检查 skip / expectedFailure 是否有白名单条目（owner、reason、expires）；无条目、条目过期、条目未被使用、重复条目或零测试均失败。白名单文件 `tests/skip_allowlist.json`，当前为空。
+- **R4（Python 覆盖率部分）**：`coverage.py --branch` + `scripts/check_coverage.py`；总覆盖 ≥85%，store/collectors ≥85%，CLI ≥80%，scheduler ≥80%；任一关键模块较 v0.6.0 基线下降超过 1 个百分点即失败。浏览器/JS 关键旅程覆盖率不在本 CHG，见 §7。
+- **R5（REQ-0001 映射部分）**：`tests/ac_map.json` + `scripts/check_ac_map.py`；解析 REQ-0001 §5 的 R1–R18，校验每条 AC 至少映射一个真实存在的测试标识，缺失或孤立映射即失败。REQ-0002 自身 R1–R20 的映射不在本 CHG，见 §7。
 - **R6**：在 `AGENTS.md` 增加 CHG 验证证据清单（命令、环境、通过/失败数、覆盖率变化、产物链接）；`CHG` 标记“已验证”前必须写全。
 - **R17（快速套件部分）**：`check_test_policy.py` 对快速套件计时，超过 5 秒失败。
 - **R18（快速套件部分）**：README 与 AGENTS 写明一条快速测试命令及 Node 前置条件。
@@ -87,9 +87,9 @@ python3 scripts/check_test_policy.py
 python3 scripts/check_ac_map.py
 ```
 
-- `check_test_policy.py`：运行完整套件，记录 skip / expectedFailure / unexpected success；校验 `tests/skip_allowlist.json`；套件计时 >5s 失败。
+- `check_test_policy.py`：运行完整套件，记录 skip / expectedFailure / unexpected success；校验 `tests/skip_allowlist.json`；零测试、重复白名单条目或套件计时 >5s 均失败。
 - `check_ac_map.py`：从 REQ-0001 §5 解析 AC ID，校验 `tests/ac_map.json` 的覆盖与测试标识存在性。
-- CI 上传 coverage JSON 与测试日志作为 artifact。
+- CI 上传 `coverage.json` 与 `test.log` 作为 artifact；测试失败时仍上传 `test.log`。
 
 ### 5.3 手工验证
 
@@ -111,6 +111,8 @@ python3 scripts/check_ac_map.py
   - PATH 去掉 node 后运行策略脚本 → exit 1，4 个 HTML/JS 测试报 unauthorized skip。
   - 临时把 total 阈值调到 99% → `check_coverage.py` exit 1（`TOTAL 93.6% < threshold 99.0%`）。
   - `tests/ac_map.json` 曾引用不存在的 `test_trae_collector...test_capture_replays_through_collector`；门禁报 unknown identifier，修正为 `tests.test_trae_hooks.HookScriptTest...` 后通过。
+  - 重复白名单条目与零测试套件均验证为 exit 1（`duplicate allowlist entry` / `no tests were run`）。
+- review 后续修复：workflow 上传 `coverage.json` + `test.log`，增加 `permissions: contents: read`、job timeout 与 `pipefail`；策略脚本增加零测试、重复白名单检查；YAML 通过解析校验；CHG 的 R4/R5/R2 范围已标注为部分实现。
 - 未完成的外部证据：`.github/workflows/test.yml` 尚未在 GitHub 实际运行；`main` 分支保护 required checks 未配置（需管理员）。因此本 CHG 保持“开发中”，不标“已验证”。
 - 远程 required checks 配置命令（需仓库管理员执行）：
   `gh api -X PATCH repos/sbwkl/usage-ledger/branches/main/protection ...`（具体 payload 见 §7）。
@@ -129,6 +131,8 @@ python3 scripts/check_ac_map.py
 - **Node 缺失时的本地体验**：4 个 JS 测试会变成未授权 skip，`check_test_policy.py` 会失败；README 明确要求 Node 24，跳过需白名单 + 到期日。
 - **CI 时长**：4 个 Python 版本 × 完整套件 + policy 重跑；快速套件当前 <1.5s，预计可接受。
 - **CI 尚未实际运行**：workflow 只在本地创建，未经 GitHub 触发；R2 的“PR 必过”与 R6 的 CI artifact 证据仍待远程验证。首次推送后需观察 4 个矩阵 job + policy job。
+- **R4/R5 仍是部分实现**：本 CHG 只发布 Python 覆盖率，不含浏览器/JS 覆盖率；AC 映射只覆盖 REQ-0001，未覆盖 REQ-0002 自身 R1–R20。完整验收留给后续 CHG，不得用本 CHG 宣称 R4/R5 全部完成。
+- **CI 硬化**：workflow 已限制 `permissions: contents: read` 并设置 job timeout；actions 仍按 major tag 引用，未按 commit SHA 固定，后续可按供应链要求收紧。
 - **未决**：REQ-0002 §5.1 的“20/20 条 R”与 REQ-0001 的 R1–R18 数量口径不一致；本次按 REQ-0001 的 18 条 AC 建映射，待 REQ-0002 自身 AC 的实施 CHG 落地后追加映射。
 
 ## 8. 关联与证据
@@ -146,3 +150,4 @@ python3 scripts/check_ac_map.py
 | 提议 | wayne | 2026-11-15 用户指示开发 REQ-0002；本 CHG 为第一个可独立验收切片 |
 | 就绪 | wayne | 待用户确认 CHG 后进入开发 |
 | 开发中 | wayne | 2026-11-15 本地实现：244 tests OK、coverage 93.57%、三项门禁通过、反向验证通过；CI 与分支保护待远程验证 |
+| 开发中 | wayne | 2026-11-15 按 code review 修复：artifact 增加 test.log、workflow 权限/timeout/pipefail、策略脚本零测试与重复白名单检查、收窄 R2/R4/R5 范围；远程门禁待验证 |

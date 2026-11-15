@@ -6,6 +6,9 @@ on:
     branches: [main, sit]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
@@ -17,6 +20,7 @@ jobs:
   tests:
     name: tests (py${{ matrix.python-version }})
     runs-on: macos-14
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -33,22 +37,28 @@ jobs:
       - name: Install dev dependencies
         run: python -m pip install -e '.[dev]'
       - name: Fast suite with branch coverage
-        run: python -m coverage run --branch --source=src/usage_ledger -m unittest discover -s tests -t .
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m coverage run --branch --source=src/usage_ledger -m unittest discover -s tests -t . 2>&1 | tee test.log
       - name: Export coverage JSON
         run: python -m coverage json -o coverage.json
       - name: Coverage policy
         run: python scripts/check_coverage.py coverage.json
-      - name: Upload coverage report
+      - name: Upload coverage and test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-py${{ matrix.python-version }}
-          path: coverage.json
+          name: test-report-py${{ matrix.python-version }}
+          path: |
+            coverage.json
+            test.log
           if-no-files-found: ignore
 
   policy:
     name: test policy
     runs-on: macos-14
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
