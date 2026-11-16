@@ -859,6 +859,46 @@ eq("project left", sticky.left.project, 356);
         self.assertIn("group-head", self.html)
 
     @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_table_fills_available_width_without_moving_identity_columns(self):
+        source = extract_js(self.html, "var STICKY_WIDTHS", "function renderDataTable")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var columns = [
+  {key: "day", identity: true},
+  {key: "source", identity: true},
+  {key: "credits", type: "num"},
+  {key: "sessions", type: "num"}
+];
+var wide = tableColumnWidths(columns, 1200);
+eq("wide total", wide.total, 1200);
+eq("day fixed", wide.widths[0], 96);
+eq("source fixed", wide.widths[1], 90);
+eq("data fills", wide.widths[2] + wide.widths[3], 1200 - 186);
+eq("data balanced", wide.widths[2] - wide.widths[3] <= 1, true);
+var narrow = tableColumnWidths(columns, 300);
+eq("narrow total", narrow.total, 334);
+eq("narrow day", narrow.widths[0], 96);
+eq("narrow credits", narrow.widths[2], 74);
+var fixedOnly = tableColumnWidths([{key: "day", identity: true}], 1200);
+eq("fixed only", fixedOnly.total, 96);
+eq("zero available", tableColumnWidths(columns, 0).total, 334);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("tableColumnWidths(columns,", self.html)
+        self.assertIn("tableWrap: el.tableWrap", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
     def test_table_totals_are_unit_scoped_and_empty_columns_hidden(self):
         source = extract_js(self.html, "var STICKY_WIDTHS", "function renderDataTable")
         harness = r"""

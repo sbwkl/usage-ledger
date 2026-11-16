@@ -181,6 +181,9 @@
       ],
       "R44": [
         "tests.test_html.HtmlCoverageBlockTest"
+      ],
+      "R45": [
+        "tests.test_html.HtmlTableLayoutTest"
       ]
     }
   }

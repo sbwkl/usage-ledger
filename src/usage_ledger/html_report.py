@@ -3002,6 +3002,28 @@ try {
     return { left: layout, total: left };
   }
 
+  function frozenWidth(column) {
+    return column.identity && STICKY_WIDTHS[column.key] !== undefined
+      ? STICKY_WIDTHS[column.key] : 0;
+  }
+
+  function tableColumnWidths(columns, availableWidth) {
+    var widths = columns.map(function (column) {
+      return frozenWidth(column) || (column.type === "num" ? 74 : 108);
+    });
+    var total = widths.reduce(function (acc, width) { return acc + width; }, 0);
+    var extra = Math.floor(number(availableWidth) - total);
+    var flexible = [];
+    columns.forEach(function (column, index) {
+      if (!frozenWidth(column)) flexible.push(index);
+    });
+    if (extra <= 0 || !flexible.length) return { widths: widths, total: total };
+    var share = Math.floor(extra / flexible.length);
+    flexible.forEach(function (index) { widths[index] += share; });
+    widths[flexible[flexible.length - 1]] += extra - share * flexible.length;
+    return { widths: widths, total: total + extra };
+  }
+
   function pruneColumns(columns, rows) {
     var kept = columns.filter(function (column) {
       if (column.identity) return true;
@@ -3113,17 +3135,15 @@ try {
     }
 
     config.colgroup.textContent = "";
-    var totalWidth = 0;
-    columns.forEach(function (column) {
-      var width = sticky.left[column.key] !== undefined
-        ? STICKY_WIDTHS[column.key] : (column.type === "num" ? 74 : 108);
-      totalWidth += width;
+    var widths = tableColumnWidths(columns,
+      config.tableWrap ? config.tableWrap.clientWidth : 0);
+    columns.forEach(function (column, index) {
       var col = document.createElement("col");
-      col.style.width = width + "px";
+      col.style.width = widths.widths[index] + "px";
       config.colgroup.appendChild(col);
     });
-    config.table.style.width = totalWidth + "px";
-    config.table.style.minWidth = totalWidth + "px";
+    config.table.style.width = widths.total + "px";
+    config.table.style.minWidth = widths.total + "px";
 
     function makeHeaderCell(column, rowspan) {
       var th = document.createElement("th");
@@ -3487,7 +3507,8 @@ try {
       var creditSources = selectedCreditAgents();
       renderDataTable({
         thead: el.thead, tbody: el.tbody, tfoot: el.tfoot, colgroup: el.colgroup,
-        table: el.table, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
+        table: el.table, tableWrap: el.tableWrap,
+        rowinfo: el.rowinfo, pageinfo: el.pageinfo,
         prev: el.prev, next: el.next, pageSize: el.pageSize,
         pageJump: el.pageJump, pageJumpGo: el.pageJumpGo,
         columns: reportColumns(units, creditSources), rows: rows,
