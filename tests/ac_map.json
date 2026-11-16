@@ -1,0 +1,108 @@
+{
+  "REQ-0001": {
+    "path": "docs/requirements/REQ-0001-usage-ledger.md",
+    "criteria": {
+      "R1": [
+        "tests.test_cli.CliConsistencyTest.test_report_grouping_and_filtering"
+      ],
+      "R2": [
+        "tests.test_cli.CliConsistencyTest.test_backfill_idempotent_and_report_consistency",
+        "tests.test_cli.CliConsistencyTest.test_stateless_does_not_touch_db"
+      ],
+      "R3": [
+        "tests.test_cli.CliConsistencyTest.test_report_auto_syncs_when_source_has_new_data",
+        "tests.test_cli.CliConsistencyTest.test_auto_sync_only_checks_requested_source",
+        "tests.test_cli.ClineCliTest.test_report_auto_syncs_new_cline_messages",
+        "tests.test_cli_trae.TraeCliTest.test_report_does_not_resync_unchanged_trae_events"
+      ],
+      "R4": [
+        "tests.test_cli.CliConsistencyTest.test_backfill_idempotent_and_report_consistency",
+        "tests.test_store.StoreTest.test_upsert_is_idempotent",
+        "tests.test_cli_trae.TraeCliTest.test_sync_and_est_are_idempotent",
+        "tests.test_collectors.CodexTest.test_duplicate_rollout_in_archived_is_counted_once"
+      ],
+      "R5": [
+        "tests.test_store.StoreTest.test_mark_archived_and_restore",
+        "tests.test_store.StoreTest.test_prune_rolls_up_and_keeps_archived_detail",
+        "tests.test_cli.CliConsistencyTest.test_archived_detection_skips_unavailable_source"
+      ],
+      "R6": [
+        "tests.test_cli.CliConsistencyTest.test_doctor_reports_gaps",
+        "tests.test_cli.QoderCliTest.test_doctor_reports_both_ledgers",
+        "tests.test_cli_trae.TraeCliTest.test_doctor_reports_hooks_and_estimates",
+        "tests.test_cli_trae.TraeCliTest.test_doctor_reports_storage_auth",
+        "tests.test_cli_trae.TraeCliTest.test_doctor_warns_group_or_world_readable_storage"
+      ],
+      "R7": [
+        "tests.test_collectors.QoderTokenTest",
+        "tests.test_cli.QoderCliTest.test_backfill_stores_tokens_and_activity"
+      ],
+      "R8": [
+        "tests.test_collectors.QoderActivityTest",
+        "tests.test_cli.QoderCliTest.test_activity_only_refresh_when_activity_db_touches",
+        "tests.test_html.QoderHtmlTest.test_html_contains_activity_and_coverage"
+      ],
+      "R9": [
+        "tests.test_collectors.QoderCreditsTest",
+        "tests.test_cli.QoderCliTest.test_backfill_stores_credits_and_estimates",
+        "tests.test_store.StoreTest.test_credit_sources_are_separated"
+      ],
+      "R10": [
+        "tests.test_collectors.QoderCreditsTest",
+        "tests.test_html.SourceAwareCreditsTest.test_estimate_only_rows_not_ranked_as_zero_credit",
+        "tests.test_cli.QoderCliTest.test_model_labels_follow_qoder_display_names"
+      ],
+      "R11": [
+        "tests.test_cli_trae.TraeCliTest.test_sync_remote_calls_trae_refresh",
+        "tests.test_cli_trae.TraeCliTest.test_sync_without_remote_does_not_call_network",
+        "tests.test_cli_trae.TraeCliTest.test_html_default_refreshes_trae_credits",
+        "tests.test_cli_trae.TraeCliTest.test_html_source_qoder_skips_trae_refresh",
+        "tests.test_cli_trae.TraeCliTest.test_html_stateless_skips_trae_refresh",
+        "tests.test_trae_credits.SyncTest.test_sync_is_idempotent_and_maps_project",
+        "tests.test_cli_trae.TraeCliTest.test_html_max_age_reuses_fresh_cache",
+        "tests.test_cli_trae.TraeCliTest.test_html_refresh_failure_uses_cache_and_strict_exits_nonzero"
+      ],
+      "R12": [
+        "tests.test_trae_auth.StorageCredentialTest",
+        "tests.test_trae_auth.StorageCredentialTest.test_rejects_symlinked_file",
+        "tests.test_trae_auth.StorageCredentialTest.test_rejects_world_writable_file",
+        "tests.test_trae_auth.StorageCredentialTest.test_storage_info_is_secret_free",
+        "tests.test_cli_trae.TraeCliTest.test_remote_sync_failure_is_redacted",
+        "tests.test_cli_trae.TraeCliTest.test_html_refresh_error_and_cli_errors_are_redacted",
+        "tests.test_trae_credits.JwtTest"
+      ],
+      "R13": [
+        "tests.test_trae_hooks.HookInstallTest",
+        "tests.test_trae_hooks.HookScriptTest.test_capture_is_private_and_counts_chars",
+        "tests.test_trae_collector.TraeReplayTest.test_design_example",
+        "tests.test_trae_collector.TraeReplayTest.test_env_factor_overhead_and_window",
+        "tests.test_trae_hooks.HookScriptTest.test_capture_replays_through_collector"
+      ],
+      "R14": [
+        "tests.test_collectors.ClineTest",
+        "tests.test_cli.ClineCliTest.test_backfill_and_report_match_stateless"
+      ],
+      "R15": [
+        "tests.test_html.HtmlRenderTest.test_payload_escaped_and_offline",
+        "tests.test_html.AgentSelectionTest",
+        "tests.test_html.SourceAwareCreditsTest",
+        "tests.test_html.TraeStatusCopyTest",
+        "tests.test_html.HtmlCommandTest",
+        "tests.test_html.QoderHtmlTest"
+      ],
+      "R16": [
+        "tests.test_scheduler.SchedulerTest.test_plists_have_calendar_and_environment",
+        "tests.test_scheduler.SchedulerTest.test_dry_run_writes_nothing"
+      ],
+      "R17": [
+        "tests.test_collectors.ClaudeTest.test_missing_root_is_unavailable",
+        "tests.test_collectors.ClineTest.test_broken_session_file_is_isolated",
+        "tests.test_trae_collector.TraeReplayTest.test_bad_lines_and_shapes_are_skipped",
+        "tests.test_collectors.SqliteAgentTest.test_missing_db_is_unavailable"
+      ],
+      "R18": [
+        "tests.test_cli_output.LiveCommandTest.test_live_reads_sources_without_db_writes"
+      ]
+    }
+  }
+}

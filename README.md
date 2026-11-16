@@ -317,6 +317,31 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 
 ---
 
+## 测试与门禁
+
+快速套件（离线；不读取真实源、不访问网络、不加载真实 launchd）：
+
+```bash
+python3 -m unittest discover -s tests -t .
+```
+
+前置：Python ≥3.11；Node 24（4 个 HTML/JS 行为测试需要）。Node 缺失时测试会 skip，且 `check_test_policy.py` 会把未授权 skip 判为失败，不会静默变绿。
+
+覆盖率与测试策略门禁：
+
+```bash
+uv run --with coverage python -m coverage run --branch --source=src/usage_ledger \
+  -m unittest discover -s tests -t .
+uv run --with coverage python -m coverage json -o coverage.json
+python3 scripts/check_coverage.py coverage.json
+python3 scripts/check_test_policy.py
+python3 scripts/check_ac_map.py
+```
+
+CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。分支保护的 required checks 需仓库管理员在 GitHub 设置中启用。
+
+---
+
 ## 下一步
 
 1. 安装 launchd：`usage schedule install`（hourly sync / 00:15 full rescan / 00:20 prune）
@@ -332,4 +357,4 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 6. v2 可选项：`NullStore`、zstd 归档、L3 FSEvents daemon；Qoder 估算系数用新样本定期校准
 
 > 完整快照随时可复现：`python3 scripts/probe.py`
-> 验收命令：`python3 -m unittest discover -s tests -t .`
+> 测试与门禁命令见上文「测试与门禁」。

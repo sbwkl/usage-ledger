@@ -1,0 +1,17 @@
+{
+  "max_drop_pp": 1.0,
+  "total": 85.0,
+  "modules": {
+    "src/usage_ledger/store.py": 85.0,
+    "src/usage_ledger/collectors.py": 85.0,
+    "src/usage_ledger/cli.py": 80.0,
+    "src/usage_ledger/scheduler.py": 80.0
+  },
+  "baseline": {
+    "total": 80.87,
+    "src/usage_ledger/store.py": 88.0,
+    "src/usage_ledger/collectors.py": 83.0,
+    "src/usage_ledger/cli.py": 77.0,
+    "src/usage_ledger/scheduler.py": 45.0
+  }
+}

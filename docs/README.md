@@ -6,8 +6,8 @@
 
 | 目录 | 只放什么 | 当前文档 |
 |---|---|---|
-| [requirements/](requirements/) | 功能卡（REQ） | [REQ-0001 本地 AI 编码工具用量台账](requirements/REQ-0001-usage-ledger.md) |
-| [changes/](changes/) | 变更文档（CHG） | [CHG-0001 需求 / 变更文档体系对齐](changes/CHG-0001-docs-alignment.md)、[CHG-0003 修正合并状态](changes/CHG-0003-docs-status.md) |
+| [requirements/](requirements/) | 功能卡（REQ） | [REQ-0001 本地 AI 编码工具用量台账](requirements/REQ-0001-usage-ledger.md)、[REQ-0002 测试体系完善](requirements/REQ-0002-testing.md) |
+| [changes/](changes/) | 变更文档（CHG） | [CHG-0001 需求 / 变更文档体系对齐](changes/CHG-0001-docs-alignment.md)、[CHG-0002 测试门禁与覆盖率基线](changes/CHG-0002-test-gates.md)、[CHG-0003 修正合并状态](changes/CHG-0003-docs-status.md) |
 | [adr/](adr/) | 已做出、难回退的决策（ADR） | [ADR-0001 源是唯一事实来源](adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002 拉取式采集，无常驻进程](adr/ADR-0002-pull-collection-no-daemon.md) |
 | [rfcs/](rfcs/) | 跨团队、不可逆、技术不确定的方案（RFC） | 暂无；按需创建，见 [rfcs/README.md](rfcs/README.md) |
 
@@ -15,6 +15,7 @@
 
 - **产品 / 需求**：REQ-0001 §3（当前功能）→ 根目录 [README.md](../README.md) → [ARCHITECTURE.md](ARCHITECTURE.md)
 - **开发 / 评审**：REQ-0001 §3（功能与数据源契约）→ §5（当前 AC）→ [ARCHITECTURE.md](ARCHITECTURE.md) → 对应源设计文档 → 本次 CHG
+- **测试 / 质量**：[REQ-0002 测试体系完善](requirements/REQ-0002-testing.md) → [tests/](../tests/) → [.github/workflows/test.yml](../.github/workflows/test.yml)
 - **排障 / 审计**：REQ-0001 §6（风险与已知缺口）→ [ARCHITECTURE.md](ARCHITECTURE.md) §11 → [PROBE.md](PROBE.md)
 
 ## 支撑文档（不属于四类工件）
