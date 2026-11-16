@@ -43,6 +43,7 @@ Qoder turn credits 原先只与“本批转录扫描结果”去重。增量同�
 - 结果与证据：
   - 自动化：282 tests / 0 failures / 0 errors / 0 skips；新增测试修复前 `credit_count=3`，修复后为 `2`，重复 request ID 被删除。
   - 全量门禁：278→282 tests、0 skip；覆盖率 93.4%；AC map 45 criteria / 98 identifiers。
+  - 真实数据只读核对：Qoder 转录请求 ID 18,053 条，桌面 turn 行 94 条（均带 request_set_id），交集 0；当前库无历史重复 turn 行，清理逻辑作为增量路径的安全网。
 - 观测：`turn_credits:duplicate` 计数继续记录匹配次数；重复清理不新增用户可见提示。
 
 ## 6. 回滚方案
@@ -53,7 +54,7 @@ Qoder turn credits 原先只与“本批转录扫描结果”去重。增量同�
 
 ## 7. 风险与未决问题
 
-- 风险：每次 Qoder 同步需读取库中全部 Qoder request ID。当前量级为千级，成本可接受；若未来达到百万级，再改为增量索引。
+- 风险：每次 Qoder 同步需读取库中全部 Qoder request ID。当前约 1.8 万条，成本可接受；若未来达到百万级，再改为增量索引。
 - 风险：删除历史重复行依赖 `turn_credits_request_set_id` 与转录 request ID 的语义一致；现有采集规则已按此前提去重。
 - 未决：是否需要提供一次性 `doctor --fix` 报表；本 CHG 在同步路径内自动清理。
 
