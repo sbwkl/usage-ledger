@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。159 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。244 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -54,14 +54,15 @@
 
 ```
 usage-ledger/
-├── AGENTS.md          项目级补充约定（继承工作区根 AGENTS.md）
+├── README.md          项目说明、开发约定与测试门禁
 ├── pyproject.toml     Python 包定义与 usage / usage-ledger 两个 CLI 入口
 ├── docs/
 │   ├── README.md        文档索引与阅读顺序（REQ / CHG / ADR / 设计文档）
 │   ├── requirements/
-│   │   └── REQ-0001-usage-ledger.md  功能卡（当前需求事实源）
+│   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
+│   │   └── REQ-0002-testing.md       功能卡（测试体系）
 │   ├── changes/
-│   │   └── CHG-0001-docs-alignment.md 变更记录（本次文档体系对齐）
+│   │   └── CHG-0001 ~ CHG-0005      变更记录（当前提议 CHG-0004 / CHG-0005）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
@@ -93,11 +94,24 @@ usage-ledger/
 
 ## 需求、变更与决策
 
-- 当前功能事实源：[docs/requirements/REQ-0001-usage-ledger.md](docs/requirements/REQ-0001-usage-ledger.md)
-- 变更记录：[docs/changes/](docs/changes/)（当前 [CHG-0001](docs/changes/CHG-0001-docs-alignment.md)）
-- 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)
-- 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)
-- 新变更先建 CHG 并登记到 REQ-0001 §8；设计文档只作支撑，不再作为需求事实源。
+- 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0005；当前开发中 [CHG-0004](docs/changes/CHG-0004-html-report-empty-state-and-filters.md) / [CHG-0005](docs/changes/CHG-0005-html-report-display-and-interaction.md)）。
+- 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
+- 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
+- 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0006`、`ADR-0003`。
+- 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
+
+## 开发约定
+
+工作流：`main` 是保护分支，只接受合并；新特性从最新 `main` 切 `feat/<特性名>`，集成走 `sit`；有未提交改动时用 `git worktree` 并行开发；合并 `main` 前必须获得用户同意。工作区根 `AGENTS.md` 的通用流程（TDD、DoR/DoD、需求管理）同时适用；在本工作区内冲突时以根 `AGENTS.md` 为准。项目补充如下：
+
+- 新特性先满足 DoR：REQ / CHG 已更新，AC delta 覆盖正常 / 异常 / 边界，依赖已链接；实现中不得扩大 CHG 范围。
+- 测试命令与门禁见下文「测试与门禁」；完成后运行全量测试，更新 CHG 状态与证据，没有部署 / 监控证据不得标“已发布”。
+- CHG 标“已验证”前证据必须写全：精确命令、环境（OS / Python / Node / commit）、通过 / 失败 / 跳过数、覆盖率与基线变化、日志或 artifact 链接；缺任一项保持“开发中”。
+- 提交信息引用 CHG ID；PR 标题 / 描述引用 CHG 和 REQ。
+- 本地重装：`uv tool install --force --no-cache .`；直接运行：`PYTHONPATH=src python3 -m usage_ledger <cmd>`。
+- 边界：不要顺手修复 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §11 的 P0 / P1 / P2 问题，它们需要独立 CHG；不要逆向厂商私有 API、解密 Trae CN SQLCipher 库，或把估算值 / credits / token 真值相加；默认离线，只有 Trae CN credits 的两条显式前台刷新路径可以联网。
 
 ## 安装
 
@@ -338,7 +352,7 @@ python3 scripts/check_test_policy.py
 python3 scripts/check_ac_map.py
 ```
 
-CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。分支保护的 required checks 需仓库管理员在 GitHub 设置中启用。
+CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
 
 ---
 

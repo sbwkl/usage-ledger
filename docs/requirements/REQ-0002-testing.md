@@ -246,7 +246,7 @@ E2E 是最接近真实使用的证据层，因此不按“抽样几条边界”�
 |---|---|---|
 | R16 | While collector tests run, fixtures shall include anonymized real samples per source and version plus synthetic edge cases; contract tests shall detect upstream schema drift; fixtures shall contain no prompt, response body, tool content, or secret. | `tests/fixtures/manifest`；脱敏评审；契约测试；秘密扫描 |
 | R17 | When the test suite grows, the fast suite shall stay under 5 seconds, the CLI E2E suite under 90 seconds, the browser E2E suite under 2 minutes with 2 workers, and the full E2E suite under 3 minutes; flaky tests shall be quarantined with owner and expiry, and 20 consecutive CI runs shall report zero flakes. | CI 时长阈值；并行分片；定时重复运行；flake 清单与到期检查 |
-| R18 | When a contributor runs tests, the repository shall document one command for fast tests and one for E2E/manual tests, including Python, Node, Playwright prerequisites and offline guarantees. | 更新 `README.md` / `AGENTS.md`；干净机器按文档执行 |
+| R18 | When a contributor runs tests, the repository shall document one command for fast tests and one for E2E/manual tests, including Python, Node, Playwright prerequisites and offline guarantees. | 更新 `README.md`（含「开发约定」）；干净机器按文档执行 |
 
 ### 7.6 有状态生命周期与韧性 E2E
 
@@ -318,7 +318,7 @@ E2E 是最接近真实使用的证据层，因此不按“抽样几条边界”�
 - 文档体系变更：[CHG-0001](../changes/CHG-0001-docs-alignment.md)
 - 当前实现与已知问题：[ARCHITECTURE.md](../ARCHITECTURE.md)（§11）
 - 测试目录：`../../tests/`
-- 运行与分支约定：`../../AGENTS.md`
+- 运行与分支约定：[README.md 的开发约定](../../README.md#开发约定)
 - 方法论参考（不绑定具体工具）：
   - 风险驱动测试与测试文档：ISTQB、ISO/IEC/IEEE 29119-3
   - 测试只能证明缺陷存在：Dijkstra
