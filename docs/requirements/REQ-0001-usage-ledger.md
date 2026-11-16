@@ -239,7 +239,7 @@ usage est --source trae-cn --group-by day,model
 - **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算` 按单位分组；每组内卡片保持连续，整个 KPI 区只有一张主卡；区间无行的单位合并为一张“无数据”卡，不铺零卡；500px 下数值完整显示、不省略。Qoder 与 Trae credits 使用同一组四张卡：`区间 credits`（主卡；Qoder 为 billable，Trae 为会话级）、`免费 credits`、`区间日均`、`最新额度余额`；Trae 不提供的免费额度 / 额度快照显示 `—` 并说明原因，Qoder 的余额 / 请求数、Trae 的会话数 / 模型数放在副文案。Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
 - **每日图表**：Token 按 Agent 堆叠；credits 单选时使用同一图表容器与坐标轴，Qoder 为 billable / 免费双序列，Trae 为 billable 单序列（不伪造免费序列）；Qoder + Trae 同时选中时改为分组柱状图，不堆叠成一个总数；Qoder 影子估算与 Trae 弱估算默认隐藏，打开“估算”开关后分别显示，且不与 credits 相加。
 - **Top 8**：模型与项目各 Top 8，按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比同用“相对第一”口径并明示，排序标签写明单位与当前区间，总计为 0 时百分比显示 `—`；估算只作为同一 Agent 行的次要标注，不把只有估算的行显示成 `0 credits`。
-- **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，Token / Credits / 估算列使用分组表头。默认只显示 token / credits 行；Qoder 影子估算与 Trae 弱估算由同一个“估算”开关控制，打开后才追加估算行。宽于容器时冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按单位和厂商分别显示合计行，Qoder 与 Trae credits 不合并；分页提供页大小与直接跳转，1440px 下不使用表内纵向滚动。
+- **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，Token / Credits / 估算列使用分组表头。默认只显示 token / credits 行；Qoder 影子估算与 Trae 弱估算由同一个“估算”开关控制，打开后才追加估算行。宽于容器时冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；窄于卡片内容宽度时扩大非冻结数据列填满卡片，冻结列宽与偏移不变；按单位和厂商分别显示合计行，Qoder 与 Trae credits 不合并；分页提供页大小与直接跳转，1440px 下不使用表内纵向滚动。
 - **估算开关**：Qoder 影子估算与 Trae 弱估算默认关闭，仅在选中对应 Agent 且存在估算数据时显示开关；开关文案与 `aria-label` 随选中 Agent 生成。关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数；打开后 Qoder 显示影子 est、Trae 显示弱估算，始终注明不可与 credits 相加。
 - **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期 / 项目，折叠时跳过重绘，只挂载当前页行。Trae 没有活动数据时不渲染空活动区。
 - **数据新鲜度**：Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步）放入页首问号按钮打开的“口径与数据覆盖”说明层，且仅选中 Trae 时渲染；由后端 `coverage["trae-cn.credits"]` 驱动，不在前端猜测；有 warn / error 时问号按钮显示提醒点。
@@ -375,6 +375,7 @@ usage est --source trae-cn --group-by day,model
 | R42 | While a credits agent is selected, the system shall render the same four-card credit KPI sequence for Qoder and Trae CN — `区间 credits` (the only primary card), `免费 credits`, `区间日均`, `最新额度余额` — use the same credits chart container and a credit-only detail table by default; fields Trae CN does not provide (free credits, quota snapshot) shall show `—` with a reason, and Qoder / Trae credits shall never be summed. | `tests.test_html.HtmlCreditParityTest` |
 | R43 | The HTML report shall hide both Qoder shadow estimates and Trae CN weak estimates by default and expose them through one `估算` switch whose label and `aria-label` follow the selected agents; while off, estimates shall not appear in KPIs, charts, Top 8, the detail table, or footer page counts; while on, each source’s estimates shall remain separately labeled and shall not be added to credits or token truth. | `tests.test_html.HtmlCreditParityTest` |
 | R44 | While explanatory/coverage content is closed, it shall not occupy a standalone card in the report flow; a question-mark button shall open it, `aria-expanded` shall reflect the state, Escape or an outside click shall close it, Escape / close shall return focus to the button, and the button shall show a warning dot when Trae status is warn or error. At ≤640px the panel may use a fixed sheet layout. | `tests.test_html.HtmlCoverageBlockTest` |
+| R45 | When the detail table's natural column width is narrower than its card content width, the table shall expand non-frozen data columns to fill the available width while keeping frozen identity column widths and sticky offsets unchanged; the extra width shall be distributed across non-frozen columns so that column widths sum to the table width. When the natural width is greater than or equal to the available width, the table shall keep its natural width and horizontal scrolling, without compressing frozen columns. | `tests.test_html.HtmlTableLayoutTest` |
 
 ---
 
@@ -441,6 +442,7 @@ usage est --source trae-cn --group-by day,model
 | CHG-0006 | 补齐 Qoder 桌面端 turn credits | 已验证 | [CHG-0006](../changes/CHG-0006-qoder-turn-credits.md) |
 | CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 已验证 | [CHG-0007](../changes/CHG-0007-trae-report-parity.md) |
 | CHG-0008 | 口径说明改为问号帮助层 | 已验证 | [CHG-0008](../changes/CHG-0008-coverage-help-popover.md) |
+| CHG-0009 | 明细表填满卡片宽度 | 已验证 | [CHG-0009](../changes/CHG-0009-detail-table-fill-width.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
@@ -449,6 +451,8 @@ usage est --source trae-cn --group-by day,model
 > 2026-11-16：CHG-0006（R9 / R41，commit `735d00a`）与 CHG-0007（R42 / R43，commit `735d00a`）已实现并验证：276 tests / 0 skip、覆盖率 93.3%、AC map 43 criteria / 91 identifiers；Qoder 11-14..16 credits 与 Trae 默认页结构均已实测。
 >
 > 2026-11-16：CHG-0008（R30 / R44，commit `7ff22fb`）把独立“口径与数据覆盖”卡片收进页首问号帮助层；277 tests / 0 skip、覆盖率 93.3%、AC map 44 criteria / 92 identifiers。
+>
+> 2026-11-16：CHG-0009（R45）让明细表在卡片更宽时把剩余宽度分给非冻结数据列；278 tests / 0 skip、覆盖率 93.3%、AC map 45 criteria / 93 identifiers，1440px 填充与 500px 横向滚动实测通过。
 
 ---
 

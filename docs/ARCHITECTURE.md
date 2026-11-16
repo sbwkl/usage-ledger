@@ -139,7 +139,7 @@
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
 | `src/usage_ledger/cli.py` | 1956 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
-| `src/usage_ledger/html_report.py` | 4026 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
+| `src/usage_ledger/html_report.py` | 4047 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
@@ -496,7 +496,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
   - 同一页按单位并列渲染：tokens / credits / est 各自汇总，**不跨单位相加**；KPI 按单位分组，整页只有一张主卡，空单位合并为一张“无数据”卡；
   - credits 按 Agent 分块：Qoder（逐请求 + 桌面 turn）、Trae CN（会话级），两家共用四卡 KPI：区间 credits / 免费 credits / 区间日均 / 最新额度余额；Trae 不提供的字段显示 `—` 并说明原因；没有 Trae 缓存时按本次刷新结果显示“未同步”或“刷新失败 + 暂无缓存数据”卡片与刷新命令；
   - 每日用量按单位各一块图，控件放在所属面板；Qoder + Trae credits 同时选中时用分组柱，不堆叠；Top 8 按 Agent 分组排名，条形与百分比统一“相对第一”口径并明示；估算只作次要标注，不产生 `0 credits` 假行；
-  - 明细为统一表，`Agent` 与 `单位` 列区分来源，不适用单位显示 `—`；Token / Credits / 估算列使用分组表头，宽表冻结标识列，按单位和厂商分别合计，隐藏当前筛选下全空列，分页支持页大小与跳转；
+  - 明细为统一表，`Agent` 与 `单位` 列区分来源，不适用单位显示 `—`；Token / Credits / 估算列使用分组表头，宽表冻结标识列，列宽小于卡片时把剩余宽度分给非冻结数据列，按单位和厂商分别合计，隐藏当前筛选下全空列，分页支持页大小与跳转；
   - Qoder 影子估算与 Trae 弱估算共用一个“估算”开关，默认关闭；仅在选中对应 Agent 且存在估算数据时显示，开关文案与 `aria-label` 随选中 Agent 生成；关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数，打开后分别显示，不可与 credits 相加；
   - 覆盖说明、Trae 数据新鲜度、生成时间与“库内 / 本页”行数不再单独占据报告卡片，统一收进页首 `?` 按钮打开的帮助层；默认关闭，Esc / 点击外部 / 关闭按钮可收起并同步 `aria-expanded`，warn/error 时按钮显示提醒点；Trae 状态仅选中 Trae 时渲染，由 `coverage["trae-cn.credits"]` 驱动；
   - 日期范围默认取截至数据日的近 7 天，保留“全部”；可选“聚焦有数据区间”，默认关闭；>200 天自动按周聚合；
@@ -613,7 +613,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-277 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+278 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|
@@ -625,7 +625,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | `tests/test_trae_credits.py` | 33 | 凭证优先级/权限/不泄漏、storage.json 默认与过期、窗口不取未来、分页（短页未达 total 继续）/重试/401、响应归一、重复会话、超限拆分、幂等同步、项目映射、coverage/max-age/stale |
 | `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
 | `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |
-| `tests/test_html.py` | 17 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案、credits KPI 对齐与估算开关 |
+| `tests/test_html.py` | 17 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案、credits KPI 对齐与估算开关、明细表宽度分配 |
 | `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
 | `tests/test_qoder_models.py` | 2 | Qoder 内部模型键 → 显示名映射 |
 
