@@ -160,7 +160,8 @@ class SourceAwareCreditsTest(unittest.TestCase):
                          ["qoder", "trae-cn"])
         self.assertEqual(self.payload["coverage"]["trae-cn.credits"]["refresh_mode"],
                          "auto")
-        self.assertIn("est 请求", self.html)
+        self.assertIn("估算请求", self.html)
+        self.assertNotIn("est 请求", self.html)
 
     @unittest.skipUnless(shutil.which("node"), "node 不可用")
     def test_estimate_only_rows_not_ranked_as_zero_credit(self):
@@ -243,6 +244,7 @@ class TraeStatusCopyTest(unittest.TestCase):
         source = self.html[start:end]
         harness = """
 var COVERAGE = {};
+var state = {agents: new Set(["trae-cn"])};
 var classes = [];
 var node = { className: "", hidden: true, textContent: "",
   classList: { add: function (name) { classes.push(name); } } };
@@ -782,6 +784,7 @@ var state = {agents: new Set(["claude"]), model: "m1", project: "p1", q: "x", pa
 function rebuildDimensionSelects() {}
 function syncAgentFilter() {}
 function renderAll() {}
+function refreshFocusAfterFilterChange() {}
 %s
 function eq(name, actual, expected) {
   var a = JSON.stringify(actual);
@@ -802,6 +805,425 @@ eq("page reset", state.page, 0);
                               capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("applyAgentSelection(AGENTS.slice())", self.html)
+
+
+class HtmlTableLayoutTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_table_keeps_identity_columns_and_groups(self):
+        source = extract_js(self.html, "var STICKY_WIDTHS", "function renderDataTable")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var columns = [
+  {key: "day", identity: true},
+  {key: "source", identity: true},
+  {key: "model", identity: true},
+  {key: "project", identity: true},
+  {key: "input", group: "Token"},
+  {key: "output", group: "Token"},
+  {key: "credits", group: "Credits"}
+];
+var groups = groupHeader(columns);
+eq("groups", groups.map(function (g) { return g.identity ? g.identity.key : g.label + ":" + g.span; }),
+   ["day", "source", "model", "project", "Token:2", "Credits:1"]);
+var sticky = stickyLayout(columns);
+eq("day left", sticky.left.day, 0);
+eq("source left", sticky.left.source, 96);
+eq("model left", sticky.left.model, 186);
+eq("project left", sticky.left.project, 356);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('id="detail-table"', self.html)
+        self.assertIn('id="colgroup"', self.html)
+        self.assertIn('id="tfoot"', self.html)
+        self.assertIn("sticky-wide", self.html)
+        self.assertIn("group-head", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_table_totals_are_unit_scoped_and_empty_columns_hidden(self):
+        source = extract_js(self.html, "var STICKY_WIDTHS", "function renderDataTable")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function sourceLabel(source) { return source === "trae-cn" ? "Trae CN" : source === "qoder" ? "Qoder" : source; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var columns = [
+  {key: "day", identity: true},
+  {key: "source", identity: true},
+  {key: "input", unit: "token", type: "num", group: "Token"},
+  {key: "credits", unit: "credit", type: "num", group: "Credits"},
+  {key: "free_credits", unit: "credit", type: "num", group: "Credits"},
+  {key: "est_total", unit: "est", type: "num", group: "估算"}
+];
+var rows = [
+  {day: "2026-11-10", source: "claude", unit: "token", input: 10},
+  {day: "2026-11-10", source: "qoder", unit: "credit", credits: 2, free_credits: 0},
+  {day: "2026-11-10", source: "trae-cn", unit: "credit", credits: 3, free_credits: null},
+  {day: "2026-11-10", source: "trae-cn", unit: "est", est_total: 5}
+];
+var kept = pruneColumns(columns, rows).map(function (c) { return c.key; });
+eq("zero column hidden", kept.indexOf("free_credits"), -1);
+eq("non-empty kept", kept.indexOf("credits") >= 0, true);
+var totals = tableTotals(rows, columns, new Set(["token", "credit", "est"]),
+                         ["qoder", "trae-cn"]);
+eq("totals labels", totals.map(function (t) { return t.label; }),
+   ["Token 合计", "Qoder credits 合计", "Trae CN credits 合计", "Trae 弱估算合计"]);
+eq("token total", totals[0].values.input, 10);
+eq("qoder credits", totals[1].values.credits, 2);
+eq("trae credits", totals[2].values.credits, 3);
+eq("est total", totals[3].values.est_total, 5);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_table_pagination_page_size_and_jump(self):
+        source = extract_js(self.html, "function paginateRows", "function tableTotals")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var rows = [];
+for (var i = 0; i < 51; i += 1) rows.push(i);
+var p = paginateRows(rows, 1, 25);
+eq("pages", p.pages, 3);
+eq("page", p.page, 1);
+eq("start", p.start, 25);
+eq("slice", p.slice.length, 25);
+eq("clamped", paginateRows(rows, 999, 25).page, 2);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('id="page-size"', self.html)
+        self.assertIn('id="page-jump"', self.html)
+
+
+class HtmlKpiLayoutTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    def test_kpi_groups_have_single_primary_and_no_ellipsis(self):
+        self.assertIn("function addKpiGroup", self.html)
+        self.assertIn("function addKpiNoData", self.html)
+        self.assertIn("kpi-group-title", self.html)
+        self.assertIn("kpi-grid", self.html)
+        self.assertIn("grid-template-columns:repeat(4", self.html)
+        self.assertIn("overflow-wrap:anywhere", self.html)
+        self.assertNotIn("grid-column:span 2", self.html)
+        self.assertNotIn('className = "kpi primary quota-kpi"', self.html)
+        self.assertIn('card.className = "kpi quota-kpi"', self.html)
+
+
+class HtmlCoverageBlockTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    def test_coverage_block_is_single_and_conditional(self):
+        self.assertIn('id="coverage-block"', self.html)
+        self.assertIn('id="coverage-extra"', self.html)
+        self.assertEqual(self.html.count('id="generated"'), 1)
+        self.assertIn('state.agents.has("trae-cn")', self.html)
+        self.assertIn("Qoder 影子估算未计入", self.html)
+        self.assertIn("库内：", self.html)
+        self.assertIn("本页：", self.html)
+
+
+class HtmlTopListTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_top_bars_share_denominator_with_labels(self):
+        source = extract_js(self.html, "function topValueText", "function filterTopItems")
+        harness = r"""
+%s
+function pct(value) {
+  if (!isFinite(value) || value <= 0) return "0%";
+  return (value * 100).toFixed(1) + "%";
+}
+function fmtCredits(value) { return String(value); }
+function fmtCompact(value) { return String(value); }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("first is full", topShare(10, 10).text, "100.0%");
+eq("half", topShare(5, 10).text, "50.0%");
+eq("zero", topShare(0, 0).text, "—");
+eq("width", topShare(5, 10).width, 50);
+""".replace("%s", source, 1)
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("相对第一", self.html)
+        self.assertIn("top-sort-note", self.html)
+
+
+class HtmlChartControlsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    def test_chart_controls_live_in_their_panels(self):
+        token = self.html.index('id="panel-token"')
+        metric = self.html.index('id="metric-field"')
+        credits = self.html.index('id="panel-credits"')
+        shadow = self.html.index('id="shadow-switch"')
+        estimate = self.html.index('id="panel-est"')
+        self.assertLess(token, metric)
+        self.assertLess(metric, credits)
+        self.assertLess(credits, shadow)
+        self.assertLess(shadow, estimate)
+        self.assertIn("Trae 弱估算", self.html)
+        self.assertIn("shadowAxisTitle", self.html)
+        self.assertIn("axis-title", self.html)
+        self.assertIn('aria-label="Token 指标"', self.html)
+        self.assertIn('aria-label="显示 Qoder 影子估算"', self.html)
+
+
+class HtmlNavigationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    def test_sticky_filter_bar_and_back_to_top(self):
+        for marker in ('id="filter-shell"', 'id="filter-toggle"', 'id="sheet-close"',
+                       'id="back-top"', "sticky-enabled", "stuck", ".filter-shell.sheet",
+                       'event.key === "Escape"', "updateChrome"):
+            self.assertIn(marker, self.html)
+        self.assertIn("@media (max-width:640px)", self.html)
+
+
+class HtmlChartA11yTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_chart_points_focusable_and_tooltip_clamped(self):
+        source = extract_js(self.html, "function clampTooltipX", "function buildStackBuckets")
+        harness = r"""
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("left clamp", clampTooltipX(10, 1000, 290), 145);
+eq("right clamp", clampTooltipX(990, 1000, 290), 855);
+eq("middle", clampTooltipX(500, 1000, 290), 500);
+eq("narrow", clampTooltipX(10, 200, 290), 145);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('tabindex: "0"', self.html)
+        self.assertIn('role: "button"', self.html)
+        self.assertIn("offsetWidth", self.html)
+        self.assertIn('event.key === "Escape"', self.html)
+
+
+class HtmlActivityPagingTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    def test_activity_table_paginates_and_skips_when_collapsed(self):
+        for marker in ('id="activity-page-size"', 'id="activity-prev"', 'id="activity-next"',
+                       'id="activity-pageinfo"', "if (!el.activityBlock.open) return;",
+                       "state.activityPage", "ACTIVITY_STICKY", "paginateRows(sorted"):
+            self.assertIn(marker, self.html)
+        self.assertIn("activity-table-wrap", self.html)
+
+
+class HtmlLabelsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_display_names_and_formatters_are_consistent(self):
+        labels = extract_js(self.html, "var DISPLAY_NAMES", "function sourceLabel")
+        formatters = extract_js(self.html, "function fmtInt", "function fmtDuration")
+        harness = r"""
+%s
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+var numberFormat = new Intl.NumberFormat("en-US");
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("trae label", displayName("trae-cn"), "Trae CN");
+eq("turns label", displayName("turns"), "记录数");
+eq("used label", displayName("used"), "已用");
+eq("unknown fallback", displayName("x"), "x");
+eq("quota matches credits", fmtQuota(2.5), fmtCredits(2.5));
+""" % (labels, formatters)
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('label: "记录数"', self.html)
+        self.assertIn('{ key: "turns", label: "轮次"', self.html)
+        self.assertIn("已用 ", self.html)
+        self.assertNotIn("est 请求", self.html)
+
+
+class HtmlStatePersistenceTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_filters_round_trip_via_url_state(self):
+        source = extract_js(self.html, "function normalizeAgentKeys",
+                            "function readPersistedState")
+        harness = r"""
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var allowed = ["claude", "qoder", "trae-cn"];
+eq("valid agents", normalizeAgentKeys("qoder,bogus,trae-cn", allowed), ["qoder", "trae-cn"]);
+eq("empty agents", normalizeAgentKeys("", allowed), []);
+eq("page size", normalizePageSize("25", [25, 50], 50), 25);
+eq("bad page size", normalizePageSize("999", [25, 50], 50), 50);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        snapshot = extract_js(self.html, "function stateSnapshot", "function persistState")
+        self.assertNotIn("token", snapshot)
+        self.assertNotIn("credits", snapshot)
+        self.assertIn("history.replaceState", self.html)
+        self.assertIn("URLSearchParams", self.html)
+        self.assertIn("STATE_KEY", self.html)
+
+
+class HtmlFocusRangeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_focus_range_toggle_is_opt_in(self):
+        source = extract_js(self.html, "function matchesDimensionFilters",
+                            "function hasFocusableData")
+        harness = r"""
+var state = {agents: new Set(["claude", "qoder"]), model: "", project: "", q: ""};
+var TOKEN_ROWS = [{day: "2026-11-10", source: "claude"}, {day: "2026-11-12", source: "claude"}];
+var CREDIT_ROWS = [{day: "2026-11-08", source: "qoder"}, {day: "2026-11-14", source: "qoder"}];
+var EST = [];
+var TRAE_EST = [];
+function matchesQuery() { return true; }
+function hasTokenSelected() { return true; }
+function hasCreditsSelected() { return true; }
+function minMaxDay(rows) {
+  var min = "", max = "";
+  rows.forEach(function (row) {
+    if (!min || row.day < min) min = row.day;
+    if (!max || row.day > max) max = row.day;
+  });
+  return [min, max];
+}
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("focus union", focusBounds(), ["2026-11-08", "2026-11-14"]);
+TOKEN_ROWS = []; CREDIT_ROWS = [];
+eq("no data", focusBounds(), ["", ""]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('id="focus-range"', self.html)
+        self.assertIn("聚焦有数据区间", self.html)
+        self.assertIn("defaultDateRange", self.html)
+        self.assertIn("无可聚焦的数据区间", self.html)
+
+
+class HtmlFilterLayoutTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    def test_filter_row_width_stable_across_agents(self):
+        self.assertIn("dimension-line", self.html)
+        self.assertIn("grid-template-columns:220px 220px minmax(200px,1fr)", self.html)
+        self.assertIn("text-overflow:ellipsis", self.html)
+        self.assertIn("无可用模型", self.html)
+        self.assertIn("无可用项目", self.html)
+        self.assertIn("el.q.value = state.q", self.html)
+        self.assertIn("el.model.title", self.html)
+        self.assertIn("el.project.title", self.html)
 
 
 if __name__ == "__main__":

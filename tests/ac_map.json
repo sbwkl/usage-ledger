@@ -129,6 +129,45 @@
       ],
       "R39": [
         "tests.test_html.HtmlDateRangeTest"
+      ],
+      "R27": [
+        "tests.test_html.HtmlTableLayoutTest"
+      ],
+      "R28": [
+        "tests.test_html.HtmlTableLayoutTest"
+      ],
+      "R29": [
+        "tests.test_html.HtmlKpiLayoutTest"
+      ],
+      "R30": [
+        "tests.test_html.HtmlCoverageBlockTest"
+      ],
+      "R31": [
+        "tests.test_html.HtmlTopListTest"
+      ],
+      "R32": [
+        "tests.test_html.HtmlChartControlsTest"
+      ],
+      "R33": [
+        "tests.test_html.HtmlNavigationTest"
+      ],
+      "R34": [
+        "tests.test_html.HtmlChartA11yTest"
+      ],
+      "R35": [
+        "tests.test_html.HtmlActivityPagingTest"
+      ],
+      "R36": [
+        "tests.test_html.HtmlLabelsTest"
+      ],
+      "R37": [
+        "tests.test_html.HtmlStatePersistenceTest"
+      ],
+      "R38": [
+        "tests.test_html.HtmlFocusRangeTest"
+      ],
+      "R40": [
+        "tests.test_html.HtmlFilterLayoutTest"
       ]
     }
   }

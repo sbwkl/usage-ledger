@@ -128,13 +128,27 @@ h1{font-size:18px;margin:0;letter-spacing:.2px}
 .top-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 main{max-width:1320px;margin:0 auto;padding:8px 24px 40px;display:flex;flex-direction:column;gap:16px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.filter-shell{position:relative;z-index:20;display:flex;flex-direction:column;gap:10px}
+.filter-shell.sticky-enabled{position:sticky;top:0;background:linear-gradient(var(--bg) 78%,transparent);padding-top:6px}
+.filter-shell.stuck .presets,.filter-shell.stuck .chip-tip{display:none}
+.filter-shell.stuck .dimension-line{grid-template-columns:minmax(0,1fr)}
+.filter-shell.stuck .dimension-line .field:not(.search-field){display:none}
+.filter-shell.stuck .filters{padding:10px 14px}
+.filter-shell.stuck .agent-nav{padding:8px 14px}
 .filters{display:flex;flex-direction:column;gap:12px}
 .filter-line{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.date-line{flex-wrap:wrap}
+.dimension-line{display:grid;grid-template-columns:220px 220px minmax(200px,1fr);gap:10px 14px;align-items:center}
+.dimension-line .field{min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:center;white-space:nowrap}
+.dimension-line select,.dimension-line input[type="search"]{width:100%;max-width:none}
 label.field{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
 input[type="date"],input[type="search"],select{
   background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:9px;
   padding:7px 9px;font:inherit;font-size:13px;outline:none;max-width:230px;
 }
+select{text-overflow:ellipsis}
+#page-size,#page-jump,#activity-page-size{width:70px;max-width:70px}
+#page-jump{width:76px;max-width:76px}
 input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .presets{display:inline-flex;gap:6px;flex-wrap:wrap}
 .btn{border:1px solid var(--border);background:var(--surface-2);color:var(--text);border-radius:9px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
@@ -151,19 +165,31 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 
 .agent-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 14px}
 .agent-nav-label{font-size:11px;letter-spacing:.4px;color:var(--muted);white-space:nowrap}
-.kpi-section{grid-column:1/-1;font-size:11px;letter-spacing:.4px;color:var(--muted);margin-top:4px}
+.kpi-group{margin-top:12px}
+.kpi-group:first-child{margin-top:0}
+.kpi-group-title{font-size:11px;letter-spacing:.4px;color:var(--muted);margin:0 0 8px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi-subgroup{grid-column:1/-1;font-size:11px;color:var(--muted);margin:2px 0 -4px}
+.kpi-grid > .kpi:only-child{grid-column:1/-1}
 .chart-panel+.chart-panel{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
 .chart-panel h3{font-size:12.5px;margin:0;letter-spacing:.2px}
 
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px}
+.kpis{display:flex;flex-direction:column;gap:0}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);min-width:0}
-.kpi.primary{grid-column:span 2;background:linear-gradient(135deg,var(--accent-soft),var(--surface) 72%);border-color:var(--accent)}
+.kpi.primary{background:linear-gradient(135deg,var(--accent-soft),var(--surface) 72%);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow)}
 .kpi.shadow{border-style:dashed;background:transparent;box-shadow:none}
 .kpi-label{font-size:12px;color:var(--muted)}
-.kpi-value{font-size:clamp(20px,2.1vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-value{font-size:clamp(19px,2vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 .kpi.credit .kpi-sub{white-space:normal;overflow:visible}
-.coverage{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
+.coverage-block{padding:0}
+.coverage-block summary{cursor:pointer;padding:13px 16px;font-size:13.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
+.coverage-block summary::-webkit-details-marker{display:none}
+.coverage-block summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+.coverage-block[open] summary::before{transform:rotate(90deg)}
+.coverage-body{display:flex;flex-direction:column;gap:8px;padding:0 16px 16px}
+.coverage-body p{margin:0}
+.coverage{display:block;margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
 .trae-status{border-color:rgba(13,148,136,.45);background:rgba(13,148,136,.08);margin-top:-4px}
 .trae-status.warn{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.1)}
 .trae-status.error{border-color:rgba(239,68,68,.55);background:rgba(239,68,68,.1)}
@@ -208,6 +234,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .chart-wrap .shadow-line{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 4;opacity:.55;pointer-events:none}
 .chart-wrap .shadow-dot{fill:var(--muted);opacity:.55;pointer-events:none}
 .chart-wrap .axis-right text{fill:var(--muted);font-size:10.5px;opacity:.85}
+.chart-wrap .axis-title{fill:var(--muted);font-size:10px;letter-spacing:.2px}
 .empty{display:grid;place-items:center;min-height:200px;color:var(--muted);font-size:13px}
 .empty-state{padding:28px 20px;text-align:center}
 .empty-state h2{font-size:16px;margin:0 0 6px}
@@ -238,10 +265,21 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .bar-track{height:7px;border-radius:999px;background:var(--surface-2);overflow:hidden}
 .bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c1a4);min-width:2px}
 .table-card{padding-bottom:10px}
-.table-wrap{overflow:auto;max-height:660px;border:1px solid var(--border);border-radius:10px}
-table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:900px}
-thead th{position:sticky;top:0;background:var(--surface-2);z-index:1;border-bottom:1px solid var(--border);padding:0;text-align:left;white-space:nowrap}
+.table-wrap{overflow-x:auto;overflow-y:visible;border:1px solid var(--border);border-radius:10px}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px;min-width:900px}
+#detail-table{table-layout:fixed}
+thead th{position:sticky;top:0;background:var(--surface-2);z-index:2;border-bottom:1px solid var(--border);padding:0;text-align:left;white-space:nowrap}
+thead tr:nth-child(2) th{top:31px}
 th.num{text-align:right}
+th.group-head{font-size:11px;letter-spacing:.3px;color:var(--muted);font-weight:600;padding:7px 10px;text-align:center;border-left:1px solid var(--border)}
+th.group-head:first-child{border-left:0}
+.sticky-col{position:sticky;background:var(--surface);z-index:3}
+thead .sticky-col{background:var(--surface-2);z-index:5}
+tbody tr:hover .sticky-col{background:var(--surface-2)}
+tfoot .sticky-col{background:var(--surface-2);z-index:3}
+tfoot td{background:var(--surface-2);border-top:1px solid var(--border);padding:7px 10px;font-weight:600;white-space:nowrap}
+tfoot td.zero{color:var(--muted);font-weight:400}
+th.identity,td.identity{box-shadow:1px 0 0 var(--border)}
 .th-btn{border:0;background:transparent;color:var(--muted);font:inherit;font-weight:600;padding:9px 10px;cursor:pointer;width:100%;display:flex;gap:4px;align-items:center;text-align:inherit;justify-content:flex-start}
 th.num .th-btn{justify-content:flex-end}
 .th-btn:hover{color:var(--text)}
@@ -265,21 +303,45 @@ td.shadow-col{color:var(--muted)}
 .activity-block summary::before{content:"▸";color:var(--muted);transition:transform .15s}
 .activity-block[open] summary::before{transform:rotate(90deg)}
 .activity-body{display:flex;flex-direction:column;gap:14px;padding:0 16px 16px}
+.activity-table-wrap td.sticky-col,.activity-table-wrap th.sticky-col{z-index:4}
+.chart-wrap .hit:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;stroke:var(--accent);stroke-width:1}
+.top-sort-note{font-size:11px;white-space:nowrap}
+.filter-toggle,.sheet-close{display:none}
+.back-top{position:fixed;right:18px;bottom:18px;z-index:45;box-shadow:var(--shadow);background:var(--surface)}
+.filter-shell.sheet{position:fixed;inset:0;z-index:60;overflow:auto;background:var(--bg);padding:16px;display:flex;flex-direction:column;gap:12px}
+.filter-shell.sheet .sheet-close{display:inline-flex;align-self:flex-end}
+body.sheet-open{overflow:hidden}
 .quota-kpi .kpi-sub{white-space:normal;overflow:visible}
 .quota-track{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:9px}
 .quota-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c1a4)}
 .quota-fill.warn{background:linear-gradient(90deg,#f59e0b,#ef4444)}
 footer{padding:4px 4px 0;color:var(--muted);font-size:11.5px}
 footer p{margin:3px 0}
+@media (max-width:1100px){
+  .kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
 @media (max-width:940px){
   .grid{grid-template-columns:1fr}
   .chart-card{grid-column:auto}
+  .dimension-line{grid-template-columns:1fr 1fr}
+  .dimension-line .search-field{grid-column:1/-1}
 }
 @media (max-width:640px){
   main{padding:8px 14px 32px}
   .topbar{padding:16px 14px 8px}
-  .kpi.primary{grid-column:span 1}
-  .kpis{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+  .filter-shell.sticky-enabled{position:static;background:none;padding-top:0}
+  .filter-toggle{display:inline-flex;position:sticky;top:8px;left:auto;bottom:auto;align-self:flex-start;z-index:45;box-shadow:var(--shadow);background:var(--surface)}
+  .filter-shell{display:none}
+  .filter-shell.sheet{display:flex}
+  .sheet-close{display:inline-flex;align-self:flex-end}
+  .filter-shell .filters,.filter-shell .agent-nav{max-width:100%}
+  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .kpi{padding:10px}
+  .kpi-value{font-size:19px}
+  .kpi-sub{font-size:11px}
+  .table-wrap{max-height:60vh;overflow:auto}
+  .table-wrap .sticky-wide{position:static!important;left:auto!important;box-shadow:none!important}
+  .back-top{bottom:66px}
 }
 </style>
 <script>
@@ -301,30 +363,47 @@ try {
   </div>
   <div class="top-actions">
     <span id="data-until" class="muted"></span>
-    <span id="generated" class="muted"></span>
     <button id="theme" class="btn ghost small" type="button">深色模式</button>
   </div>
 </header>
 
 <main>
-  <section class="card filters" aria-label="筛选">
-    <div class="filter-line">
-      <label class="field">起 <input type="date" id="start"></label>
-      <label class="field">止 <input type="date" id="end"></label>
-      <div class="presets" id="presets"></div>
-      <button id="reset" class="btn ghost small" type="button">重置筛选</button>
-    </div>
-    <div class="filter-line">
-      <label class="field">模型 <select id="model"></select></label>
-      <label class="field">项目 <select id="project"></select></label>
-      <label class="field">搜索 <input type="search" id="q" placeholder="日期 / 模型 / 项目"></label>
-    </div>
-  </section>
+  <button id="filter-toggle" class="btn filter-toggle" type="button"
+          aria-controls="filter-shell" aria-expanded="false">筛选</button>
+  <div class="filter-shell" id="filter-shell">
+    <section class="card filters" id="filters" aria-label="筛选">
+      <button id="sheet-close" class="btn ghost small sheet-close" type="button">关闭筛选</button>
+      <div class="filter-line date-line">
+        <label class="field">起 <input type="date" id="start"></label>
+        <label class="field">止 <input type="date" id="end"></label>
+        <div class="presets" id="presets"></div>
+        <label class="switch" id="focus-range-field">
+          <input type="checkbox" id="focus-range">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span>聚焦有数据区间</span>
+        </label>
+        <span id="focus-note" class="muted" aria-live="polite"></span>
+        <button id="reset" class="btn ghost small" type="button">重置筛选</button>
+      </div>
+      <div class="filter-line dimension-line">
+        <label class="field">模型 <select id="model" aria-label="模型筛选"></select></label>
+        <label class="field">项目 <select id="project" aria-label="项目筛选"></select></label>
+        <label class="field search-field">搜索 <input type="search" id="q" placeholder="日期 / 模型 / 项目" aria-label="搜索明细"></label>
+      </div>
+    </section>
 
-  <nav class="card agent-nav" id="agent-nav" aria-label="Agent 选择"></nav>
+    <nav class="card agent-nav" id="agent-nav" aria-label="Agent 选择"></nav>
+  </div>
 
-  <p id="coverage" class="coverage" hidden></p>
-  <p id="trae-status" class="coverage trae-status" hidden></p>
+  <details class="card coverage-block" id="coverage-block">
+    <summary>口径与数据覆盖</summary>
+    <div class="coverage-body">
+      <p id="coverage" class="coverage" hidden></p>
+      <p id="trae-status" class="coverage trae-status" hidden></p>
+      <div id="coverage-extra"></div>
+      <p id="generated" class="muted"></p>
+    </div>
+  </details>
 
   <section class="agent-page" id="report-page" aria-label="用量报告">
     <section class="card empty-state" id="empty-state" hidden>
@@ -340,11 +419,12 @@ try {
     <section class="kpis" id="kpis" aria-label="汇总指标"></section>
     <section class="grid" id="report-grid" style="margin-top:16px">
       <div class="card chart-card">
-        <div class="card-head">
-          <h2>每日用量</h2>
-          <div class="head-tags">
+        <div class="card-head"><h2>每日用量</h2></div>
+        <div class="chart-panel" id="panel-token">
+          <div class="card-head">
+            <div class="head-tags"><h3>Token</h3><span class="unit-tag">tokens</span></div>
             <label class="field" id="metric-field">Token 指标
-              <select id="metric">
+              <select id="metric" aria-label="Token 指标">
                 <option value="total">总量</option>
                 <option value="input">输入</option>
                 <option value="output">输出</option>
@@ -353,15 +433,7 @@ try {
                 <option value="reasoning">推理</option>
               </select>
             </label>
-            <label class="switch" id="shadow-switch" hidden>
-              <input type="checkbox" id="shadow">
-              <span class="switch-track" aria-hidden="true"></span>
-              <span>影子：Qoder 估算 token</span>
-            </label>
           </div>
-        </div>
-        <div class="chart-panel" id="panel-token">
-          <div class="card-head"><div class="head-tags"><h3>Token</h3><span class="unit-tag">tokens</span></div></div>
           <div class="legend" id="legend-token"></div>
           <div class="chart-wrap">
             <div id="chart-token"></div>
@@ -370,7 +442,14 @@ try {
           <p class="muted" id="hint-token" style="margin:8px 0 0"></p>
         </div>
         <div class="chart-panel" id="panel-credits" hidden>
-          <div class="card-head"><div class="head-tags"><h3>Credits</h3><span class="unit-tag">credits</span></div></div>
+          <div class="card-head">
+            <div class="head-tags"><h3>Credits</h3><span class="unit-tag">credits</span></div>
+            <label class="switch" id="shadow-switch" hidden>
+              <input type="checkbox" id="shadow" aria-label="显示 Qoder 影子估算">
+              <span class="switch-track" aria-hidden="true"></span>
+              <span>影子：Qoder 估算 token</span>
+            </label>
+          </div>
           <div class="legend" id="legend-credits"></div>
           <div class="chart-wrap">
             <div id="chart-credits"></div>
@@ -379,7 +458,7 @@ try {
           <p class="muted" id="hint-credits" style="margin:8px 0 0"></p>
         </div>
         <div class="chart-panel" id="panel-est" hidden>
-          <div class="card-head"><div class="head-tags"><h3>估算</h3><span class="unit-tag">est tokens</span></div></div>
+          <div class="card-head"><div class="head-tags"><h3>Trae 弱估算</h3><span class="unit-tag">估算 tokens</span></div></div>
           <div class="legend" id="legend-est"></div>
           <div class="chart-wrap">
             <div id="chart-est"></div>
@@ -391,14 +470,14 @@ try {
       <div class="card">
         <div class="card-head">
           <div class="head-tags"><h2>模型 Top 8</h2><span class="unit-tag" id="model-unit"></span></div>
-          <span class="muted">点击筛选 / 再点取消</span>
+          <span class="muted top-sort-note" id="model-note" title="点击筛选 / 再点取消"></span>
         </div>
         <div class="bars" id="models"></div>
       </div>
       <div class="card">
         <div class="card-head">
           <div class="head-tags"><h2>项目 Top 8</h2><span class="unit-tag" id="project-unit"></span></div>
-          <span class="muted">点击筛选 / 再点取消</span>
+          <span class="muted top-sort-note" id="project-note" title="点击筛选 / 再点取消"></span>
         </div>
         <div class="bars" id="projects"></div>
       </div>
@@ -409,15 +488,28 @@ try {
         <h2>明细</h2>
         <span class="muted" id="rowinfo"></span>
       </div>
-      <div class="table-wrap">
-        <table>
+      <div class="table-wrap" id="table-wrap">
+        <table id="detail-table">
+          <colgroup id="colgroup"></colgroup>
           <thead id="thead"></thead>
           <tbody id="tbody"></tbody>
+          <tfoot id="tfoot"></tfoot>
         </table>
       </div>
       <div class="pager">
+        <label class="field">每页
+          <select id="page-size" aria-label="每页行数">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
         <button id="prev" type="button">上一页</button>
         <span id="pageinfo" class="muted"></span>
+        <label class="field">跳至
+          <input id="page-jump" type="number" min="1" inputmode="numeric" aria-label="跳转页码">
+        </label>
+        <button id="page-jump-go" type="button">跳转</button>
         <button id="next" type="button">下一页</button>
       </div>
       <p class="muted shadow-note" id="shadow-note" hidden></p>
@@ -437,26 +529,38 @@ try {
             </select>
           </label>
         </div>
-        <section class="kpis" id="activity-kpis" aria-label="Qoder 活动指标"></section>
+        <section class="kpi-grid" id="activity-kpis" aria-label="Qoder 活动指标"></section>
         <div class="legend" id="activity-legend"></div>
         <div class="chart-wrap">
           <div id="activity-chart"></div>
           <div id="activity-tooltip" class="tooltip"></div>
         </div>
         <p class="muted" id="activity-hint" style="margin:0"></p>
-        <div class="table-wrap">
-          <table>
+        <div class="table-wrap activity-table-wrap">
+          <table id="activity-table">
             <thead id="activity-thead"></thead>
             <tbody id="activity-tbody"></tbody>
           </table>
+        </div>
+        <div class="pager">
+          <label class="field">每页
+            <select id="activity-page-size" aria-label="活动每页行数">
+              <option value="30">30</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <button id="activity-prev" type="button">上一页</button>
+          <span id="activity-pageinfo" class="muted"></span>
+          <button id="activity-next" type="button">下一页</button>
         </div>
         <p class="muted" id="activity-rowinfo" style="margin:0;text-align:right"></p>
       </div>
     </details>
   </section>
 
-  <footer id="footer"></footer>
 </main>
+<button id="back-top" class="btn back-top" type="button" hidden>回到顶部</button>
 
 <script type="application/json" id="data">__USAGE_LEDGER_PAYLOAD__</script>
 <script>
@@ -478,6 +582,31 @@ try {
   var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn"];
   var AGENT_KINDS = DATA.agents || {};
   var KIND_LABELS = { token: "精确 Token", credits: "精确 Credits", estimate: "仅估算" };
+  var AGENT_LABELS = { claude: "Claude", codex: "Codex", opencode: "OpenCode",
+                       kilo: "Kilo", cline: "Cline", qoder: "Qoder", "trae-cn": "Trae CN" };
+  var DISPLAY_NAMES = { "trae-cn": "Trae CN", qoder: "Qoder", turns: "记录数",
+                        est: "估算", used: "已用", sessions: "会话",
+                        assistant_calls: "assistant 调用" };
+  var METRIC_KEYS = ["total", "input", "output", "cache_read", "cache_write", "reasoning"];
+  var ACTIVITY_METRIC_KEYS = ["tool_calls", "sessions", "prompts", "assistant_calls"];
+  var PAGE_SIZES = [25, 50, 100];
+  var ACTIVITY_PAGE_SIZES = [30, 50, 100];
+  var STATE_KEY = "usage-ledger-state";
+
+  function displayName(key) {
+    return Object.prototype.hasOwnProperty.call(DISPLAY_NAMES, key)
+      ? DISPLAY_NAMES[key] : String(key);
+  }
+
+  function modelLabel(key) {
+    if (key === "-" || key === "unknown") return "（未标注）";
+    return displayName(key);
+  }
+
+  function sourceLabel(source) {
+    return Object.prototype.hasOwnProperty.call(AGENT_LABELS, source)
+      ? AGENT_LABELS[source] : String(source);
+  }
   var CREDIT_BILLABLE_COLOR = "#e11d48";
   var CREDIT_FREE_COLOR = "#f59e0b";
   var EST_INPUT_COLOR = "#3b6cf6";
@@ -651,18 +780,118 @@ try {
     metric: "total",
     activityMetric: "tool_calls",
     shadow: false,
+    focusRange: false,
     sortKey: "day",
     sortDir: "desc",
     activitySortKey: "day",
     activitySortDir: "desc",
     page: 0,
-    pageSize: 50
+    pageSize: 50,
+    activityPage: 0,
+    activityPageSize: 30
   };
+
+  function normalizeAgentKeys(raw, allowed) {
+    return String(raw || "").split(",").map(function (name) {
+      return name.trim();
+    }).filter(function (name) { return allowed.indexOf(name) >= 0; });
+  }
+
+  function normalizePageSize(raw, allowed, fallback) {
+    var size = parseInt(raw, 10);
+    return allowed.indexOf(size) >= 0 ? size : fallback;
+  }
+
+  function readPersistedState() {
+    var params = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+    var hasHash = Array.from(params.keys()).length > 0;
+    if (hasHash) {
+      var fromHash = {};
+      params.forEach(function (value, key) { fromHash[key] = value; });
+      return fromHash;
+    }
+    try {
+      var raw = localStorage.getItem(STATE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyPersistedState(target, raw, fallback) {
+    if (!raw || typeof raw !== "object") return;
+    var start = String(raw.start || "");
+    var end = String(raw.end || "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      var range = clampDateRange(start, end, DATA_SINCE, DATA_UNTIL, TODAY);
+      target.start = range.start;
+      target.end = range.end;
+    }
+    var agents = normalizeAgentKeys(raw.agents, AGENTS);
+    if (agents.length) target.agents = new Set(agents);
+    ["model", "project", "q"].forEach(function (key) {
+      if (typeof raw[key] === "string") {
+        target[key] = raw[key].slice(0, key === "q" ? 120 : 200);
+      }
+    });
+    target.q = target.q.toLowerCase();
+    if (METRIC_KEYS.indexOf(raw.metric) >= 0) target.metric = raw.metric;
+    if (ACTIVITY_METRIC_KEYS.indexOf(raw.activityMetric) >= 0) {
+      target.activityMetric = raw.activityMetric;
+    }
+    target.shadow = raw.shadow === true || raw.shadow === "1";
+    target.focusRange = raw.focusRange === true || raw.focusRange === "1";
+    ["sortKey", "activitySortKey"].forEach(function (key) {
+      if (typeof raw[key] === "string" && raw[key]) target[key] = raw[key];
+    });
+    target.sortDir = raw.sortDir === "asc" ? "asc" : "desc";
+    target.activitySortDir = raw.activitySortDir === "asc" ? "asc" : "desc";
+    var page = parseInt(raw.page, 10);
+    if (isFinite(page) && page >= 0) target.page = page;
+    var activityPage = parseInt(raw.activityPage, 10);
+    if (isFinite(activityPage) && activityPage >= 0) target.activityPage = activityPage;
+    target.pageSize = normalizePageSize(raw.pageSize, PAGE_SIZES, target.pageSize);
+    target.activityPageSize = normalizePageSize(
+      raw.activityPageSize, ACTIVITY_PAGE_SIZES, target.activityPageSize);
+    target.focusRange = target.focusRange && hasFocusableData();
+  }
+
+  function stateSnapshot() {
+    return {
+      start: state.start, end: state.end,
+      agents: Array.from(state.agents).join(","),
+      model: state.model, project: state.project, q: state.q,
+      metric: state.metric, activityMetric: state.activityMetric,
+      shadow: state.shadow, focusRange: state.focusRange,
+      sortKey: state.sortKey, sortDir: state.sortDir,
+      activitySortKey: state.activitySortKey, activitySortDir: state.activitySortDir,
+      page: state.page, pageSize: state.pageSize,
+      activityPage: state.activityPage, activityPageSize: state.activityPageSize
+    };
+  }
+
+  function persistState() {
+    var snapshot = stateSnapshot();
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(snapshot)); } catch (e) {}
+    try {
+      var params = new URLSearchParams();
+      Object.keys(snapshot).forEach(function (key) {
+        params.set(key, snapshot[key]);
+      });
+      history.replaceState(null, "", "#" + params.toString());
+    } catch (e) {}
+  }
+
+  applyPersistedState(state, readPersistedState(), initialRange);
 
   var el = {
     start: $("#start"), end: $("#end"), presets: $("#presets"), reset: $("#reset"),
+    focusRange: $("#focus-range"), focusNote: $("#focus-note"),
+    filterShell: $("#filter-shell"), filterToggle: $("#filter-toggle"),
+    sheetClose: $("#sheet-close"), backTop: $("#back-top"),
     model: $("#model"), project: $("#project"), q: $("#q"),
     nav: $("#agent-nav"), coverage: $("#coverage"), traeStatus: $("#trae-status"),
+    coverageBlock: $("#coverage-block"), coverageExtra: $("#coverage-extra"),
     dataUntil: $("#data-until"),
     emptyState: $("#empty-state"), emptyTitle: $("#empty-title"),
     emptyMessage: $("#empty-message"), emptyQuota: $("#empty-quota"),
@@ -678,17 +907,22 @@ try {
     chartEst: $("#chart-est"), tooltipEst: $("#tooltip-est"),
     legendEst: $("#legend-est"), hintEst: $("#hint-est"),
     modelUnit: $("#model-unit"), projectUnit: $("#project-unit"),
+    modelNote: $("#model-note"), projectNote: $("#project-note"),
     models: $("#models"), projects: $("#projects"),
-    thead: $("#thead"), tbody: $("#tbody"), rowinfo: $("#rowinfo"),
-    tokenTable: $("#token-table"),
+    thead: $("#thead"), tbody: $("#tbody"), tfoot: $("#tfoot"),
+    colgroup: $("#colgroup"), table: $("#detail-table"), tableWrap: $("#table-wrap"),
+    rowinfo: $("#rowinfo"), tokenTable: $("#token-table"),
     pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
+    pageSize: $("#page-size"), pageJump: $("#page-jump"), pageJumpGo: $("#page-jump-go"),
     shadowNote: $("#shadow-note"),
     activityBlock: $("#activity-block"), activityKpis: $("#activity-kpis"),
     activityMetric: $("#activity-metric"), activityLegend: $("#activity-legend"),
     activityChart: $("#activity-chart"), activityTooltip: $("#activity-tooltip"),
     activityHint: $("#activity-hint"), activityThead: $("#activity-thead"),
     activityTbody: $("#activity-tbody"), activityRowinfo: $("#activity-rowinfo"),
-    generated: $("#generated"), footer: $("#footer"), theme: $("#theme")
+    activityPageSize: $("#activity-page-size"), activityPrev: $("#activity-prev"),
+    activityNext: $("#activity-next"), activityPageinfo: $("#activity-pageinfo"),
+    generated: $("#generated"), theme: $("#theme")
   };
 
   function fmtInt(value) { return numberFormat.format(Math.round(number(value))); }
@@ -724,8 +958,7 @@ try {
   }
 
   function fmtQuota(value) {
-    var parsed = number(value);
-    return Math.abs(parsed - Math.round(parsed)) < 0.005 ? fmtInt(parsed) : parsed.toFixed(2);
+    return fmtCredits(value);
   }
 
   function fmtDuration(ms) {
@@ -987,7 +1220,7 @@ try {
     var value = navTotal(agent);
     var kind = agent === "all" ? "token" : agentKind(agent);
     if (kind === "credits") return fmtCompact(value) + " cr";
-    if (kind === "estimate") return fmtCompact(value) + " est";
+    if (kind === "estimate") return fmtCompact(value) + " 估算";
     return fmtCompact(value);
   }
 
@@ -1039,6 +1272,7 @@ try {
   function applyAgentSelection(names) {
     state.agents = new Set(names);
     state.page = 0;
+    refreshFocusAfterFilterChange();
     rebuildDimensionSelects();
     syncAgentFilter();
     renderAll();
@@ -1055,13 +1289,13 @@ try {
       button.type = "button";
       button.className = "chip";
       button.dataset.agent = agent;
-      button.title = agent + " · " + KIND_LABELS[agentKind(agent)] +
+      button.title = sourceLabel(agent) + " · " + KIND_LABELS[agentKind(agent)] +
         "，单击只看，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
       var dot = document.createElement("span");
       dot.className = "dot";
       dot.style.background = COLORS[agent];
       var name = document.createElement("span");
-      name.textContent = agent;
+      name.textContent = sourceLabel(agent);
       var total = document.createElement("small");
       total.textContent = navTotalText(agent);
       button.appendChild(dot);
@@ -1082,8 +1316,8 @@ try {
     var tip = document.createElement("span");
     tip.className = "chip-tip";
     tip.textContent = navigator.platform.indexOf("Mac") >= 0
-      ? "单击只看 · ⌘+单击多选；tokens/credits/est 分别汇总"
-      : "单击只看 · Ctrl+单击多选；tokens/credits/est 分别汇总";
+      ? "单击只看 · ⌘+单击多选；tokens / credits / 估算分别汇总"
+      : "单击只看 · Ctrl+单击多选；tokens / credits / 估算分别汇总";
     el.nav.appendChild(tip);
     syncAgentFilter();
   }
@@ -1122,20 +1356,140 @@ try {
       .filter(function (item) { return item.rows > 0; }).sort(byTotal);
     var projects = groupTotals(dimensionRows("project"), "project")
       .filter(function (item) { return item.rows > 0; }).sort(byTotal);
-    fillSelect(el.model, models, "全部模型", function (key) { return key; },
-               "当前筛选无模型");
+    fillSelect(el.model, models, "全部模型", modelLabel,
+               "无可用模型");
     fillSelect(el.project, projects, "全部项目", function (key) {
       return key === "-" ? "（未标注）" : key;
-    }, "当前筛选无项目");
+    }, "无可用项目");
     if (!models.some(function (item) { return item.key === state.model; })) state.model = "";
     if (!projects.some(function (item) { return item.key === state.project; })) state.project = "";
     el.model.value = state.model;
     el.project.value = state.project;
+    el.model.title = el.model.selectedOptions.length
+      ? el.model.selectedOptions[0].textContent : "全部模型";
+    el.project.title = el.project.selectedOptions.length
+      ? el.project.selectedOptions[0].textContent : "全部项目";
   }
 
   function syncDateInputs() {
     el.start.value = state.start || "";
     el.end.value = state.end || "";
+  }
+
+  function matchesDimensionFilters(row) {
+    if (state.model && row.model !== state.model) return false;
+    if (state.project && row.project !== state.project) return false;
+    return matchesQuery(row);
+  }
+
+  function focusRows() {
+    var rows = [];
+    if (hasTokenSelected()) {
+      rows = rows.concat(TOKEN_ROWS.filter(function (row) {
+        return state.agents.has(row.source) && matchesDimensionFilters(row);
+      }));
+    }
+    if (hasCreditsSelected()) {
+      rows = rows.concat(CREDIT_ROWS.filter(function (row) {
+        return state.agents.has(row.source) && matchesDimensionFilters(row);
+      }));
+    }
+    if (state.shadow && state.agents.has("qoder")) {
+      rows = rows.concat(EST.filter(function (row) {
+        return matchesDimensionFilters(row);
+      }));
+    }
+    if (state.agents.has("trae-cn")) {
+      rows = rows.concat(TRAE_EST.filter(function (row) {
+        return matchesDimensionFilters(row);
+      }));
+    }
+    return rows;
+  }
+
+  function focusBounds() {
+    return minMaxDay(focusRows());
+  }
+
+  function hasFocusableData() {
+    var bounds = focusBounds();
+    return !!(bounds[0] && bounds[1]);
+  }
+
+  function syncFocusControls() {
+    var bounds = focusBounds();
+    var available = !!(bounds[0] && bounds[1]);
+    el.focusRange.disabled = !available;
+    el.focusRange.checked = state.focusRange && available;
+    el.focusRange.title = available
+      ? "把范围收缩到有数据的最早 / 最晚日"
+      : "所选 Agent / 模型 / 项目没有可用数据";
+    if (state.focusRange && available) {
+      el.focusNote.textContent = "聚焦 " + bounds[0] + " ~ " + bounds[1];
+    } else if (!available) {
+      el.focusNote.textContent = "无可聚焦的数据区间";
+    } else {
+      el.focusNote.textContent = "";
+    }
+  }
+
+  function refreshFocusAfterFilterChange() {
+    if (!state.focusRange) {
+      syncFocusControls();
+      return;
+    }
+    var bounds = focusBounds();
+    if (!bounds[0] || !bounds[1]) {
+      state.focusRange = false;
+      el.focusRange.checked = false;
+      syncFocusControls();
+      return;
+    }
+    state.start = bounds[0];
+    state.end = bounds[1];
+    syncDateInputs();
+    syncFocusControls();
+  }
+
+  function applyFocusRange(enable) {
+    state.focusRange = !!enable;
+    if (state.focusRange) {
+      var bounds = focusBounds();
+      if (!bounds[0] || !bounds[1]) {
+        state.focusRange = false;
+        syncFocusControls();
+        return;
+      }
+      state.start = bounds[0];
+      state.end = bounds[1];
+    } else {
+      var range = defaultDateRange(DATA_SINCE, DATA_UNTIL, TODAY);
+      state.start = range.start;
+      state.end = range.end;
+    }
+    state.page = 0;
+    syncDateInputs();
+    rebuildDimensionSelects();
+    syncFocusControls();
+    renderAll();
+  }
+
+  function updateChrome() {
+    var scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    var tall = document.documentElement.scrollHeight > window.innerHeight + 240;
+    el.filterShell.classList.toggle("sticky-enabled", tall && window.innerWidth > 640);
+    el.filterShell.classList.toggle("stuck", scrollY > 120);
+    el.backTop.hidden = !(tall && scrollY > 420);
+  }
+
+  function openFilterSheet(open) {
+    el.filterShell.classList.toggle("sheet", open);
+    document.body.classList.toggle("sheet-open", open);
+    el.filterToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      var focusable = el.filterShell.querySelector("input,select,button");
+      if (focusable) focusable.focus({ preventScroll: true });
+    }
   }
 
   function buildControls() {
@@ -1144,6 +1498,7 @@ try {
     el.end.min = DATA_SINCE || "";
     el.end.max = PICK_MAX;
     syncDateInputs();
+    el.q.value = state.q;
 
     [{ label: "最新", kind: "latest" }, { label: "全部", kind: "all" },
      { label: "近 7 天", days: 7 },
@@ -1156,7 +1511,10 @@ try {
         var range = presetDateRange(preset.kind, preset.days, DATA_SINCE, DATA_UNTIL, TODAY);
         state.start = range.start;
         state.end = range.end;
+        state.focusRange = false;
+        el.focusRange.checked = false;
         syncDateInputs();
+        syncFocusControls();
         state.page = 0;
         rebuildDimensionSelects();
         renderAll();
@@ -1169,12 +1527,14 @@ try {
     el.model.addEventListener("change", function () {
       state.model = el.model.value;
       state.page = 0;
+      refreshFocusAfterFilterChange();
       rebuildDimensionSelects();
       renderAll();
     });
     el.project.addEventListener("change", function () {
       state.project = el.project.value;
       state.page = 0;
+      refreshFocusAfterFilterChange();
       rebuildDimensionSelects();
       renderAll();
     });
@@ -1185,6 +1545,7 @@ try {
       searchTimer = setTimeout(function () {
         state.q = el.q.value.trim().toLowerCase();
         state.page = 0;
+        refreshFocusAfterFilterChange();
         rebuildDimensionSelects();
         renderAll();
       }, 120);
@@ -1197,10 +1558,12 @@ try {
     el.shadow.addEventListener("change", function () {
       state.shadow = el.shadow.checked;
       state.page = 0;
+      refreshFocusAfterFilterChange();
       renderAll();
     });
     el.activityMetric.addEventListener("change", function () {
       state.activityMetric = el.activityMetric.value;
+      state.activityPage = 0;
       renderActivity();
     });
     el.activityBlock.addEventListener("toggle", function () {
@@ -1211,7 +1574,10 @@ try {
     el.emptyAll.addEventListener("click", function () {
       state.start = DATA_SINCE;
       state.end = DATA_UNTIL;
+      state.focusRange = false;
+      el.focusRange.checked = false;
       syncDateInputs();
+      syncFocusControls();
       state.page = 0;
       rebuildDimensionSelects();
       renderAll();
@@ -1220,12 +1586,59 @@ try {
     el.emptyShadow.addEventListener("click", function () {
       state.shadow = true;
       el.shadow.checked = true;
+      refreshFocusAfterFilterChange();
       renderAll();
     });
     el.prev.addEventListener("click", function () {
       if (state.page > 0) { state.page -= 1; renderAll(); }
     });
     el.next.addEventListener("click", function () { state.page += 1; renderAll(); });
+    el.pageSize.value = String(state.pageSize);
+    el.pageSize.addEventListener("change", function () {
+      state.pageSize = parseInt(el.pageSize.value, 10) || 50;
+      state.page = 0;
+      renderAll();
+    });
+    function jumpToPage() {
+      var page = parseInt(el.pageJump.value, 10);
+      if (!isFinite(page)) return;
+      state.page = Math.max(0, page - 1);
+      renderAll();
+    }
+    el.pageJumpGo.addEventListener("click", jumpToPage);
+    el.pageJump.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") jumpToPage();
+    });
+    el.activityPageSize.value = String(state.activityPageSize);
+    el.activityPageSize.addEventListener("change", function () {
+      state.activityPageSize = parseInt(el.activityPageSize.value, 10) || 30;
+      state.activityPage = 0;
+      renderActivity();
+    });
+    el.activityPrev.addEventListener("click", function () {
+      if (state.activityPage > 0) { state.activityPage -= 1; renderActivity(); }
+    });
+    el.activityNext.addEventListener("click", function () {
+      state.activityPage += 1;
+      renderActivity();
+    });
+    el.focusRange.addEventListener("change", function () {
+      applyFocusRange(el.focusRange.checked);
+    });
+    el.filterToggle.addEventListener("click", function () {
+      openFilterSheet(!el.filterShell.classList.contains("sheet"));
+    });
+    el.sheetClose.addEventListener("click", function () { openFilterSheet(false); });
+    el.backTop.addEventListener("click", function () {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && el.filterShell.classList.contains("sheet")) {
+        openFilterSheet(false);
+      }
+    });
+    window.addEventListener("scroll", updateChrome, { passive: true });
+    updateChrome();
   }
 
   function onDateChange(event) {
@@ -1242,6 +1655,9 @@ try {
     el.end.value = range.end;
     state.start = range.start;
     state.end = range.end;
+    state.focusRange = false;
+    el.focusRange.checked = false;
+    syncFocusControls();
     state.page = 0;
     rebuildDimensionSelects();
     renderAll();
@@ -1257,6 +1673,7 @@ try {
     state.q = "";
     state.metric = "total";
     state.shadow = false;
+    state.focusRange = false;
     state.sortKey = "day";
     state.sortDir = "desc";
     state.activitySortKey = "day";
@@ -1268,6 +1685,8 @@ try {
     el.q.value = "";
     el.metric.value = "total";
     el.shadow.checked = false;
+    el.focusRange.checked = false;
+    syncFocusControls();
     syncAgentFilter();
     rebuildDimensionSelects();
     renderAll();
@@ -1280,11 +1699,11 @@ try {
       var creditUnits = [];
       if (state.agents.has("qoder")) {
         creditUnits.push(EST.length && state.shadow
-          ? "Qoder credits + 影子 est" : "Qoder credits");
+          ? "Qoder credits + 影子估算" : "Qoder credits");
       }
       if (state.agents.has("trae-cn")) {
         creditUnits.push(TRAE_EST.length
-          ? "Trae credits + 弱 est" : "Trae credits");
+          ? "Trae credits + 弱估算" : "Trae credits");
       }
       units.push(creditUnits.join(" / "));
     }
@@ -1297,7 +1716,7 @@ try {
     el.metric.value = state.metric;
     el.modelUnit.textContent = units.join(" / ");
     el.projectUnit.textContent = units.join(" / ");
-    if (!state.agents.has("qoder")) {
+    if (!state.agents.has("qoder") || !EST.length) {
       state.shadow = false;
       el.shadow.checked = false;
       el.shadowNote.hidden = true;
@@ -1308,7 +1727,7 @@ try {
     var parts = [];
     var qoderToken = qoderTokenBounds[0]
       ? qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1] : "";
-    parts.push("已选 Agent：" + Array.from(state.agents).join(" / "));
+    parts.push("已选 Agent：" + Array.from(state.agents).map(sourceLabel).join(" / "));
     var unitNames = [];
     if (hasTokenSelected()) unitNames.push("tokens");
     if (hasCreditsSelected()) unitNames.push("credits");
@@ -1316,13 +1735,19 @@ try {
       unitNames.push("est");
     }
     if (unitNames.length > 1) {
-      parts.push(unitNames.join("、") + " 单位不同，分别汇总，不跨单位相加");
+      parts.push(unitNames.map(function (name) {
+        return name === "est" ? "估算" : name;
+      }).join("、") + " 单位不同，分别汇总，不跨单位相加");
     }
     if (state.agents.has("qoder") && hasCreditsSelected()) {
       var qoderCredit = creditBoundsBySource.qoder || ["", ""];
       if (qoderCredit[0]) parts.push("Qoder credits " + qoderCredit[0] + " ~ " + qoderCredit[1]);
       else parts.push("Qoder 本地无 credits 数据");
-      if (estBounds[0]) parts.push("Qoder 影子估算 " + estBounds[0] + " ~ " + estBounds[1]);
+      if (state.shadow && estBounds[0]) {
+        parts.push("Qoder 影子估算 " + estBounds[0] + " ~ " + estBounds[1]);
+      } else if (EST.length) {
+        parts.push("Qoder 影子估算未计入（开关关闭）");
+      }
       if (ACTIVITY.length) {
         var actBounds = minMaxDay(ACTIVITY);
         parts.push("活动 " + actBounds[0] + " ~ " + actBounds[1]);
@@ -1356,7 +1781,7 @@ try {
     var cov = COVERAGE["trae-cn.credits"];
     var node = el.traeStatus;
     node.className = "coverage trae-status";
-    if (!cov) {
+    if (!state.agents.has("trae-cn") || !cov) {
       node.hidden = true;
       return;
     }
@@ -1401,7 +1826,36 @@ try {
     return totals;
   }
 
-  function renderTokenKpis(host, rows) {
+  function addKpiGroup(host, title) {
+    var section = document.createElement("section");
+    section.className = "kpi-group";
+    var heading = document.createElement("h3");
+    heading.className = "kpi-group-title";
+    heading.textContent = title;
+    var grid = document.createElement("div");
+    grid.className = "kpi-grid";
+    section.appendChild(heading);
+    section.appendChild(grid);
+    host.appendChild(section);
+    return grid;
+  }
+
+  function addKpiNoData(host, label, sub, primary) {
+    addKpiTo(host, label, "—", sub, !!primary);
+  }
+
+  function addKpiSubgroup(host, text) {
+    var node = document.createElement("div");
+    node.className = "kpi-subgroup";
+    node.textContent = text;
+    host.appendChild(node);
+  }
+
+  function renderTokenKpis(host, rows, primary) {
+    if (!rows.length) {
+      addKpiNoData(host, "Token · 无数据", "当前区间没有 token 行", primary);
+      return;
+    }
     var sums = {};
     FIELDS.forEach(function (field) { sums[field] = 0; });
     var turns = 0;
@@ -1417,12 +1871,12 @@ try {
     });
     var total = FIELDS.reduce(function (acc, field) { return acc + sums[field]; }, 0);
 
-    addKpiTo(host, "总 Token", fmtCompact(total), fmtInt(total), true);
+    addKpiTo(host, "总 Token", fmtCompact(total), fmtInt(total), primary);
     FIELDS.forEach(function (field) {
       addKpiTo(host, FIELD_LABELS[field], fmtCompact(sums[field]), fmtInt(sums[field]));
     });
     addKpiTo(host, "缓存占比", total ? pct(sums.cache_read / total) : "—", "cache_read / 总量");
-    addKpiTo(host, "轮次", fmtCompact(turns), fmtInt(turns));
+    addKpiTo(host, "记录数", fmtCompact(turns), fmtInt(turns) + " 条日志记录");
     if (costKnown) addKpiTo(host, "等价成本", "$" + cost.toFixed(2), "按 API 价折算，非实付");
   }
 
@@ -1436,7 +1890,7 @@ try {
 
   function addQuotaKpi(host, quota) {
     var card = document.createElement("div");
-    card.className = "kpi primary quota-kpi";
+    card.className = "kpi quota-kpi";
     var label = document.createElement("div");
     label.className = "kpi-label";
     label.textContent = "最新额度余额";
@@ -1454,7 +1908,7 @@ try {
       var ratio = typeof quota.pct === "number" && quota.pct >= 0
         ? quota.pct : (total > 0 ? used / total : 0);
       value.textContent = fmtQuota(remaining) + " credits";
-      sub.textContent = "used " + fmtQuota(used) + " / " + fmtQuota(total) +
+      sub.textContent = "已用 " + fmtQuota(used) + " / " + fmtQuota(total) +
         " · 已用 " + pct(ratio) + " · 快照 " + (quota.day || "—");
       value.title = sub.textContent;
       var track = document.createElement("div");
@@ -1543,7 +1997,11 @@ try {
     el.emptyShadow.hidden = !shadowPossible;
   }
 
-  function renderQoderCreditKpis(host, rows) {
+  function renderQoderCreditKpis(host, rows, primary) {
+    if (!rows.length) {
+      addKpiNoData(host, "Qoder credits · 无数据", "当前区间没有 Qoder credits 行", primary);
+      return;
+    }
     var billable = 0;
     var free = 0;
     var requests = 0;
@@ -1559,32 +2017,19 @@ try {
     var dayCount = Object.keys(days).length;
     addQuotaKpi(host, quotaSummary());
     addKpiTo(host, "区间 billable credits", fmtCredits(billable),
-      fmtInt(requests) + " billable 请求 · 服务端逐请求计费真值", false, "credit");
+      fmtInt(requests) + " billable 请求 · 服务端逐请求计费真值", primary, "credit");
     addKpiTo(host, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求",
       false, "credit");
     addKpiTo(host, "区间日均", fmtCredits(dayCount ? billable / dayCount : 0),
       fmtInt(dayCount) + " 天有数据", false, "credit");
-    if (state.shadow) {
-      var estRows = qoderEstRowsFor();
-      addKpiTo(host, "影子 est Token",
-        fmtCompact(sumField(estRows, "total")),
-        fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
-        false, "shadow credit");
-    }
   }
 
-  function renderTraeCreditKpis(host, rows) {
+  function renderTraeCreditKpis(host, rows, primary) {
     var cov = COVERAGE["trae-cn.credits"] || {};
-    var estRows = traeRowsFor();
     if (!rows.length) {
       var cacheRows = CREDIT_ROWS.filter(function (row) { return row.source === "trae-cn"; });
       var stateInfo = traeCreditState(rows, cacheRows, cov);
-      addKpiTo(host, "区间 credits", stateInfo.label, stateInfo.sub, true, "credit");
-      if (estRows.length) {
-        addKpiTo(host, "弱 est Token", fmtCompact(sumField(estRows, "total")),
-          fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
-          false, "shadow credit");
-      }
+      addKpiTo(host, "区间 credits", stateInfo.label, stateInfo.sub, !!primary, "credit");
       return;
     }
     var credits = 0;
@@ -1602,59 +2047,95 @@ try {
     else if (cov.refresh_mode === "offline") dataState = " · 离线缓存";
     if (cov.stale && !dataState) dataState = " · 数据可能过期";
     addKpiTo(host, "区间 credits", fmtCredits(credits),
-      fmtInt(sessions) + " 会话 · 服务端会话级计费真值" + dataState, true, "credit");
+      fmtInt(sessions) + " 会话 · 服务端会话级计费真值" + dataState, !!primary, "credit");
     addKpiTo(host, "会话数", fmtCompact(sessions), fmtInt(sessions) + " 会话");
     addKpiTo(host, "覆盖天数", fmtInt(Object.keys(days).length),
       fmtInt(Object.keys(days).length) + " 天有数据");
     addKpiTo(host, "模型数", fmtInt(Object.keys(models).length),
       fmtInt(Object.keys(models).length) + " 个模型");
-    if (estRows.length) {
-      addKpiTo(host, "弱 est Token", fmtCompact(sumField(estRows, "total")),
-        fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
-        false, "shadow credit");
-    } else {
-      addKpiTo(host, "弱 est Token", "无 hook 估算",
-        "安装 Trae CN hook 后可看 token 趋势", false, "shadow credit");
-    }
   }
 
-  function renderCreditKpis(host, rows) {
+  function renderEstKpis(host, primary) {
+    var traeRows = traeRowsFor();
+    var shadowRows = qoderEstRowsFor();
+    var used = false;
+    if (!traeRows.length && !shadowRows.length) {
+      addKpiNoData(host, "估算 · 无数据", "当前区间没有估算行", primary);
+      return;
+    }
+    if (traeRows.length) {
+      addKpiTo(host, "Trae 弱估算 Token", fmtCompact(sumField(traeRows, "total")),
+        fmtInt(sumField(traeRows, "requests")) + " 请求 · 不可与 credits 相加",
+        !!primary, "shadow credit");
+      used = true;
+    } else if (state.agents.has("trae-cn")) {
+      addKpiTo(host, "Trae 弱估算 Token", "—", "当前区间无 hook 估算", !!primary,
+        "shadow credit");
+      used = true;
+    }
+    if (state.shadow) {
+      if (shadowRows.length) {
+        addKpiTo(host, "Qoder 影子估算 Token", fmtCompact(sumField(shadowRows, "total")),
+          fmtInt(sumField(shadowRows, "requests")) + " 请求 · 不可与 credits 相加",
+          !!primary && !used, "shadow credit");
+      } else {
+        addKpiTo(host, "Qoder 影子估算 Token", "—", "当前区间无影子估算数据",
+          !!primary && !used, "shadow credit");
+      }
+      used = true;
+    }
+    if (!used) addKpiNoData(host, "估算 · 无数据", "未选择估算来源", primary);
+  }
+
+  function renderCreditKpis(host, rows, primary) {
     var sources = selectedCreditAgents();
+    if (!sources.length) return;
+    if (!rows.length && sources.length > 1) {
+      addKpiNoData(host, "Credits · 无数据", "当前区间没有 credits 行", primary);
+      return;
+    }
     var labeled = sources.length > 1;
+    var first = true;
     sources.forEach(function (source) {
       if (labeled) {
-        addKpiSection(host, source === "qoder"
+        addKpiSubgroup(host, source === "qoder"
           ? "Qoder · 精确 Credits（逐请求）"
           : "Trae CN · 精确 Credits（会话级）");
       }
       var subset = rows.filter(function (row) { return row.source === source; });
-      if (source === "qoder") renderQoderCreditKpis(host, subset);
-      else renderTraeCreditKpis(host, subset);
+      var isPrimary = !!primary && first;
+      if (source === "qoder") renderQoderCreditKpis(host, subset, isPrimary);
+      else renderTraeCreditKpis(host, subset, isPrimary);
+      if (subset.length) first = false;
     });
-  }
-
-  function addKpiSection(host, text) {
-    var node = document.createElement("div");
-    node.className = "kpi-section";
-    node.textContent = text;
-    host.appendChild(node);
   }
 
   function renderKpis() {
     var host = el.kpis;
     host.textContent = "";
-    var groups = [hasTokenSelected(), hasCreditsSelected()]
-      .filter(Boolean).length;
+    var tokenRows = tokenRowsFor();
+    var creditRows = creditRowsFor();
+    var estSelected = hasTraeEstimateSelected() || state.shadow;
+    var primaryUnit = "";
+    if (hasTokenSelected() && tokenRows.length) primaryUnit = "token";
+    else if (hasCreditsSelected() && creditRows.length) primaryUnit = "credit";
+    else if (estSelected) primaryUnit = "est";
     if (hasTokenSelected()) {
-      if (groups > 1) addKpiSection(host, "精确 Token（tokens）");
-      renderTokenKpis(host, tokenRowsFor());
+      renderTokenKpis(addKpiGroup(host, "精确 Token（tokens）"), tokenRows,
+        primaryUnit === "token");
     }
     if (hasCreditsSelected()) {
-      if (groups > 1 || selectedCreditAgents().length > 1) {
-        addKpiSection(host, "精确 Credits（credits）");
-      }
-      renderCreditKpis(host, creditRowsFor());
+      renderCreditKpis(addKpiGroup(host, "精确 Credits（credits）"), creditRows,
+        primaryUnit === "credit");
     }
+    if (estSelected) {
+      renderEstKpis(addKpiGroup(host, "估算（弱估算 / 影子）"), primaryUnit === "est");
+    }
+  }
+
+  function clampTooltipX(x, width, tooltipWidth) {
+    var half = tooltipWidth ? tooltipWidth / 2 : 145;
+    return Math.max(half, Math.min(x, Math.max(half, width - half)));
   }
 
   function buildStackBuckets(rows, seriesDefs, shadowDefs, shadowRows) {
@@ -1708,10 +2189,10 @@ try {
     legend.textContent = "";
     tooltip.style.display = "none";
     var buckets = config.buckets;
-    if (!buckets.length) {
+    if (!buckets.length || config.hasRows === false) {
       var empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = "所选范围内没有数据";
+      empty.textContent = config.emptyText || "当前区间没有数据";
       host.appendChild(empty);
       return;
     }
@@ -1749,6 +2230,11 @@ try {
       svg.appendChild(text);
     });
     if (shadowScale) {
+      var axisTitle = svgEl("text", {
+        x: width - margin.right + 8, y: 10, "text-anchor": "start", class: "axis-title"
+      });
+      axisTitle.textContent = config.shadowAxisTitle || "影子估算（右轴）";
+      svg.appendChild(axisTitle);
       var rightGroup = svgEl("g", { class: "axis-right" });
       shadowScale.ticks.forEach(function (value) {
         var y = margin.top + plotH - (value / shadowScale.max) * plotH;
@@ -1779,6 +2265,15 @@ try {
       hoverLine.setAttribute("x2", center);
     }
 
+    function bucketAria(bucket) {
+      var bits = [bucket.tooltip];
+      series.forEach(function (def, i) {
+        bits.push(def.label + " " + (config.tooltipFormat || fmtInt)(bucket.values[i] || 0));
+      });
+      if (shadowLabel) bits.push(shadowLabel + " " + fmtInt(bucket.shadowValue));
+      return bits.join("，");
+    }
+
     buckets.forEach(function (bucket, index) {
       var groupStart = margin.left + band * index + (band - groupBarW * series.length) / 2;
       var stackedY = margin.top + plotH;
@@ -1802,16 +2297,48 @@ try {
       });
       var hit = svgEl("rect", {
         x: margin.left + band * index, y: margin.top,
-        width: Math.max(band, 1), height: plotH, class: "hit"
+        width: Math.max(band, 1), height: plotH, class: "hit",
+        tabindex: "0", focusable: "true", role: "button"
       });
-      hit.addEventListener("mouseenter", function (event) {
+      hit.setAttribute("aria-label", bucketAria(bucket));
+      var pinned = false;
+      function hideTip() {
+        moveHover(-1);
+        tooltip.style.display = "none";
+      }
+      hit.addEventListener("pointerenter", function (event) {
+        if (pinned) return;
         moveHover(index);
         showTooltip(bucket, event);
       });
-      hit.addEventListener("mousemove", positionTooltip);
-      hit.addEventListener("mouseleave", function () {
-        moveHover(-1);
-        tooltip.style.display = "none";
+      hit.addEventListener("pointermove", function (event) {
+        if (!pinned) positionTooltip(event);
+      });
+      hit.addEventListener("pointerleave", function () {
+        if (!pinned) hideTip();
+      });
+      hit.addEventListener("click", function (event) {
+        event.preventDefault();
+        pinned = !pinned;
+        if (pinned) {
+          moveHover(index);
+          showTooltip(bucket, event);
+        } else {
+          hideTip();
+        }
+      });
+      hit.addEventListener("focus", function () {
+        moveHover(index);
+        showTooltip(bucket, null);
+      });
+      hit.addEventListener("blur", function () {
+        if (!pinned) hideTip();
+      });
+      hit.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          pinned = false;
+          hideTip();
+        }
       });
       svg.appendChild(hit);
     });
@@ -1835,6 +2362,10 @@ try {
       }
     }
     svg.appendChild(hoverLine);
+    svg.addEventListener("click", function (event) {
+      if (event.target && event.target.classList && event.target.classList.contains("hit")) return;
+      tooltip.style.display = "none";
+    });
 
     var labelCount = Math.min(buckets.length, Math.max(2, Math.floor(plotW / 90)));
     var step = labelCount <= 1 ? 1 : (buckets.length - 1) / (labelCount - 1);
@@ -1957,9 +2488,9 @@ try {
 
     function positionTooltip(event) {
       var rect = host.parentElement.getBoundingClientRect();
-      var x = event.clientX - rect.left;
-      var half = 110;
-      x = Math.max(half, Math.min(x, rect.width - half));
+      var x = event && event.clientX !== undefined
+        ? event.clientX - rect.left : rect.width / 2;
+      x = clampTooltipX(x, rect.width, tooltip.offsetWidth);
       tooltip.style.left = x + "px";
     }
   }
@@ -1970,7 +2501,7 @@ try {
       var tokenRows = tokenRowsFor();
       var tokenBuckets = buildStackBuckets(tokenRows, tokenAgents.map(function (source) {
         return {
-          label: source, color: COLORS[source],
+          label: sourceLabel(source), color: COLORS[source],
           value: function (row) { return row.source === source ? pageMetric(row) : 0; }
         };
       }));
@@ -1978,11 +2509,12 @@ try {
         host: el.chartToken, tooltip: el.tooltipToken, legend: el.legendToken,
         buckets: tokenBuckets,
         series: tokenAgents.map(function (source) {
-          return { label: source, color: COLORS[source] };
+          return { label: sourceLabel(source), color: COLORS[source] };
         }),
         metaText: "指标：" + (state.metric === "total" ? "总量" : FIELD_LABELS[state.metric]),
         ariaLabel: "按 Agent 堆叠的每日 token 用量",
-        tooltipFormat: fmtInt
+        tooltipFormat: fmtInt, hasRows: tokenRows.length > 0,
+        emptyText: "当前区间无 Token 数据"
       });
       renderMissingHint(el.hintToken, tokenRows);
     }
@@ -2008,11 +2540,13 @@ try {
           host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
           buckets: creditBuckets,
           series: creditDefs,
-          shadowLabel: state.shadow ? "Qoder est" : "",
+          shadowLabel: state.shadow ? "Qoder 影子估算" : "",
+          shadowAxisTitle: "影子估算（右轴）",
           metaText: "Qoder credits 为服务端逐请求计费真值，非 token",
           ariaLabel: "Qoder 每日 credits 用量",
           legendFormat: fmtCredits,
-          tooltipFormat: fmtCredits
+          tooltipFormat: fmtCredits, hasRows: creditRows.length > 0,
+          emptyText: "当前区间无 Qoder credits"
         });
       } else if (traeOnly) {
         var traeDefs = [
@@ -2026,7 +2560,8 @@ try {
           metaText: "Trae CN credits 为服务端会话级计费真值（按会话归属日），非 token",
           ariaLabel: "Trae CN 每日 credits 用量",
           legendFormat: fmtCredits,
-          tooltipFormat: fmtCredits
+          tooltipFormat: fmtCredits, hasRows: creditRows.length > 0,
+          emptyText: "当前区间无 Trae credits"
         });
         hintBits.push("Trae 为会话级归属日，不是逐请求日");
       } else {
@@ -2041,13 +2576,18 @@ try {
         });
         renderStackChart({
           host: el.chartCredits, tooltip: el.tooltipCredits, legend: el.legendCredits,
-          buckets: buildStackBuckets(creditRows, groupedDefs),
+          buckets: buildStackBuckets(creditRows, groupedDefs,
+            state.shadow ? [{ value: function (row) { return row.total; } }] : [],
+            shadowRows),
           series: groupedDefs,
           mode: "grouped",
+          shadowLabel: state.shadow ? "Qoder 影子估算" : "",
+          shadowAxisTitle: "影子估算（右轴）",
           metaText: "credits 按 Agent 分列，不可相加（Qoder 逐请求 / Trae 会话级）",
           ariaLabel: "按 Agent 分组的每日 credits 用量",
           legendFormat: fmtCredits,
-          tooltipFormat: fmtCredits
+          tooltipFormat: fmtCredits, hasRows: creditRows.length > 0,
+          emptyText: "当前区间无 credits 数据"
         });
         hintBits.push("credits 按 Agent 分列，不可相加");
       }
@@ -2071,9 +2611,9 @@ try {
     if (hasTraeEstimateSelected()) {
       var traeRows = traeRowsFor();
       var estDefs = [
-        { label: "est 输入", color: EST_INPUT_COLOR,
+        { label: "估算输入", color: EST_INPUT_COLOR,
           value: function (row) { return row.est_input; } },
-        { label: "est 输出", color: EST_OUTPUT_COLOR,
+        { label: "估算输出", color: EST_OUTPUT_COLOR,
           value: function (row) { return row.est_output; } }
       ];
       var estBuckets = buildStackBuckets(traeRows, estDefs);
@@ -2083,7 +2623,8 @@ try {
         series: estDefs,
         metaText: TRAE_NOTE + " · 非 token 真值",
         ariaLabel: "Trae CN 每日弱估算 token",
-        tooltipFormat: fmtInt
+        tooltipFormat: fmtInt, hasRows: traeRows.length > 0,
+        emptyText: "当前区间无 Trae 弱估算数据"
       });
       renderMissingHint(el.hintEst, traeRows);
     }
@@ -2099,12 +2640,11 @@ try {
     var days = enumerateDays(state.start, state.end);
     var missing = days.filter(function (day) { return !seen[day]; });
     if (!missing.length) {
-      hintEl.textContent = "";
+      hintEl.textContent = "数据覆盖 " + days.length + "/" + days.length + " 天";
       return;
     }
-    var shown = missing.slice(0, 10).join("、");
-    hintEl.textContent = "范围内 " + missing.length + " 天无对应数据（图表按 0 显示）：" +
-      shown + (missing.length > 10 ? " …" : "");
+    hintEl.textContent = "数据覆盖 " + (days.length - missing.length) + "/" + days.length +
+      " 天（缺 " + missing.length + " 天，图表按 0 显示）";
   }
 
   function aggregateTop(key, ignore, options) {
@@ -2150,12 +2690,6 @@ try {
     return Array.from(map.values());
   }
 
-  function sourceLabel(source) {
-    if (source === "trae-cn") return "Trae CN";
-    if (source === "qoder") return "Qoder";
-    return source;
-  }
-
   function creditRequestLabel(source) {
     return source === "trae-cn" ? "会话" : "请求";
   }
@@ -2199,7 +2733,13 @@ try {
   function topValueText(item, unit) {
     if (unit === "tokens") return fmtCompact(item.tokens) + " tokens";
     if (unit === "credits") return fmtCredits(item.credits) + " credits";
-    return fmtCompact(item.est) + " est";
+    return fmtCompact(item.est) + " 估算 tokens";
+  }
+
+  function topShare(value, maximum) {
+    if (!(maximum > 0) || !(value > 0)) return { text: "—", width: 0 };
+    var ratio = value / maximum;
+    return { text: pct(ratio), width: Math.max(ratio * 100, 1.5) };
   }
 
   function filterTopItems(items, unit) {
@@ -2223,10 +2763,10 @@ try {
       if (counts.length) parts.push(counts.join(" · "));
     }
     if (unit !== "est" && item.est > 0) {
-      parts.push("trae 弱 est " + fmtCompact(item.est) + "（不可相加）");
+      parts.push("Trae 弱估算 " + fmtCompact(item.est) + "（不可相加）");
     }
     if (item.shadowEst > 0) {
-      parts.push("影子 est " + fmtCompact(item.shadowEst) + "（不可相加）");
+      parts.push("影子估算 " + fmtCompact(item.shadowEst) + "（不可相加）");
     }
     return parts.join(" · ");
   }
@@ -2247,9 +2787,13 @@ try {
       host.appendChild(empty);
       return;
     }
-    var maximum = Math.max(topValue(items[0], unit), 1);
+    var maximum = items.reduce(function (acc, item) {
+      return Math.max(acc, topValue(item, unit));
+    }, 0);
+    maximum = Math.max(maximum, 1);
     items.forEach(function (item) {
       var value = topValue(item, unit);
+      var share = topShare(value, maximum);
       var button = document.createElement("button");
       button.type = "button";
       button.className = "bar-row" + (item.key === selected ? " selected" : "");
@@ -2258,12 +2802,11 @@ try {
       top.className = "bar-top";
       var name = document.createElement("span");
       name.className = "bar-name";
-      name.textContent = item.key === "-" ? "（未标注）" : item.key;
-      name.title = item.key;
+      name.textContent = item.key === "-" || item.key === "unknown" ? "（未标注）" : displayName(item.key);
+      name.title = item.key === "-" || item.key === "unknown" ? "（未标注）" : displayName(item.key);
       var amount = document.createElement("span");
       amount.className = "bar-value";
-      amount.textContent = topValueText(item, unit) + " · " +
-        pct(grandTotal ? value / grandTotal : 0);
+      amount.textContent = topValueText(item, unit) + " · " + share.text;
       top.appendChild(name);
       top.appendChild(amount);
       button.appendChild(top);
@@ -2278,11 +2821,10 @@ try {
       track.className = "bar-track";
       var fill = document.createElement("div");
       fill.className = "bar-fill";
-      fill.style.width = value > 0
-        ? Math.max(value / maximum * 100, 1.5).toFixed(1) + "%" : "0%";
+      fill.style.width = share.width.toFixed(1) + "%";
       track.appendChild(fill);
       button.appendChild(track);
-      button.title = "筛选：" + item.key;
+      button.title = "筛选：" + (item.key === "-" || item.key === "unknown" ? "（未标注）" : displayName(item.key));
       button.addEventListener("click", function () { onPick(item.key); });
       host.appendChild(button);
     });
@@ -2306,10 +2848,14 @@ try {
     var unit = primaryUnit();
     var creditSources = selectedCreditAgents();
     var groupedCredits = unit === "credits" && creditSources.length > 1;
-    var tag = unit === "tokens" ? "tokens" : unit === "credits" ? "credits" : "trae 弱 est";
+    var tag = unit === "tokens" ? "tokens" : unit === "credits" ? "credits" : "估算 tokens";
     if (activeUnits().size > 1) tag = "主单位 " + tag;
     el.modelUnit.textContent = tag;
     el.projectUnit.textContent = tag;
+    var noteUnit = unit === "tokens" ? "tokens" : unit === "credits" ? "credits" : "估算";
+    var note = "相对第一 · 按 " + noteUnit + " 排序 · 当前区间";
+    el.modelNote.textContent = note;
+    el.projectNote.textContent = note;
     if (groupedCredits) {
       var firstModel = true;
       var firstProject = true;
@@ -2348,6 +2894,7 @@ try {
   }
 
   function columnFmt(column, value) {
+    if (column.key === "cost_equiv_usd") return fmtCost(value);
     if (column.fmt) return column.fmt(value);
     return fmtInt(value);
   }
@@ -2372,9 +2919,114 @@ try {
     });
   }
 
+  var STICKY_WIDTHS = { day: 96, source: 90, unitLabel: 90, model: 170, project: 160 };
+  var STICKY_ORDER = ["day", "source", "unitLabel", "model", "project"];
+
+  function stickyLayout(columns) {
+    var left = 0;
+    var layout = {};
+    STICKY_ORDER.forEach(function (key) {
+      var found = columns.some(function (column) {
+        return column.key === key && column.identity;
+      });
+      if (!found) return;
+      layout[key] = left;
+      left += STICKY_WIDTHS[key];
+    });
+    return { left: layout, total: left };
+  }
+
+  function pruneColumns(columns, rows) {
+    var kept = columns.filter(function (column) {
+      if (column.identity) return true;
+      if (!rows.length) return false;
+      return rows.some(function (row) {
+        if (column.unit && row.unit !== column.unit) return false;
+        var value = row[column.key];
+        if (value === null || value === undefined || value === "") return false;
+        if (column.type === "num") return number(value) !== 0;
+        return true;
+      });
+    });
+    if (!kept.some(function (column) { return column.key === "day"; })) {
+      kept.unshift(columns.find(function (column) { return column.key === "day"; }));
+    }
+    if (!kept.some(function (column) { return column.key === "source"; })) {
+      kept.splice(1, 0, columns.find(function (column) { return column.key === "source"; }));
+    }
+    return kept;
+  }
+
+  function groupHeader(columns) {
+    var groups = [];
+    columns.forEach(function (column) {
+      if (column.identity) {
+        groups.push({ identity: column, label: column.label, span: 1 });
+        return;
+      }
+      var label = column.group || "";
+      var last = groups[groups.length - 1];
+      if (last && !last.identity && last.label === label) {
+        last.span += 1;
+      } else {
+        groups.push({ label: label, span: 1 });
+      }
+    });
+    return groups;
+  }
+
+  function paginateRows(rows, page, size) {
+    var pageSize = Math.max(1, number(size) || 50);
+    var pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    var current = Math.min(Math.max(0, number(page) || 0), pages - 1);
+    var start = current * pageSize;
+    return { pages: pages, page: current, start: start,
+             slice: rows.slice(start, start + pageSize) };
+  }
+
+  function tableTotals(rows, columns, units, creditSources) {
+    var out = [];
+    function valuesFor(unit, source) {
+      var values = {};
+      columns.forEach(function (column) {
+        if (column.unit !== unit) return;
+        values[column.key] = rows.reduce(function (acc, row) {
+          if (row.unit !== unit) return acc;
+          if (source && row.source !== source) return acc;
+          return acc + number(row[column.key]);
+        }, 0);
+      });
+      return values;
+    }
+    function has(unit, source) {
+      return rows.some(function (row) {
+        return row.unit === unit && (!source || row.source === source);
+      });
+    }
+    if (units.has("token") && has("token")) {
+      out.push({ label: "Token 合计", unit: "token", values: valuesFor("token") });
+    }
+    if (units.has("credit")) {
+      ["qoder", "trae-cn"].forEach(function (source) {
+        if (creditSources.indexOf(source) < 0 || !has("credit", source)) return;
+        out.push({ label: sourceLabel(source) + " credits 合计", unit: "credit",
+                   source: source, values: valuesFor("credit", source) });
+      });
+    }
+    if (units.has("est")) {
+      ["trae-cn", "qoder"].forEach(function (source) {
+        if (!has("est", source)) return;
+        out.push({
+          label: (source === "qoder" ? "Qoder 影子估算合计" : "Trae 弱估算合计"),
+          unit: "est", source: source, values: valuesFor("est", source)
+        });
+      });
+    }
+    return out;
+  }
+
   function renderDataTable(config) {
-    var columns = config.columns;
-    var rows = config.rows;
+    var columns = pruneColumns(config.columns, config.rows);
     var numericKeys = {};
     columns.forEach(function (column) {
       if (column.type === "num") numericKeys[column.key] = true;
@@ -2383,40 +3035,39 @@ try {
       state.sortKey = "day";
       state.sortDir = "desc";
     }
-    var sorted = rows.slice().sort(function (a, b) {
-      var av = a[state.sortKey];
-      var bv = b[state.sortKey];
-      var aNull = av === null || av === undefined || av === "";
-      var bNull = bv === null || bv === undefined || bv === "";
-      if (aNull || bNull) {
-        if (aNull && bNull) return 0;
-        return aNull ? 1 : -1;
-      }
-      var cmp;
-      if (numericKeys[state.sortKey]) cmp = number(av) - number(bv);
-      else cmp = String(av).localeCompare(String(bv), "zh-CN");
-      if (cmp === 0 && state.sortKey !== "day") {
-        cmp = String(a.unitLabel || "").localeCompare(String(b.unitLabel || ""), "zh-CN");
-      }
-      return state.sortDir === "asc" ? cmp : -cmp;
-    });
-    var pages = Math.max(1, Math.ceil(sorted.length / state.pageSize));
-    if (state.page >= pages) state.page = pages - 1;
-    if (state.page < 0) state.page = 0;
-    var start = state.page * state.pageSize;
-    var slice = sorted.slice(start, start + state.pageSize);
+    var sorted = sortRows(config.rows, state.sortKey, state.sortDir, numericKeys, "unitLabel");
+    var paging = paginateRows(sorted, state.page, state.pageSize);
+    state.page = paging.page;
+    var slice = paging.slice;
+    var sticky = stickyLayout(columns);
 
     var focusedKey = null;
     if (document.activeElement && document.activeElement.classList.contains("th-btn")) {
       focusedKey = document.activeElement.dataset.key;
     }
 
-    config.thead.textContent = "";
-    var headerRow = document.createElement("tr");
+    config.colgroup.textContent = "";
+    var totalWidth = 0;
     columns.forEach(function (column) {
+      var width = sticky.left[column.key] !== undefined
+        ? STICKY_WIDTHS[column.key] : (column.type === "num" ? 74 : 108);
+      totalWidth += width;
+      var col = document.createElement("col");
+      col.style.width = width + "px";
+      config.colgroup.appendChild(col);
+    });
+    config.table.style.width = totalWidth + "px";
+    config.table.style.minWidth = totalWidth + "px";
+
+    function makeHeaderCell(column, rowspan) {
       var th = document.createElement("th");
       if (column.type === "num") th.className = "num";
-      if (column.shadow) th.classList.add("shadow-col");
+      if (column.identity) th.classList.add("identity", "sticky-col");
+      if (column.identity && column.key !== "day" && column.key !== "source") {
+        th.classList.add("sticky-wide");
+      }
+      if (sticky.left[column.key] !== undefined) th.style.left = sticky.left[column.key] + "px";
+      if (rowspan) th.rowSpan = rowspan;
       th.setAttribute("aria-sort", state.sortKey === column.key
         ? (state.sortDir === "asc" ? "ascending" : "descending") : "none");
       var button = document.createElement("button");
@@ -2441,9 +3092,29 @@ try {
         renderAll();
       });
       th.appendChild(button);
-      headerRow.appendChild(th);
+      return th;
+    }
+
+    config.thead.textContent = "";
+    var groupRow = document.createElement("tr");
+    var labelRow = document.createElement("tr");
+    groupHeader(columns).forEach(function (group) {
+      if (group.identity) {
+        groupRow.appendChild(makeHeaderCell(group.identity, 2));
+        return;
+      }
+      var th = document.createElement("th");
+      th.className = "group-head";
+      th.colSpan = group.span;
+      th.scope = "colgroup";
+      th.textContent = group.label;
+      groupRow.appendChild(th);
     });
-    config.thead.appendChild(headerRow);
+    columns.filter(function (column) { return !column.identity; }).forEach(function (column) {
+      labelRow.appendChild(makeHeaderCell(column, 1));
+    });
+    config.thead.appendChild(groupRow);
+    if (labelRow.children.length) config.thead.appendChild(labelRow);
 
     if (focusedKey) {
       var restored = config.thead.querySelector('.th-btn[data-key="' + focusedKey + '"]');
@@ -2469,13 +3140,25 @@ try {
           var value = row[column.key];
           if (column.type === "num") td.className = "num";
           if (column.shadow) td.classList.add("shadow-col");
+          if (column.identity) {
+            td.classList.add("identity", "sticky-col");
+            if (column.key !== "day" && column.key !== "source") td.classList.add("sticky-wide");
+            td.style.left = sticky.left[column.key] + "px";
+          }
           if (column.unit && row.unit !== column.unit) {
             td.textContent = "—";
             td.classList.add("zero");
+          } else if (column.key === "day") {
+            td.textContent = value;
+          } else if (column.key === "source") {
+            td.textContent = sourceLabel(value);
           } else if (column.key === "project") {
             td.textContent = value === "-" ? "（未标注）" : value;
             td.title = value;
           } else if (column.key === "model") {
+            td.textContent = modelLabel(value);
+            td.title = modelLabel(value);
+          } else if (column.key === "unitLabel") {
             td.textContent = value;
             td.title = value;
           } else if (column.key === "cost_equiv_usd") {
@@ -2497,12 +3180,50 @@ try {
       });
     }
 
+    config.tfoot.textContent = "";
+    if (columns.length && config.rows.length) {
+      tableTotals(config.rows, columns, config.units, config.creditSources)
+        .forEach(function (total) {
+          var tr = document.createElement("tr");
+          var labelCell = document.createElement("td");
+          labelCell.colSpan = columns.filter(function (column) {
+            return column.identity;
+          }).length;
+          labelCell.className = "identity sticky-col";
+          labelCell.style.left = "0px";
+          labelCell.textContent = total.label;
+          tr.appendChild(labelCell);
+          columns.filter(function (column) { return !column.identity; })
+            .forEach(function (column) {
+              var td = document.createElement("td");
+              if (column.type === "num") td.className = "num";
+              if (column.unit !== total.unit) {
+                td.textContent = "—";
+                td.classList.add("zero");
+              } else if (total.values[column.key] === undefined) {
+                td.textContent = "—";
+                td.classList.add("zero");
+              } else {
+                td.textContent = columnFmt(column, total.values[column.key]);
+              }
+              tr.appendChild(td);
+            });
+          config.tfoot.appendChild(tr);
+        });
+    }
+
     config.rowinfo.textContent = config.info(sorted);
     config.pageinfo.textContent = slice.length
-      ? (start + 1) + "–" + (start + slice.length) + " / " + fmtInt(sorted.length)
+      ? "第 " + (paging.page + 1) + " / " + paging.pages + " 页 · " +
+        (paging.start + 1) + "–" + (paging.start + slice.length) + " / " + fmtInt(sorted.length)
       : "0 / 0";
-    config.prev.disabled = state.page <= 0;
-    config.next.disabled = state.page >= pages - 1;
+    config.prev.disabled = paging.page <= 0;
+    config.next.disabled = paging.page >= paging.pages - 1;
+    config.pageSize.value = String(state.pageSize);
+    config.pageJump.max = String(paging.pages);
+    config.pageJump.value = String(paging.page + 1);
+    config.pageJump.disabled = !slice.length;
+    config.pageJumpGo.disabled = !slice.length;
   }
 
   var COST_KNOWN = ROWS.some(function (row) {
@@ -2514,7 +3235,7 @@ try {
     traeRowsFor().forEach(function (row) {
       rows.push({
         day: row.day, source: "trae-cn", model: row.model, project: row.project,
-        unit: "est", unitLabel: "trae-cn 弱估算",
+        unit: "est", unitLabel: "Trae 弱估算",
         est_input: row.est_input, est_output: row.est_output,
         est_total: row.total, est_requests: row.requests
       });
@@ -2522,7 +3243,7 @@ try {
     qoderEstRowsFor().forEach(function (row) {
       rows.push({
         day: row.day, source: "qoder", model: row.model, project: row.project,
-        unit: "est", unitLabel: "qoder 影子 est",
+        unit: "est", unitLabel: "Qoder 影子估算",
         est_input: row.est_input, est_output: row.est_output,
         est_total: row.total, est_requests: row.requests
       });
@@ -2567,43 +3288,53 @@ try {
     var qoderCredit = creditSources.indexOf("qoder") >= 0;
     var traeCredit = creditSources.indexOf("trae-cn") >= 0;
     var columns = [
-      { key: "day", label: "日期", type: "text" },
-      { key: "source", label: "Agent", type: "text" }
+      { key: "day", label: "日期", type: "text", identity: true },
+      { key: "source", label: "Agent", type: "text", identity: true }
     ];
-    if (units.size > 1) columns.push({ key: "unitLabel", label: "单位", type: "text" });
-    columns.push({ key: "model", label: "模型", type: "text" });
-    columns.push({ key: "project", label: "项目", type: "text" });
+    if (units.size > 1) {
+      columns.push({ key: "unitLabel", label: "单位", type: "text", identity: true });
+    }
+    columns.push({ key: "model", label: "模型", type: "text", identity: true });
+    columns.push({ key: "project", label: "项目", type: "text", identity: true });
     if (units.has("token")) {
       FIELDS.forEach(function (field) {
-        columns.push({ key: field, label: FIELD_LABELS[field], type: "num", unit: "token" });
+        columns.push({ key: field, label: FIELD_LABELS[field], type: "num",
+                       unit: "token", group: "Token" });
       });
-      columns.push({ key: "total", label: "Tokens 合计", type: "num", unit: "token" });
-      columns.push({ key: "turns", label: "轮次", type: "num", unit: "token" });
+      columns.push({ key: "total", label: "Token 合计", type: "num",
+                     unit: "token", group: "Token" });
+      columns.push({ key: "turns", label: "记录数", type: "num",
+                     unit: "token", group: "Token" });
     }
     if (units.has("credit")) {
       columns.push({ key: "credits", label: "credits", type: "num",
-                     unit: "credit", fmt: fmtCredits });
+                     unit: "credit", fmt: fmtCredits, group: "Credits" });
       if (qoderCredit) {
         columns.push({ key: "free_credits", label: "免费 credits", type: "num",
-                       unit: "credit", fmt: fmtCredits });
+                       unit: "credit", fmt: fmtCredits, group: "Credits" });
         columns.push({ key: "credit_requests", label: "请求", type: "num",
-                       unit: "credit", fmt: fmtInt });
+                       unit: "credit", fmt: fmtInt, group: "Credits" });
         columns.push({ key: "free_requests", label: "免费请求", type: "num",
-                       unit: "credit", fmt: fmtInt });
+                       unit: "credit", fmt: fmtInt, group: "Credits" });
       }
       if (traeCredit) {
         columns.push({ key: "credit_sessions", label: "会话", type: "num",
-                       unit: "credit", fmt: fmtInt });
+                       unit: "credit", fmt: fmtInt, group: "Credits" });
       }
     }
     if (units.has("est")) {
-      columns.push({ key: "est_input", label: "est 输入", type: "num", unit: "est" });
-      columns.push({ key: "est_output", label: "est 输出", type: "num", unit: "est" });
-      columns.push({ key: "est_total", label: "est 合计", type: "num", unit: "est" });
-      columns.push({ key: "est_requests", label: "est 请求", type: "num", unit: "est" });
+      columns.push({ key: "est_input", label: "估算输入", type: "num",
+                     unit: "est", group: "估算" });
+      columns.push({ key: "est_output", label: "估算输出", type: "num",
+                     unit: "est", group: "估算" });
+      columns.push({ key: "est_total", label: "估算合计", type: "num",
+                     unit: "est", group: "估算" });
+      columns.push({ key: "est_requests", label: "估算请求", type: "num",
+                     unit: "est", group: "估算" });
     }
     if (units.has("token") && COST_KNOWN) {
-      columns.push({ key: "cost_equiv_usd", label: "等价成本", type: "num", unit: "token" });
+      columns.push({ key: "cost_equiv_usd", label: "等价成本", type: "num",
+                     unit: "token", group: "Token" });
     }
     return columns;
   }
@@ -2623,7 +3354,7 @@ try {
         creditsBySource[row.source].credits += number(row.credits);
         creditsBySource[row.source].requests +=
           number(row.source === "trae-cn" ? row.credit_sessions : row.credit_requests);
-      } else if (row.unitLabel === "qoder 影子 est") {
+      } else if (row.unitLabel === "Qoder 影子估算") {
         shadowEst += number(row.est_total);
       } else {
         traeEst += number(row.est_total);
@@ -2636,8 +3367,8 @@ try {
       parts.push(sourceLabel(source) + " " + fmtCredits(item.credits) + " credits · " +
         fmtInt(item.requests) + " " + creditRequestLabel(source));
     });
-    if (shadowEst > 0) parts.push("影子 est " + fmtInt(shadowEst) + "（不可相加）");
-    if (traeEst > 0) parts.push("trae 弱 est " + fmtInt(traeEst) + "（不可相加）");
+    if (shadowEst > 0) parts.push("影子估算 " + fmtInt(shadowEst) + "（不可相加）");
+    if (traeEst > 0) parts.push("Trae 弱估算 " + fmtInt(traeEst) + "（不可相加）");
     return parts.join(" · ");
   }
 
@@ -2647,9 +3378,9 @@ try {
       return;
     }
     el.shadowNote.hidden = false;
-    el.shadowNote.textContent = "Qoder 影子 est 由转录文本与 context_usage_ratio 推算（" +
+    el.shadowNote.textContent = "Qoder 影子估算由转录文本与 context_usage_ratio 推算（" +
       EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 聚合；仅覆盖带 ratio 的请求，" +
-      "不可与 credits 相加。Trae 弱 est 是另一套影子，二者不能合并。";
+      "不可与 credits 相加。Trae 弱估算是另一套影子，二者不能合并。";
   }
 
   function visibleCounts() {
@@ -2681,8 +3412,12 @@ try {
       var rows = reportRows();
       var creditSources = selectedCreditAgents();
       renderDataTable({
-        thead: el.thead, tbody: el.tbody, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
-        prev: el.prev, next: el.next, columns: reportColumns(units, creditSources), rows: rows,
+        thead: el.thead, tbody: el.tbody, tfoot: el.tfoot, colgroup: el.colgroup,
+        table: el.table, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
+        prev: el.prev, next: el.next, pageSize: el.pageSize,
+        pageJump: el.pageJump, pageJumpGo: el.pageJumpGo,
+        columns: reportColumns(units, creditSources), rows: rows,
+        units: units, creditSources: creditSources,
         emptyText: "无匹配数据",
         info: function (all) { return tableInfo(all, units); }
       });
@@ -2705,6 +3440,7 @@ try {
   }
 
   function renderActivity() {
+    if (!el.activityBlock.open) return;
     if (!state.agents.has("qoder") || !ACTIVITY.length) return;
     var rows = filteredActivity();
     var totals = emptyActivityTotals();
@@ -2724,6 +3460,7 @@ try {
       "agent 运行时长（含工具）");
     renderActivityChart(rows);
     renderActivityTable(rows);
+    persistState();
   }
 
   function renderActivityChart(rows) {
@@ -2806,10 +3543,20 @@ try {
 
     function positionTooltip(event) {
       var rect = el.activityChart.parentElement.getBoundingClientRect();
-      var x = event.clientX - rect.left;
-      var half = 110;
-      x = Math.max(half, Math.min(x, rect.width - half));
+      var x = event && event.clientX !== undefined
+        ? event.clientX - rect.left : rect.width / 2;
+      x = clampTooltipX(x, rect.width, el.activityTooltip.offsetWidth);
       el.activityTooltip.style.left = x + "px";
+    }
+
+    function bucketAria(bucket) {
+      var bits = [bucket.tooltip];
+      ACTIVITY_FIELDS.forEach(function (field) {
+        bits.push(ACTIVITY_LABELS[field] + " " +
+          (field === "duration_ms" ? fmtDuration(bucket.values[field])
+            : fmtInt(bucket.values[field])));
+      });
+      return bits.join("，");
     }
 
     buckets.forEach(function (bucket, index) {
@@ -2824,23 +3571,63 @@ try {
       }
       var hit = svgEl("rect", {
         x: margin.left + band * index, y: margin.top,
-        width: Math.max(band, 1), height: plotH, class: "hit"
+        width: Math.max(band, 1), height: plotH, class: "hit",
+        tabindex: "0", focusable: "true", role: "button"
       });
-      hit.addEventListener("mouseenter", function (event) {
+      hit.setAttribute("aria-label", bucketAria(bucket));
+      var pinned = false;
+      function hideTip() {
+        hoverLine.setAttribute("x1", 0);
+        hoverLine.setAttribute("x2", 0);
+        el.activityTooltip.style.display = "none";
+      }
+      hit.addEventListener("pointerenter", function (event) {
+        if (pinned) return;
         var center = margin.left + band * index + band / 2;
         hoverLine.setAttribute("x1", center);
         hoverLine.setAttribute("x2", center);
         showTooltip(bucket, event);
       });
-      hit.addEventListener("mousemove", positionTooltip);
-      hit.addEventListener("mouseleave", function () {
-        hoverLine.setAttribute("x1", 0);
-        hoverLine.setAttribute("x2", 0);
-        el.activityTooltip.style.display = "none";
+      hit.addEventListener("pointermove", function (event) {
+        if (!pinned) positionTooltip(event);
+      });
+      hit.addEventListener("pointerleave", function () {
+        if (!pinned) hideTip();
+      });
+      hit.addEventListener("click", function (event) {
+        event.preventDefault();
+        pinned = !pinned;
+        if (pinned) {
+          var center = margin.left + band * index + band / 2;
+          hoverLine.setAttribute("x1", center);
+          hoverLine.setAttribute("x2", center);
+          showTooltip(bucket, event);
+        } else {
+          hideTip();
+        }
+      });
+      hit.addEventListener("focus", function () {
+        var center = margin.left + band * index + band / 2;
+        hoverLine.setAttribute("x1", center);
+        hoverLine.setAttribute("x2", center);
+        showTooltip(bucket, null);
+      });
+      hit.addEventListener("blur", function () {
+        if (!pinned) hideTip();
+      });
+      hit.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          pinned = false;
+          hideTip();
+        }
       });
       svg.appendChild(hit);
     });
     svg.appendChild(hoverLine);
+    svg.addEventListener("click", function (event) {
+      if (event.target && event.target.classList && event.target.classList.contains("hit")) return;
+      el.activityTooltip.style.display = "none";
+    });
 
     var labelCount = Math.min(buckets.length, Math.max(2, Math.floor(plotW / 90)));
     var step = labelCount <= 1 ? 1 : (buckets.length - 1) / (labelCount - 1);
@@ -2906,13 +3693,24 @@ try {
     { key: "duration_ms", label: "运行时长", type: "num" }
   ];
 
+  var ACTIVITY_STICKY = { day: 96, project: 160 };
+
   function renderActivityTable(rows) {
     var numericKeys = {};
     ACTIVITY_COLUMNS.forEach(function (column) {
       if (column.type === "num") numericKeys[column.key] = true;
     });
+    if (!ACTIVITY_COLUMNS.some(function (column) {
+      return column.key === state.activitySortKey;
+    })) {
+      state.activitySortKey = "day";
+      state.activitySortDir = "desc";
+    }
     var sorted = sortRows(rows, state.activitySortKey, state.activitySortDir,
                           numericKeys, "project");
+    var paging = paginateRows(sorted, state.activityPage, state.activityPageSize);
+    state.activityPage = paging.page;
+    var slice = paging.slice;
     var focusedKey = null;
     if (document.activeElement && document.activeElement.classList.contains("th-btn")) {
       focusedKey = document.activeElement.dataset.key;
@@ -2922,6 +3720,12 @@ try {
     ACTIVITY_COLUMNS.forEach(function (column) {
       var th = document.createElement("th");
       if (column.type === "num") th.className = "num";
+      if (column.key === "day" || column.key === "project") {
+        th.classList.add("identity", "sticky-col");
+        th.style.left = (column.key === "day" ? 0 : ACTIVITY_STICKY.day) + "px";
+        th.style.width = ACTIVITY_STICKY[column.key] + "px";
+        th.style.minWidth = ACTIVITY_STICKY[column.key] + "px";
+      }
       th.setAttribute("aria-sort", state.activitySortKey === column.key
         ? (state.activitySortDir === "asc" ? "ascending" : "descending") : "none");
       var button = document.createElement("button");
@@ -2942,6 +3746,7 @@ try {
           state.activitySortKey = column.key;
           state.activitySortDir = column.type === "num" ? "desc" : "asc";
         }
+        state.activityPage = 0;
         renderActivity();
       });
       th.appendChild(button);
@@ -2955,13 +3760,19 @@ try {
 
     el.activityTbody.textContent = "";
     var toolTotal = 0;
-    sorted.forEach(function (row) {
+    rows.forEach(function (row) { toolTotal += row.tool_calls; });
+    slice.forEach(function (row) {
       var tr = document.createElement("tr");
-      toolTotal += row.tool_calls;
       ACTIVITY_COLUMNS.forEach(function (column) {
         var td = document.createElement("td");
         var value = row[column.key];
         if (column.type === "num") td.className = "num";
+        if (column.key === "day" || column.key === "project") {
+          td.classList.add("identity", "sticky-col");
+          td.style.left = (column.key === "day" ? 0 : ACTIVITY_STICKY.day) + "px";
+          td.style.width = ACTIVITY_STICKY[column.key] + "px";
+          td.style.minWidth = ACTIVITY_STICKY[column.key] + "px";
+        }
         if (column.key === "project") {
           td.textContent = value === "-" ? "（未标注）" : value;
           td.title = value;
@@ -2980,37 +3791,45 @@ try {
     });
     el.activityRowinfo.textContent = fmtInt(sorted.length) + " 行 · 工具调用 " +
       fmtInt(toolTotal) + " · 会话按天去重";
+    el.activityPageinfo.textContent = slice.length
+      ? "第 " + (paging.page + 1) + " / " + paging.pages + " 页 · " +
+        (paging.start + 1) + "–" + (paging.start + slice.length) + " / " + fmtInt(sorted.length)
+      : "0 / 0";
+    el.activityPrev.disabled = paging.page <= 0;
+    el.activityNext.disabled = paging.page >= paging.pages - 1;
+    el.activityPageSize.value = String(state.activityPageSize);
   }
 
   function renderFooter() {
-    el.footer.textContent = "";
+    var host = el.coverageExtra;
+    host.textContent = "";
     (DATA.notices || []).forEach(function (notice) {
       var line = document.createElement("p");
       line.textContent = notice;
-      el.footer.appendChild(line);
+      host.appendChild(line);
     });
     var classify = document.createElement("p");
     classify.textContent = "Agent 可多选：Token 计费（" +
-      (TOKEN_AGENTS.length ? TOKEN_AGENTS.join(" / ") : "无数据") +
+      (TOKEN_AGENTS.length ? TOKEN_AGENTS.map(sourceLabel).join(" / ") : "无数据") +
       "）与 Credits 计费（" +
-      (CREDIT_AGENTS.length ? CREDIT_AGENTS.join(" / ") : "无数据") +
+      (CREDIT_AGENTS.length ? CREDIT_AGENTS.map(sourceLabel).join(" / ") : "无数据") +
       "）分别按各自单位汇总，同一页面并列展示但不跨单位相加；" +
-      "Qoder 影子 token 与 Trae CN 弱估算归入 est，同样不可相加。";
-    el.footer.appendChild(classify);
+      "Qoder 影子 token 与 Trae 弱估算归入估算，同样不可相加。";
+    host.appendChild(classify);
     if (QODER_TOKEN_ROWS.length) {
       var history = document.createElement("p");
       history.textContent = "Qoder 历史 token 真值 " +
         (qoderTokenBounds[0] + " ~ " + qoderTokenBounds[1]) + "（" +
         fmtInt(sumField(QODER_TOKEN_ROWS, "total")) +
         " tokens）保留在库中，未并入本页；可用 usage report --source qoder 查询。";
-      el.footer.appendChild(history);
+      host.appendChild(history);
     }
     if (CREDIT_ROWS.length) {
       var creditNote = document.createElement("p");
       creditNote.textContent = "Credits 按 Agent 分列：Qoder 为服务端逐请求计费真值，" +
         "Trae CN 为服务端会话级计费真值；不同 Agent 的 credits 不可相加；" +
         "免费 credits 仅 Qoder 提供；Qoder 余额来自本地日志快照。";
-      el.footer.appendChild(creditNote);
+      host.appendChild(creditNote);
     }
     var traeCreditRows = CREDIT_ROWS.filter(function (row) {
       return row.source === "trae-cn";
@@ -3035,38 +3854,41 @@ try {
         ? "项目为 hook 尽力映射"
         : "当前 hook session 与 credits session 无法关联，项目显示 -"));
       traeCreditNote.textContent = bits.join("；") + "。";
-      el.footer.appendChild(traeCreditNote);
+      host.appendChild(traeCreditNote);
     }
     if (EST.length) {
       var estNote = document.createElement("p");
-      estNote.textContent = "Qoder 估算 token 由转录文本与上下文比例推算（" + EST_FACTOR +
+      estNote.textContent = "Qoder 影子估算 token 由转录文本与上下文比例推算（" + EST_FACTOR +
         "，±30~40% 误差），不可与 token 真值或额度相加。";
-      el.footer.appendChild(estNote);
+      host.appendChild(estNote);
     }
     if (TRAE_EST.length) {
       var traeNote = document.createElement("p");
       traeNote.textContent = TRAE_NOTE + "；仅覆盖安装 hook 后的请求，" +
         "误差可能数倍且方向不定，只适合看趋势，不可与 token 真值或额度相加。";
-      el.footer.appendChild(traeNote);
+      host.appendChild(traeNote);
     }
     var scope = document.createElement("p");
     var qoderCreditRows = CREDIT_ROWS.filter(function (row) {
       return row.source === "qoder";
     }).length;
-    scope.textContent = "数据范围 " + (DATA_SINCE || "—") + " ~ " + (DATA_UNTIL || "—") +
-      " · " + fmtInt(ROWS.length) + " 行 token 聚合" +
+    var pageDetailRows = reportRows().length;
+    var pageActivityRows = state.agents.has("qoder") ? filteredActivity().length : 0;
+    scope.textContent = "库内：" + fmtInt(ROWS.length) + " 行 token 聚合" +
       (CREDIT_ROWS.length
-        ? " · " + fmtInt(CREDIT_ROWS.length) + " 行 credits 聚合（Qoder " +
+        ? " / " + fmtInt(CREDIT_ROWS.length) + " 行 credits 聚合（Qoder " +
           fmtInt(qoderCreditRows) + " / Trae CN " + fmtInt(traeCreditRows.length) + "）"
         : "") +
-      (ACTIVITY.length ? " · " + fmtInt(ACTIVITY.length) + " 行活动聚合" : "") +
-      (EST.length ? " · " + fmtInt(EST.length) + " 行估算聚合" : "") +
-      (TRAE_EST.length ? " · " + fmtInt(TRAE_EST.length) + " 行 Trae 弱估算聚合" : "") +
-      " · 页面不发起任何网络请求";
-    el.footer.appendChild(scope);
-    var generated = document.createElement("p");
-    generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
-    el.footer.appendChild(generated);
+      (ACTIVITY.length ? " / " + fmtInt(ACTIVITY.length) + " 行活动聚合" : "") +
+      (EST.length ? " / " + fmtInt(EST.length) + " 行影子估算聚合" : "") +
+      (TRAE_EST.length ? " / " + fmtInt(TRAE_EST.length) + " 行 Trae 弱估算聚合" : "") +
+      "；本页：" + fmtInt(pageDetailRows) + " 行明细 / " + fmtInt(pageActivityRows) +
+      " 行活动（当前筛选）。";
+    host.appendChild(scope);
+    var definitions = document.createElement("p");
+    definitions.textContent = "术语：明细的“记录数”是日志完成记录数；活动的“轮次”是 " +
+      "assistant turn 数，两者口径不同。筛选词会写入本页 URL hash，请勿分享含敏感项目名的链接。";
+    host.appendChild(definitions);
   }
 
   function applyTheme(theme) {
@@ -3094,13 +3916,29 @@ try {
     renderCoverage();
     renderTraeStatus();
     renderReport();
+    persistState();
+    updateChrome();
   }
 
   buildAgentFilter();
   buildControls();
   rebuildDimensionSelects();
+  if (state.focusRange) {
+    var initialFocus = focusBounds();
+    if (initialFocus[0] && initialFocus[1]) {
+      state.start = initialFocus[0];
+      state.end = initialFocus[1];
+      syncDateInputs();
+    } else {
+      state.focusRange = false;
+      el.focusRange.checked = false;
+    }
+  }
+  syncFocusControls();
   applyTheme(document.documentElement.dataset.theme || "light");
   el.activityMetric.value = state.activityMetric;
+  el.activityPageSize.value = String(state.activityPageSize);
+  el.pageSize.value = String(state.pageSize);
   el.dataUntil.textContent = DATA_UNTIL ? "数据截至 " + DATA_UNTIL : "无可用数据";
   el.generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
   renderFooter();
