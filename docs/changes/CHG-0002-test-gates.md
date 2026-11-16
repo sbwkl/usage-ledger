@@ -7,6 +7,8 @@ Owner：wayne
 功能卡：[REQ-0002 测试体系完善](../requirements/REQ-0002-testing.md)
 关联：[REQ-0001](../requirements/REQ-0001-usage-ledger.md)、[ARCHITECTURE.md §9/§11](../ARCHITECTURE.md)
 
+> 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../README.md#开发约定)；本文中的 `AGENTS.md` 均为当时的历史记录。
+
 ## 1. 摘要
 
 为 usage-ledger 建立可执行的合并门禁：GitHub Actions 在 Python 3.11–3.14 + Node 24 上跑快速套件，强制 coverage 分支阈值、skip/expectedFailure 白名单和 AC→测试映射校验，并把快速套件时长锁在 5 秒内。本次同时补齐达到阈值所需的测试；不改变任何产品行为。

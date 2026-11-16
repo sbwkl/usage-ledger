@@ -353,6 +353,46 @@ class QoderCliTest(unittest.TestCase):
         self.assertEqual(store.est_count(), 2)
         store.close()
 
+    def test_incremental_backfill_skips_turn_request_seen_in_transcript(self):
+        self.assertEqual(self.run_cli(["backfill"])[0], 0)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.credit_count(), 2)
+        store.close()
+
+        turn_ts = int(datetime(2026, 10, 1, 12, 5, 5).timestamp() * 1000)
+        conn = sqlite3.connect(self.activity_db)
+        conn.execute("ALTER TABLE chat_session_messages ADD COLUMN message_id TEXT")
+        conn.execute("ALTER TABLE chat_session_messages ADD COLUMN turn_credits REAL")
+        conn.execute(
+            "ALTER TABLE chat_session_messages ADD COLUMN turn_credits_request_set_id TEXT")
+        conn.execute(
+            "INSERT INTO chat_session_messages "
+            "(id, session_id, role, payload_json, created_at, updated_at, message_id, "
+            "turn_credits, turn_credits_request_set_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            ("a3", "s1", "assistant", "{}", turn_ts, None, "m3", 2.5, "r1"))
+        conn.commit()
+        conn.close()
+
+        store = SqliteStore(self.db_path)
+        store.conn.execute(
+            "INSERT INTO usage_credit "
+            "(request_id, source, ts, day, project, model, session_id, credits, "
+            "billable, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            ("qoder-turn:s1:m3", "qoder", turn_ts / 1000.0, "2026-10-01", "proj-x",
+             "qmodel", "s1", 2.5, 1, turn_ts / 1000.0))
+        store.conn.commit()
+        self.assertEqual(store.credit_count(), 3)
+        store.close()
+
+        self.assertEqual(self.run_cli(["backfill"])[0], 0)
+        store = SqliteStore(self.db_path)
+        ids = {row[0] for row in store.conn.execute("SELECT request_id FROM usage_credit")}
+        self.assertEqual(store.credit_count(), 2)
+        self.assertNotIn("qoder-turn:s1:m3", ids)
+        self.assertEqual(store.credits_totals("2026-10-01", "2026-10-01")["qoder"]["credits"],
+                         2.5)
+        store.close()
+
     def test_model_labels_follow_qoder_display_names(self):
         self.run_cli(["backfill"])
         for name in ("Qwen3.7-Plus", "qmodel"):

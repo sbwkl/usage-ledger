@@ -116,6 +116,7 @@ class SourceResult:
     quota: list[QuotaSnapshot] = field(default_factory=list)
     estimates: list[Estimate] = field(default_factory=list)
     transcript_state: dict | None = None
+    superseded_credit_ids: list[str] = field(default_factory=list)
     affected_days: set[str] = field(default_factory=set)
     cursor_ms: int | None = None
     errors: list[tuple[str, str]] = field(default_factory=list)

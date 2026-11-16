@@ -11,8 +11,10 @@ from src.usage_ledger.collectors import (scan_claude, scan_cline, scan_codex,
                                        scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
                                        scan_qoder_tokens, scan_qoder_transcripts,
+                                       scan_qoder_turn_credits,
                                        scan_sqlite_agent, source_signatures)
-from tests.qoder_helpers import (activity_path, create_activity_db, create_token_db,
+from tests.qoder_helpers import (activity_path, create_activity_db,
+                                 create_token_db, create_turn_credit_db,
                                  log_path, quota_line, token_path, transcript_path,
                                  write_jsonl, write_quota_log)
 
@@ -573,6 +575,88 @@ class QoderCreditsTest(unittest.TestCase):
             self.assertEqual(quota.quota, [])
 
 
+class QoderTurnCreditsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        os.makedirs(os.path.join(self.home, ".qoder", "projects"), exist_ok=True)
+        self.db = activity_path(self.home)
+        self.ts = int(datetime(2026, 11, 14, 16, 25, 9).timestamp() * 1000)
+        self.ts2 = int(datetime(2026, 11, 15, 8, 12, 12).timestamp() * 1000)
+        create_turn_credit_db(self.db, [
+            ("assistant:a1", "s1", "assistant", self.ts, 20.39, "r1"),
+            ("assistant:a2", "s1", "assistant", self.ts + 1000, 0.0, "r2"),
+            ("assistant:a3", "s2", "assistant", self.ts2, 1.83, None),
+            ("assistant:a4", "s1", "assistant", self.ts + 2000, None, "r4"),
+            ("assistant:a5", "s1", "assistant", 0, 9.9, "r5"),
+        ], {
+            "s1": {"cwd": "/Users/wayne/workspace/playground", "model": "dfmodel"},
+            "s2": {"cwd": "/private/tmp", "model": None},
+        })
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_turn_credits_are_collected_and_mapped(self):
+        result = scan_qoder_turn_credits(self.db)
+        self.assertTrue(result.available)
+        self.assertEqual(result.errors, [])
+        by_id = {row.request_id: row for row in result.credits}
+        self.assertEqual(set(by_id), {
+            "qoder-turn:s1:assistant:a1",
+            "qoder-turn:s1:assistant:a2",
+            "qoder-turn:s2:assistant:a3",
+        })
+        first = by_id["qoder-turn:s1:assistant:a1"]
+        self.assertEqual((first.day, first.project, first.model, first.credits),
+                         ("2026-11-14", "playground", "dfmodel", 20.39))
+        self.assertTrue(first.billable)
+        self.assertEqual(first.session, "s1")
+        zero = by_id["qoder-turn:s1:assistant:a2"]
+        self.assertEqual(zero.credits, 0.0)
+        self.assertTrue(zero.billable)
+        other = by_id["qoder-turn:s2:assistant:a3"]
+        self.assertEqual((other.day, other.project, other.model),
+                         ("2026-11-15", "tmp", "unknown"))
+        self.assertEqual(result.key_kinds["turn_credits"], 3)
+
+    def test_merge_skips_transcript_request_set_duplicate(self):
+        write_jsonl(transcript_path(self.home), [
+            {"type": "user", "sessionId": "s1", "cwd": "/Users/wayne/workspace/playground",
+             "timestamp": "2026-11-14T16:25:00", "message": {"content": []}},
+            {"type": "assistant", "sessionId": "s1",
+             "cwd": "/Users/wayne/workspace/playground",
+             "timestamp": "2026-11-14T16:25:01",
+             "message": {"model": "dfmodel", "content": [],
+                         "usage": {"request_id": "r1", "credits": 2.5,
+                                   "billable": True, "context_usage_ratio": 0.25}}},
+        ])
+        result = scan_qoder_credit_sources(self.home)
+        by_id = {row.request_id: row for row in result.credits}
+        self.assertIn("r1", by_id)
+        self.assertNotIn("qoder-turn:s1:assistant:a1", by_id)
+        self.assertIn("qoder-turn:s1:assistant:a2", by_id)
+        self.assertEqual(result.key_kinds["turn_credits:duplicate"], 1)
+
+    def test_old_schema_is_ignored(self):
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".qoder", "projects"), exist_ok=True)
+            old_db = activity_path(home)
+            create_activity_db(old_db, [], {})
+            result = scan_qoder_credit_sources(home)
+            self.assertTrue(result.available)
+            self.assertEqual(result.credits, [])
+            self.assertTrue(any("turn_credits" in note for note in result.notes))
+
+    def test_missing_db_is_not_an_error(self):
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".qoder", "projects"), exist_ok=True)
+            result = scan_qoder_credit_sources(home)
+            self.assertTrue(result.available)
+            self.assertEqual(result.credits, [])
+            self.assertTrue(any("turn_credits" in note for note in result.notes))
+
+
 class QoderSignatureTest(unittest.TestCase):
     def test_token_and_activity_signatures_are_independent(self):
         with tempfile.TemporaryDirectory() as home:
@@ -588,6 +672,7 @@ class QoderSignatureTest(unittest.TestCase):
 
             self.assertEqual(second["qoder"], first["qoder"])
             self.assertGreater(second["qoder.activity"], first["qoder.activity"])
+            self.assertGreater(second["qoder.credits"], first["qoder.credits"])
 
 
 if __name__ == "__main__":

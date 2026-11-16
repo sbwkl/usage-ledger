@@ -12,6 +12,8 @@
 
 > 说明：本变更已通过 [PR #2](https://github.com/sbwkl/usage-ledger/pull/2) 合并 `main`（`5b5f987`，2026-11-15）。文档变更没有部署产物，状态保持“已验证”，不标“已发布”。
 
+> 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../README.md#开发约定)；本文保留当时的历史描述与模块范围。
+
 ## 摘要
 
 本变更按工作区轻量需求规范建立 usage-ledger 的固定文档体系：新增功能卡 REQ-0001、变更记录 CHG-0001、两项 ADR 和文档索引，并把 README / ARCHITECTURE / DESIGN / QODER-DESIGN 对齐到 v0.6.0 当前事实。运行时代码、CLI 行为、数据库 schema 与 HTML 报表均无变化；本次只修正文档事实源和既有漂移。验证证据为全量测试、相对链接检查和文档首部 / 目录核对。
@@ -35,7 +37,7 @@
   - [CHG-0001](./CHG-0001-docs-alignment.md)：本变更记录。
   - [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)：两项已做出的架构决策。
   - [docs/README.md](../README.md)：文档索引与阅读顺序。
-  - 项目级 [AGENTS.md](../../AGENTS.md)：把规范落到本项目的文档路径、测试命令、分支流程与下一批 ID。
+  - 项目级 [开发约定](../../README.md#开发约定)（原 `AGENTS.md`）：把规范落到本项目的文档路径、测试命令、分支流程与下一批 ID。
 - 文档修正：
   - README 将 WorkBuddy 改为“未接入（缺样本）”，把“零 UI”改为“零常驻 UI（HTML 为单文件静态报表）”，并修正 `NullStore` 已实现的误导性表述。
   - DESIGN 标注为历史设计稿，指向 REQ-0001 与 ARCHITECTURE。

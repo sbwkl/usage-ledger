@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。159 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。282 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -27,7 +27,7 @@
 | Kilo（CLI + 桌面） | ✅ | |
 | Cline（CLI + Desktop） | ✅ | 读 `~/.cline/data/sessions/**/<id>.messages.json` 中 assistant 的 `metrics`（input/output/cache read/write）；`inputTokens` 已含缓存，采集时扣除 |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
-| Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（服务端每请求计费）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
+| Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（转录逐请求 + 新客户端桌面端 turn_credits，合并去重）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
 | WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 7 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
 | Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
@@ -54,14 +54,15 @@
 
 ```
 usage-ledger/
-├── AGENTS.md          项目级补充约定（继承工作区根 AGENTS.md）
+├── README.md          项目说明、开发约定与测试门禁
 ├── pyproject.toml     Python 包定义与 usage / usage-ledger 两个 CLI 入口
 ├── docs/
 │   ├── README.md        文档索引与阅读顺序（REQ / CHG / ADR / 设计文档）
 │   ├── requirements/
-│   │   └── REQ-0001-usage-ledger.md  功能卡（当前需求事实源）
+│   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
+│   │   └── REQ-0002-testing.md       功能卡（测试体系）
 │   ├── changes/
-│   │   └── CHG-0001-docs-alignment.md 变更记录（本次文档体系对齐）
+│   │   └── CHG-0001 ~ CHG-0013      变更记录（CHG-0004 / CHG-0005 已验证）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
@@ -93,11 +94,24 @@ usage-ledger/
 
 ## 需求、变更与决策
 
-- 当前功能事实源：[docs/requirements/REQ-0001-usage-ledger.md](docs/requirements/REQ-0001-usage-ledger.md)
-- 变更记录：[docs/changes/](docs/changes/)（当前 [CHG-0001](docs/changes/CHG-0001-docs-alignment.md)）
-- 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)
-- 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)
-- 新变更先建 CHG 并登记到 REQ-0001 §8；设计文档只作支撑，不再作为需求事实源。
+- 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0007；[CHG-0004](docs/changes/CHG-0004-html-report-empty-state-and-filters.md) 与 [CHG-0005](docs/changes/CHG-0005-html-report-display-and-interaction.md) 已验证；[CHG-0006](docs/changes/CHG-0006-qoder-turn-credits.md)、[CHG-0007](docs/changes/CHG-0007-trae-report-parity.md) 为本次 Qoder / Trae 展示修复）。
+- 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
+- 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
+- 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0014`、`ADR-0003`。
+- 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
+
+## 开发约定
+
+工作流：`main` 是保护分支，只接受合并；新特性从最新 `main` 切 `feat/<特性名>`，集成走 `sit`；有未提交改动时用 `git worktree` 并行开发；合并 `main` 前必须获得用户同意。工作区根 `AGENTS.md` 的通用流程（TDD、DoR/DoD、需求管理）同时适用；在本工作区内冲突时以根 `AGENTS.md` 为准。项目补充如下：
+
+- 新特性先满足 DoR：REQ / CHG 已更新，AC delta 覆盖正常 / 异常 / 边界，依赖已链接；实现中不得扩大 CHG 范围。
+- 测试命令与门禁见下文「测试与门禁」；完成后运行全量测试，更新 CHG 状态与证据，没有部署 / 监控证据不得标“已发布”。
+- CHG 标“已验证”前证据必须写全：精确命令、环境（OS / Python / Node / commit）、通过 / 失败 / 跳过数、覆盖率与基线变化、日志或 artifact 链接；缺任一项保持“开发中”。
+- 提交信息引用 CHG ID；PR 标题 / 描述引用 CHG 和 REQ。
+- 本地重装：`uv tool install --force --no-cache .`；直接运行：`PYTHONPATH=src python3 -m usage_ledger <cmd>`。
+- 边界：不要顺手修复 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §11 的 P0 / P1 / P2 问题，它们需要独立 CHG；不要逆向厂商私有 API、解密 Trae CN SQLCipher 库，或把估算值 / credits / token 真值相加；默认离线，只有 Trae CN credits 的两条显式前台刷新路径可以联网。
 
 ## 安装
 
@@ -174,7 +188,7 @@ usage --stateless report        # 绕过数据库与自动刷新，直读源
 
 ## Qoder 额度（credits）与估算 token（est）
 
-Qoder 新版客户端不再写 token，但转录 JSONL 保留了每请求的服务端计费字段与上下文比例：
+Qoder 新版客户端不再写 token；转录 JSONL 在 2026-11-13 之前保留每请求的服务端计费字段与上下文比例，之后把每轮金额写入桌面端 `main.sqlite` 的 `chat_session_messages.turn_credits`。两条来源合并后进入同一个 `qoder.credits` 轨：
 
 ```bash
 usage credits                       # 每天 billable credits / 请求数 / 免费 credits / 快照数
@@ -183,7 +197,7 @@ usage est --group-by day,model      # 估算输入/输出 token 与覆盖请求�
 usage est --stateless --group-by model   # 绕过数据库直读转录
 ```
 
-- **credits 是服务端真值**：`billable=true` 的 `usage.credits` 逐请求累计，已与 main.log 配额快照增量核对（+18.16 vs +20、+31.62 vs +32 等）；免费请求单独列出，不计配额。
+- **credits 是服务端真值**：转录中 `billable=true` 的 `usage.credits` 逐请求累计；桌面端 `turn_credits` 按轮累计，`request_id = qoder-turn:<session>:<message>`，两源用 `request_set_id` / `request_id` 精确去重；增量同步会使用库中已持久化的 Qoder request ID 去重，并清理历史上已写入的重复 turn 行。免费请求单独列出，不计配额；`turn_credits` 无免费拆分，按 billable 计入。
 - **余额来自日志快照**：`main.log` 的 `用量响应摘要` 仅保留约一周、`used` 非单调，因此只用于展示当前余额/总量，不用来推导日消耗。
 - **est 是估算值**：`est_input = context_usage_ratio × 200K`，`est_output = 字符数 ÷ 模型系数`（gfmodel 3.85 / dfmodel 4.58 / 其他 3.8）。旧版无 `ratio` 的转录跳过，避免与历史 token 真值重复。
 - **模型显示名**：库里保留 Qoder 内部键（`dfmodel`、`gfmodel` 等），报表 / HTML / `top models` 在展示层映射为界面名
@@ -295,17 +309,18 @@ usage --stateless html --output /tmp/usage.html   # 不读库、不联网；Trae
 - **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder、trae-cn（精确 credits），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个；Trae credits 未同步时 chip 显示 `—` 而不是伪造 0
 - **点击语义**：单击只看该 Agent，再次单击恢复全选；⌘/Ctrl/Shift+单击增减成员；另有“全选”按钮
 - **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
-- **KPI 按 Agent 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder：额度余额/区间 billable/免费/日均；Trae CN：区间 credits/会话数/覆盖天数/模型数）；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令，hook 弱估算只作为 Trae credits 的影子卡片
-- **每日用量**：每个单位一块图——Token 按 Agent 堆叠；credits 单选时单序列/堆叠，Qoder + Trae 同时选中时改为**分组柱状图**，不堆叠成一个总数；Trae 弱估算为 est 输入/输出堆叠
-- **模型 Top 8 / 项目 Top 8**：按主单位（优先 tokens → credits → est）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；估算仅作为同一 Agent 行的次要标注，不会把只有估算的行显示成 `0 credits`
-- **明细**：统一一张表，`Agent` 与 `单位` 列区分来源和口径，不适用该单位的列显示 `—`；Trae credits 计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，可排序、可分页，`行数/各口径合计` 按 Agent 分列
-- **Qoder 影子 est**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子 est、明细追加影子行，始终注明不可与 credits 相加
-- **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」
-- **数据新鲜度**：页首显示 `Trae credits 已刷新 / 离线缓存 / 刷新失败（当前为缓存数据或暂无缓存数据）/ 未同步`，由 `coverage["trae-cn.credits"]` 驱动，不在前端猜测
-- **活动指标**（会话/提示/工具调用/时长）：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算
-- **日期范围**：默认取全部数据覆盖；「全部」为全量，避免把单日/短周期 Agent 的图压成一条线
-- 可排序、可分页的明细表；缺失日期显式标注（图表按 0 显示）；浅色/深色主题记在 `localStorage`
-- 页首覆盖提示与页脚说明 token 真值 / credits / 估算 / 活动的口径边界，Qoder 历史 token 真值（2026-06-01 ~ 09-16）只在说明中披露，不并入本页
+- **KPI 按单位分组**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder 与 Trae CN 共用四卡：区间 credits / 免费 credits / 区间日均 / 最新额度余额，Trae 不提供的免费额度与额度快照显示 `—` 并说明原因）、`估算`；每组卡片连续排列，全页只有一张主卡，空单位合并为一张“无数据”卡；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令
+- **每日用量**：每个单位一块图——Token 按 Agent 堆叠；credits 单选时使用同一图表结构，Qoder 为 billable / 免费双序列，Trae 为 billable 单序列（不伪造免费序列），Qoder + Trae 同时选中时改为**分组柱状图**，不堆叠成一个总数；Qoder 影子估算 / Trae 弱估算默认隐藏，打开“估算”开关后分别显示；控件位于各自面板，影子轴有标题
+- **模型 Top 8 / 项目 Top 8**：按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比统一“相对第一”口径并明示，总计为 0 时显示 `—`
+- **明细**：统一一张表，`Agent` 与 `单位` 列区分来源和口径，不适用该单位的列显示 `—`；默认只显示 token / credits 行，打开“估算”开关后才追加 Qoder 影子估算 / Trae 弱估算行；Token / Credits / 估算列使用分组表头，宽表冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；列宽小于卡片时把剩余宽度分给非冻结数据列，冻结列宽与偏移不变，窄屏仍横向滚动；按天 × Agent × 模型 × 项目聚合，按单位和厂商分列合计（Qoder / Trae credits 不合并，来源专用列在对方合计行显示 `—`），分页支持页大小与跳转，1440px 下无表内纵向滚动
+- **估算开关**：Qoder 影子估算与 Trae 弱估算共用一个“估算”开关，默认关闭；仅选中对应 Agent 且存在估算数据时显示，开关文案与 `aria-label` 随选中 Agent 生成。关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数；打开后分别显示并始终注明不可与 credits 相加
+- **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」；默认隐藏，需打开“估算”开关查看
+- **口径与数据覆盖**：覆盖说明、Trae credits 状态、生成时间与行数口径不再单独占卡片，统一收进页首 `?` 按钮打开的帮助层；默认关闭，点击 / Esc / 点击外部关闭并同步 `aria-expanded`；Trae 状态仅在选中 Trae 时显示，warn/error 时问号按钮带提醒点，页脚区分“库内 / 本页”并随筛选刷新
+- **活动指标**（会话/提示/工具调用/时长）：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期/项目，折叠时跳过重绘
+- **日期范围**：默认取截至数据日的近 7 天；「全部」为全量，避免把单日/短周期 Agent 的图压成一条线；可选“聚焦有数据区间”，默认关闭，关闭时恢复近 7 天
+- **交互**：图表 tooltip 支持鼠标、触控与键盘，点击可固定、Escape / 空白处关闭；向下滚动保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`（URL 优先），布尔开关接受 `true` / `"1"`，无效状态丢弃或夹紧；Top 8 选择模型 / 项目与下拉筛选走同一刷新顺序；主题单独持久化
+- 缺失日期以覆盖率（“数据覆盖 N/M 天”）汇总，图表按 0 显示；筛选行固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件尺寸
+- 页首覆盖块说明 token 真值 / credits / 估算 / 活动的口径边界，Qoder 历史 token 真值（2026-06-01 ~ 09-16）只在说明中披露，不并入本页
 
 数据来自与 `report` 相同的聚合链路（天 × 来源 × 模型 × 项目），所以页面数字与 CLI 报表一致。
 
@@ -325,7 +340,7 @@ Python ≥3.11，**标准库 only**（`sqlite3` / `json` / `argparse` / `plistli
 python3 -m unittest discover -s tests -t .
 ```
 
-前置：Python ≥3.11；Node 24（4 个 HTML/JS 行为测试需要）。Node 缺失时测试会 skip，且 `check_test_policy.py` 会把未授权 skip 判为失败，不会静默变绿。
+前置：Python ≥3.11；Node 24（HTML/JS 行为测试需要）。Node 缺失时测试会 skip，且 `check_test_policy.py` 会把未授权 skip 判为失败，不会静默变绿。
 
 覆盖率与测试策略门禁：
 
@@ -338,7 +353,7 @@ python3 scripts/check_test_policy.py
 python3 scripts/check_ac_map.py
 ```
 
-CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。分支保护的 required checks 需仓库管理员在 GitHub 设置中启用。
+CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
 
 ---
 

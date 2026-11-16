@@ -154,10 +154,12 @@ def _ago(ts: float) -> str:
 
 def _source_results(sources: list[str] | None = None, skip_qoder_tokens: bool = False,
                     activity_cursor_ms: int | None = None,
-                    transcript_state: dict | None = None) -> list[SourceResult]:
+                    transcript_state: dict | None = None,
+                    known_credit_request_ids: set[str] | None = None) -> list[SourceResult]:
     return collect_all(source_home(), sources, skip_qoder_tokens=skip_qoder_tokens,
                        activity_cursor_ms=activity_cursor_ms,
-                       transcript_state=transcript_state)
+                       transcript_state=transcript_state,
+                       known_credit_request_ids=known_credit_request_ids)
 
 
 def _activity_totals(activities: list[Activity]) -> dict:
@@ -263,6 +265,8 @@ def _store_credit_result(store, result: SourceResult, signatures: dict,
     status = _status(result)
     error = "; ".join(msg for _, msg in result.errors[:3]) or None
     n_credit, n_quota = store.upsert_credits(result.credits, result.quota)
+    if result.superseded_credit_ids:
+        store.delete_credits(result.superseded_credit_ids)
     store.upsert_estimates(result.estimates)
     if result.transcript_state is not None:
         store.set_meta("transcript_files",
@@ -317,9 +321,11 @@ def _sync_into(store, sources=None, full=False, since=None, quiet=False) -> dict
         transcript_state = json.loads(state_raw) if state_raw else None
     except ValueError:
         transcript_state = None
+    known_credit_ids = store.credit_request_ids("qoder") if "qoder" in wanted else None
     results = _source_results(wanted, skip_qoder_tokens=skip_tokens,
                               activity_cursor_ms=cursor,
-                              transcript_state=transcript_state)
+                              transcript_state=transcript_state,
+                              known_credit_request_ids=known_credit_ids)
     total = 0
     archived_total = 0
     activity_rows = 0

@@ -102,6 +102,93 @@
       ],
       "R18": [
         "tests.test_cli_output.LiveCommandTest.test_live_reads_sources_without_db_writes"
+      ],
+      "R19": [
+        "tests.test_html.HtmlDateRangeTest"
+      ],
+      "R20": [
+        "tests.test_html.HtmlEmptyStateTest"
+      ],
+      "R21": [
+        "tests.test_html.HtmlEmptyStateTest"
+      ],
+      "R22": [
+        "tests.test_html.HtmlActivityTest"
+      ],
+      "R23": [
+        "tests.test_html.HtmlActivityTest"
+      ],
+      "R24": [
+        "tests.test_html.HtmlFilterLinkageTest"
+      ],
+      "R25": [
+        "tests.test_html.HtmlFilterLinkageTest"
+      ],
+      "R26": [
+        "tests.test_html.HtmlFilterLinkageTest"
+      ],
+      "R27": [
+        "tests.test_html.HtmlTableLayoutTest"
+      ],
+      "R28": [
+        "tests.test_html.HtmlTableLayoutTest"
+      ],
+      "R29": [
+        "tests.test_html.HtmlKpiLayoutTest"
+      ],
+      "R30": [
+        "tests.test_html.HtmlCoverageBlockTest",
+        "tests.test_html.HtmlFocusRangeTest.test_footer_refreshes_after_filters"
+      ],
+      "R31": [
+        "tests.test_html.HtmlTopListTest"
+      ],
+      "R32": [
+        "tests.test_html.HtmlChartControlsTest"
+      ],
+      "R33": [
+        "tests.test_html.HtmlNavigationTest"
+      ],
+      "R34": [
+        "tests.test_html.HtmlChartA11yTest"
+      ],
+      "R35": [
+        "tests.test_html.HtmlActivityPagingTest"
+      ],
+      "R36": [
+        "tests.test_html.HtmlLabelsTest"
+      ],
+      "R37": [
+        "tests.test_html.HtmlStatePersistenceTest",
+        "tests.test_html.HtmlStatePersistenceTest.test_url_boolean_state_round_trip"
+      ],
+      "R38": [
+        "tests.test_html.HtmlFocusRangeTest",
+        "tests.test_html.HtmlFocusRangeTest.test_top8_dimension_pick_refreshes_focus_and_selects"
+      ],
+      "R39": [
+        "tests.test_html.HtmlDateRangeTest"
+      ],
+      "R40": [
+        "tests.test_html.HtmlFilterLayoutTest"
+      ],
+      "R41": [
+        "tests.test_collectors.QoderTurnCreditsTest",
+        "tests.test_collectors.QoderSignatureTest",
+        "tests.test_cli.QoderCliTest.test_incremental_backfill_skips_turn_request_seen_in_transcript"
+      ],
+      "R42": [
+        "tests.test_html.HtmlCreditParityTest",
+        "tests.test_html.HtmlTableLayoutTest"
+      ],
+      "R43": [
+        "tests.test_html.HtmlCreditParityTest"
+      ],
+      "R44": [
+        "tests.test_html.HtmlCoverageBlockTest"
+      ],
+      "R45": [
+        "tests.test_html.HtmlTableLayoutTest"
       ]
     }
   }

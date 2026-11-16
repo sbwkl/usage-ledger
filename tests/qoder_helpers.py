@@ -85,3 +85,27 @@ def create_activity_db(path, messages, sessions):
         "INSERT INTO chat_session_messages VALUES (?,?,?,?,?,?)", rows)
     conn.commit()
     conn.close()
+
+
+def create_turn_credit_db(path, messages, sessions):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE chat_session_messages (session_id TEXT NOT NULL, "
+        "message_id TEXT NOT NULL, role TEXT, payload_json TEXT, "
+        "created_at INTEGER NOT NULL, updated_at INTEGER, "
+        "turn_credits REAL, turn_credits_request_set_id TEXT, "
+        "PRIMARY KEY (session_id, message_id))")
+    conn.execute(
+        "CREATE TABLE chat_sessions (session_id TEXT PRIMARY KEY, cwd TEXT, model TEXT)")
+    for sid, info in sessions.items():
+        conn.execute("INSERT INTO chat_sessions VALUES (?,?,?)",
+                     (sid, info.get("cwd", ""), info.get("model")))
+    for mid, sid, role, created, credits, request_set_id in messages:
+        conn.execute(
+            "INSERT INTO chat_session_messages "
+            "(session_id, message_id, role, payload_json, created_at, updated_at, "
+            "turn_credits, turn_credits_request_set_id) VALUES (?,?,?,?,?,?,?,?)",
+            (sid, mid, role, "{}", created, created, credits, request_set_id))
+    conn.commit()
+    conn.close()
