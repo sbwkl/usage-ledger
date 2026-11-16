@@ -1,7 +1,7 @@
 # CHG-0005 HTML 报表展示与交互优化
 
 类型：CHG
-状态：开发中
+状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
 功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
@@ -32,7 +32,7 @@ Owner：wayne
 
 ## 3. 行为 / AC delta
 
-> 拟新增 REQ-0001 §5 的 R27–R38 与 R40（R39 在 CHG-0004）。与 CHG-0004 相同，当前阶段不写入 REQ §5 与 `tests/ac_map.json`，进入“开发中”时再同步，避免门禁指向不存在的测试。R35 依赖 CHG-0004 R23（活动表排序）；R30 的 chip 口径依赖 CHG-0004 R25；R40 的筛选行布局与 CHG-0004 R24 的选项重建共用同一套状态。
+> R27–R38 与 R40 已写入 [REQ-0001 §5.7](../requirements/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到表内测试类；本节保留为本次 AC delta 记录。R35 依赖 CHG-0004 R23（活动表排序）；R30 的 chip 口径依赖 CHG-0004 R25；R40 的筛选行布局与 CHG-0004 R24 的选项重建共用同一套状态。
 
 ### 3.1 明细表
 
@@ -90,20 +90,24 @@ Owner：wayne
 
 ## 5. 验证与观测
 
-- 自动化测试（实现时新增，`tests/test_html.py` 的 Node harness；最终名称以实现为准）：
-  - `test_table_keeps_identity_columns_and_groups`
-  - `test_table_totals_are_unit_scoped_and_empty_columns_hidden`
-  - `test_kpi_groups_have_single_primary_and_no_ellipsis`
-  - `test_coverage_block_is_single_and_conditional`
-  - `test_top_bars_share_denominator_with_labels`
-  - `test_chart_controls_live_in_their_panels`
-  - `test_sticky_filter_bar_and_back_to_top`
-  - `test_filter_row_width_stable_across_agents`
-  - `test_chart_points_focusable_and_tooltip_clamped`
-  - `test_activity_table_paginates_and_skips_when_collapsed`
-  - `test_display_names_and_formatters_are_consistent`
-  - `test_filters_round_trip_via_url_state`
-  - `test_focus_range_toggle_is_opt_in`
+- 自动化测试（新增 14 个，`tests/test_html.py` 的 Node / 静态 harness）：
+  - `HtmlTableLayoutTest`：`test_table_keeps_identity_columns_and_groups`、`test_table_totals_are_unit_scoped_and_empty_columns_hidden`、`test_table_pagination_page_size_and_jump`
+  - `HtmlKpiLayoutTest`：`test_kpi_groups_have_single_primary_and_no_ellipsis`
+  - `HtmlCoverageBlockTest`：`test_coverage_block_is_single_and_conditional`
+  - `HtmlTopListTest`：`test_top_bars_share_denominator_with_labels`
+  - `HtmlChartControlsTest`：`test_chart_controls_live_in_their_panels`
+  - `HtmlNavigationTest`：`test_sticky_filter_bar_and_back_to_top`
+  - `HtmlChartA11yTest`：`test_chart_points_focusable_and_tooltip_clamped`
+  - `HtmlActivityPagingTest`：`test_activity_table_paginates_and_skips_when_collapsed`
+  - `HtmlLabelsTest`：`test_display_names_and_formatters_are_consistent`
+  - `HtmlStatePersistenceTest`：`test_filters_round_trip_via_url_state`
+  - `HtmlFocusRangeTest`：`test_focus_range_toggle_is_opt_in`
+  - `HtmlFilterLayoutTest`：`test_filter_row_width_stable_across_agents`
+- 门禁结果（2026-11-16，`feat/html-report-ux`，worktree）：
+  - `python3 -m unittest discover -s tests -t .`：269 tests，OK，0 skip
+  - `python3 scripts/check_test_policy.py`：269 tests，0 failures / 0 errors / 0 skips；fast suite 1.547s（budget 5.0s）
+  - `python3 scripts/check_ac_map.py`：REQ-0001 40 criteria / 87 mapped identifiers，passed
+  - 分支覆盖率：TOTAL 93.6%（threshold 85.0%，baseline 80.9%），各模块均通过 `check_coverage.py`
 - 手工验收（Chrome 1440×900 与 500×900；条件允许补 Safari）：
   1. 横向滚动明细表：日期 / Agent / 模型 / 项目保持可见；Token / Credits / Est 分组表头清晰；合计行按单位 / 厂商分列，不出现跨单位合计。
   2. 500px：KPI 值不被省略号截断；没有孤行；额度卡是复合卡而不是第二张主卡。
@@ -117,8 +121,21 @@ Owner：wayne
   10. 设置日期 + Agent + 模型 + 搜索 + 排序 + 页码后刷新：状态恢复；把 URL 发给另一个本地报告（不同 payload）时，无效状态被丢弃而不是报错；URL / localStorage 中不含用量数值。
   11. 打开“聚焦有数据区间”：范围收缩到有数据的最早 / 最晚日，关闭后恢复默认近 7 天（R39）。
   12. 记录“模型 / 项目 / 搜索”三个控件的 bounding box（1440 与 500）；依次切换 qoder、codex、全选、trae-cn；控件宽度、位置和换行保持不变；长模型 / 项目名以省略号显示，下拉展开仍能看到全名；搜索框不跳行。
-- 回归：`python3 -m unittest discover -s tests -t .`；`python3 scripts/check_test_policy.py`；`python3 scripts/check_ac_map.py`；覆盖率按 [README.md 的测试与门禁](../../README.md#测试与门禁)。实现后附通过数、跳过数、覆盖率变化与 commit。
-- 观测：HTML 无外部请求、CSP 不变；console 零错误；1440 / 500 截图附到 PR 或 CHG；Safari 如有差异记录为未决项。
+  实测（`PYTHONPATH=src python3 -m usage_ledger html --offline --output /tmp/usage-report-chg5.html`，数据截至 2026-11-16）：
+  1. 1440px：明细表宽 1716px、容器 1238px；横向滚动 600px 后日期 / Agent / 模型 / 项目表头 x 坐标保持 102 / 198 / 378 / 548；组表头为 Token / Credits / 估算；`cache_write` 等全空列隐藏；4 行合计分别为 Token、Qoder credits、Trae CN credits、Trae 弱估算；页大小 25 时 14 页，跳转到第 2 页显示 26–50；表内 clientHeight = scrollHeight = 1553（无第二层纵向滚动）。
+  2. 500px：KPI 两列，Token 8 卡、Qoder/Trae 各 4 卡均无单卡孤行；额度值 `2,540 credits` 完整显示；表内允许纵向滚动（clientHeight 486 / scrollHeight 1553），模型 / 项目不再冻结但可横向到达。
+  3. KPI 实测 3 组 / 17 卡 / 1 张主卡，单卡宽度 309px；估算组只有一张卡时占满整行（1272px）。
+  4. Top 8 第一名显示 `100.0%`，标签为“相对第一 · 按 tokens 排序 · 当前区间”；总计为 0 的百分比返回 `—`。
+  5. 控件位于所属面板：Token 指标在 Token 面板、影子开关在 Credits 面板、估算面板标题为“Trae 弱估算”；打开影子后 credits 图出现“影子估算（右轴）”标题与图例。
+  6. 滚动 1400px 后 `filter-shell` 带 `sticky-enabled stuck`，回到顶部按钮显示；500px 下筛选折叠为按钮 / 抽屉，Escape 关闭。
+  7. 键盘聚焦图表 hit：`tabindex=0`、`aria-label` 含日期与各序列值，tooltip 在容器内；Escape / 失焦隐藏。点击 hit 固定 tooltip，点击图表空白关闭。
+  8. 活动表展开后 30 行/页，共 5 页（147 行），下一页显示 31–60；折叠时 `renderActivity` 直接返回；日期 / 项目列 sticky。
+  9. 页面可见文本不再出现原始 `trae-cn` / `turns` / `used` / `est` 标签；模型键 `trae-cn` 显示为 `Trae CN`；“记录数”与“轮次”在覆盖块中定义。仅后端 notice 中的 CLI 命令保留 `--source trae-cn` 参数。
+  10. URL hash 恢复日期、Agent、模型、搜索、指标、排序、页码与页大小；无效 Agent / 日期 / 模型 / 页大小被丢弃或夹紧；hash 中无 token / credits / quota / session 数值。
+  11. “聚焦有数据区间”默认关闭；打开后范围为 2026-06-05 ~ 2026-11-16，关闭恢复默认 2026-11-10 ~ 2026-11-16；无数据时开关禁用并提示“无可聚焦的数据区间”。
+  12. 1440px 下依次切换 Qoder / Codex / 全选 / Trae CN，模型 / 项目 / 搜索控件 bounding box 均为 `(132,161,189,34)` / `(366,161,189,34)` / `(600,160,739,36)`；500px 抽屉内切换同样不变。
+- 回归：上述门禁命令全部通过；`git diff --check` 无空白错误。
+- 观测：HTML 无外部请求、CSP 不变；Chrome DOM 注入检查无 JS error；Safari 未实测，列为未决项。
 
 ## 6. 回滚方案
 
@@ -145,7 +162,7 @@ Owner：wayne
 - 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) §3.6、R15。
 - 同批正确性修复：[CHG-0004](CHG-0004-html-report-empty-state-and-filters.md)。
 - 实测报告：`usage html` 生成于 `2026-11-15T08:00:38+08:00`；payload 统计与视口测量见 §2。
-- commit / PR / release：待实现。
+- commit：`ebc48fe`（实现 + 测试）；`sit` / `main` 尚未合并，合并 `main` 需用户明确同意。
 
 ## 9. 变更记录
 
@@ -155,3 +172,4 @@ Owner：wayne
 | 提议（补充） | wayne（待评审） | 2026-11-16 用户补充：切换 Agent 时筛选行宽度稳定（R40）；默认范围随 CHG-0004 R39 改为近 7 天 |
 | 就绪 | wayne | 2026-11-16 用户审核通过 CHG-0005 范围 |
 | 开发中 | wayne | 2026-11-16 在 `feat/html-report-ux` 开始实现 |
+| 已验证 | wayne | 2026-11-16 自动化 269 tests / 0 skip、覆盖率 93.6%、AC map 40 criteria 通过；Chrome 1440 / 500 手工验收 R27–R38、R40；commit `ebc48fe` |

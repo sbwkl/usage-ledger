@@ -139,7 +139,7 @@
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
 | `src/usage_ledger/cli.py` | 1956 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
-| `src/usage_ledger/html_report.py` | 2843 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组 |
+| `src/usage_ledger/html_report.py` | 3950 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
@@ -491,14 +491,16 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 安全：payload 中 `<` 转义为 `\u003c`；CSP `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:` → **页面零外部请求**；JWT/prompt/预览不进入 payload。
 - 客户端职责：
   - 顶部只有一个 Agent 多选区（可同时选 token 计费与 credits 计费 Agent，至少保留一个），不做页面分组；单击只看、再次单击恢复全选，⌘/Ctrl/Shift+单击增减成员，另有“全选”按钮；无数据 credit chip 显示 `—`；
-  - 同一页按单位并列渲染：tokens / credits / est 各自汇总，**不跨单位相加**；多单位时 KPI、图表、Top 8、明细均按单位分区或并列；
+  - 同一页按单位并列渲染：tokens / credits / est 各自汇总，**不跨单位相加**；KPI 按单位分组，整页只有一张主卡，空单位合并为一张“无数据”卡；
   - credits 按 Agent 分块：Qoder（逐请求）、Trae CN（会话级）；没有 Trae 缓存时按本次刷新结果显示“未同步”或“刷新失败 + 暂无缓存数据”卡片与刷新命令；
-  - 每日用量按单位各一块图；Qoder + Trae credits 同时选中时用分组柱，不堆叠；Top 8 按 Agent 分组排名，估算只作次要标注，不产生 `0 credits` 假行；
-  - 明细为统一表，`Agent` 与 `单位` 列区分来源，不适用单位显示 `—`；Trae credits 计数叫“会话”，Qoder 叫“请求”；`行数/各口径合计` 按 Agent 分列；
-  - 「影子：Qoder 估算 token」默认关闭，仅在选中 qoder 时可用；Trae 弱估算作为 Trae 的 est 面板/影子卡片；
-  - 页首数据新鲜度由 `coverage["trae-cn.credits"]` 驱动：已刷新 / 离线缓存 / 刷新失败回退（区分有/无缓存）/ 未同步；
-  - 日期范围默认取全部数据覆盖；>200 天自动按周聚合；
-  - 活动指标仅选中 qoder 时显示，折叠在页底，与 credits/token 明确隔离；浅/深色主题（`localStorage`）。
+  - 每日用量按单位各一块图，控件放在所属面板；Qoder + Trae credits 同时选中时用分组柱，不堆叠；Top 8 按 Agent 分组排名，条形与百分比统一“相对第一”口径并明示；估算只作次要标注，不产生 `0 credits` 假行；
+  - 明细为统一表，`Agent` 与 `单位` 列区分来源，不适用单位显示 `—`；Token / Credits / 估算列使用分组表头，宽表冻结标识列，按单位和厂商分别合计，隐藏当前筛选下全空列，分页支持页大小与跳转；
+  - 「影子：Qoder 估算 token」默认关闭，仅在选中 qoder 时可用；Trae 弱估算作为 Trae 的估算面板/影子卡片；
+  - 覆盖说明、Trae 数据新鲜度、生成时间与“库内 / 本页”行数合并为可折叠“口径与数据覆盖”块；Trae 状态仅选中 Trae 时渲染，由 `coverage["trae-cn.credits"]` 驱动；
+  - 日期范围默认取截至数据日的近 7 天，保留“全部”；可选“聚焦有数据区间”，默认关闭；>200 天自动按周聚合；
+  - 活动指标仅选中 qoder 时显示，折叠在页底，展开后分页并冻结日期/项目，折叠时跳过重绘；
+  - 图表 tooltip 支持指针 / 触控 / 键盘，点击固定、Escape / 空白处关闭；桌面滚动后保留紧凑粘性筛选条，≤640px 折叠为筛选抽屉并支持 Escape；
+  - 筛选 / 排序 / 页码写入 URL hash 与 `localStorage`（URL 优先），无效状态丢弃或夹紧，不写入用量数值；浅/深色主题单独持久化。
 - payload 结构：
 
 ```json
@@ -609,7 +611,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-159 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+269 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|

@@ -235,15 +235,16 @@ usage est --source trae-cn --group-by day,model
 
 - **文件形态**：单文件 HTML，CSS / JS / SVG 全内联，CSP `default-src 'none'`，无外部请求；可离线分发或归档。
 - **Agent 多选**：页面顶部唯一选择区，列出 claude、codex、opencode、kilo、cline、qoder、trae-cn，chip 上带各自汇总值；至少保留一个。单击只看该 Agent，再次单击恢复全选；⌘ / Ctrl / Shift+单击增减成员；另有“全选”按钮。
-- **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算（est）` 按单位分块；Qoder credits 显示余额 / 区间 billable / 免费 / 日均；Trae credits 显示区间 credits / 会话数 / 覆盖天数 / 模型数；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
+- **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算` 按单位分组；每组内卡片保持连续，整个 KPI 区只有一张主卡；区间无行的单位合并为一张“无数据”卡，不铺零卡；500px 下数值完整显示、不省略。Qoder credits 显示余额 / 区间 billable / 免费 / 日均；Trae credits 显示区间 credits / 会话数 / 覆盖天数 / 模型数；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
 - **每日图表**：Token 按 Agent 堆叠；credits 单选时单序列 / 堆叠，Qoder + Trae 同时选中时改为分组柱状图，不堆叠成一个总数；Trae 弱估算显示 est 输入 / 输出堆叠。
-- **Top 8**：模型与项目各 Top 8，按主单位（优先 tokens → credits → est）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；估算只作为同一 Agent 行的次要标注，不把只有估算的行显示成 `0 credits`。
-- **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，可排序、可分页；行数和各口径合计按 Agent 分列。
+- **Top 8**：模型与项目各 Top 8，按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比同用“相对第一”口径并明示，排序标签写明单位与当前区间，总计为 0 时百分比显示 `—`；估算只作为同一 Agent 行的次要标注，不把只有估算的行显示成 `0 credits`。
+- **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，Token / Credits / 估算列使用分组表头。宽于容器时冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按单位和厂商分别显示合计行，Qoder 与 Trae credits 不合并；分页提供页大小与直接跳转，1440px 下不使用表内纵向滚动。
 - **Qoder 影子 est**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子 est、明细追加影子行，始终注明不可与 credits 相加。
 - **Trae 弱估算**：固定标注“弱估算（hook 可见内容，不含系统提示 / 工具定义）”与“不可与任何真值或额度相加”。
-- **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算。
-- **数据新鲜度**：页首显示 Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步），由后端 `coverage["trae-cn.credits"]` 驱动；不在前端猜测。
-- **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；浅色 / 深色主题记在 `localStorage`。见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)。
+- **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期 / 项目，折叠时跳过重绘，只挂载当前页行。
+- **数据新鲜度**：Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步）放入页首可折叠的“口径与数据覆盖”块，且仅选中 Trae 时渲染；由后端 `coverage["trae-cn.credits"]` 驱动，不在前端猜测。
+- **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；可选“聚焦有数据区间”默认关闭，关闭时恢复近 7 天。见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)。
+- **展示与交互**：覆盖说明、Trae 状态、生成时间与行数口径合并为一个可折叠块，生成时间只出现一次；筛选行使用固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件的宽高与换行；图表 tooltip 支持触控与键盘；页面滚动后保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`，URL 优先，无效状态丢弃或夹紧；主题仍单独持久化。见 [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md)。
 - **快照属性**：HTML 是生成时快照，再次打开旧文件不会更新；生成过程中可能按联网规则刷新 Trae credits。
 
 ### 3.7 新鲜度与调度
@@ -432,11 +433,11 @@ usage est --source trae-cn --group-by day,model
 | CHG-0001 | 需求 / 变更文档体系对齐 | 已验证 | [CHG-0001](../changes/CHG-0001-docs-alignment.md) |
 | CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../changes/CHG-0003-docs-status.md) |
 | CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) |
-| CHG-0005 | HTML 报表展示与交互优化 | 开发中 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
+| CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
-> 2026-11-16：CHG-0004 已实现并验证（R19–R26、R39 写入 §5.6 与 `tests/ac_map.json`，commit `530d311`）；CHG-0005（R27–R38、R40）仍为“开发中”。
+> 2026-11-16：CHG-0004（R19–R26、R39，commit `530d311`）与 CHG-0005（R27–R38、R40，commit `ebc48fe`）均已实现并验证；AC 同步写入 §5.6 / §5.7 与 `tests/ac_map.json`。
 
 ---
 
