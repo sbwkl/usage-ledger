@@ -178,6 +178,9 @@
       ],
       "R43": [
         "tests.test_html.HtmlCreditParityTest"
+      ],
+      "R44": [
+        "tests.test_html.HtmlCoverageBlockTest"
       ]
     }
   }

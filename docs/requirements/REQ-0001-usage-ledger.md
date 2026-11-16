@@ -242,9 +242,9 @@ usage est --source trae-cn --group-by day,model
 - **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，Token / Credits / 估算列使用分组表头。默认只显示 token / credits 行；Qoder 影子估算与 Trae 弱估算由同一个“估算”开关控制，打开后才追加估算行。宽于容器时冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按单位和厂商分别显示合计行，Qoder 与 Trae credits 不合并；分页提供页大小与直接跳转，1440px 下不使用表内纵向滚动。
 - **估算开关**：Qoder 影子估算与 Trae 弱估算默认关闭，仅在选中对应 Agent 且存在估算数据时显示开关；开关文案与 `aria-label` 随选中 Agent 生成。关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数；打开后 Qoder 显示影子 est、Trae 显示弱估算，始终注明不可与 credits 相加。
 - **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期 / 项目，折叠时跳过重绘，只挂载当前页行。Trae 没有活动数据时不渲染空活动区。
-- **数据新鲜度**：Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步）放入页首可折叠的“口径与数据覆盖”块，且仅选中 Trae 时渲染；由后端 `coverage["trae-cn.credits"]` 驱动，不在前端猜测。
+- **数据新鲜度**：Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步）放入页首问号按钮打开的“口径与数据覆盖”说明层，且仅选中 Trae 时渲染；由后端 `coverage["trae-cn.credits"]` 驱动，不在前端猜测；有 warn / error 时问号按钮显示提醒点。
 - **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；可选“聚焦有数据区间”默认关闭，关闭时恢复近 7 天。见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)。
-- **展示与交互**：覆盖说明、Trae 状态、生成时间与行数口径合并为一个可折叠块，生成时间只出现一次；筛选行使用固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件的宽高与换行；图表 tooltip 支持触控与键盘；页面滚动后保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`，URL 优先，无效状态丢弃或夹紧；主题仍单独持久化。见 [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md)。
+- **展示与交互**：覆盖说明、Trae 状态、生成时间与行数口径不再单独占据报告卡片，统一收进页首问号按钮（`?`）打开的说明层；生成时间只出现一次。筛选行使用固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件的宽高与换行；图表 tooltip 支持触控与键盘；页面滚动后保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`，URL 优先，无效状态丢弃或夹紧；主题仍单独持久化。见 [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md)、[CHG-0008](../changes/CHG-0008-coverage-help-popover.md)。
 - **快照属性**：HTML 是生成时快照，再次打开旧文件不会更新；生成过程中可能按联网规则刷新 Trae credits。
 
 ### 3.7 新鲜度与调度
@@ -362,7 +362,7 @@ usage est --source trae-cn --group-by day,model
 | R27 | When the detail table is wider than its container, the system shall keep the identity columns visible while scrolling horizontally, and group token / credits / est columns under labeled headers; it shall remain one table. At widths above 640px, day / agent / model / project are frozen; at 640px and below, day / agent are frozen and model / project remain reachable by horizontal scroll. | `tests.test_html.HtmlTableLayoutTest` |
 | R28 | The detail table shall show a totals row per unit and per vendor (Qoder credits and Trae credits shall not be summed together), hide columns that are empty for all rows in the current filter, and prevent cross-unit totals. Pagination shall offer page size and direct page jump; at 1440px the table shall not add a second vertical scroll container (pagination replaces the inner vertical scroll; at ≤640 an inner scroll is allowed). | `tests.test_html.HtmlTableLayoutTest` |
 | R29 | The KPI area shall group cards by unit (Token / Credits / Est), use exactly one primary card, keep each unit’s cards together, avoid orphan rows at 1440px and 500px, and render values fully at 500px without ellipsis. A unit with no rows in the current range shall collapse into one “无数据” card instead of N zero cards. | `tests.test_html.HtmlKpiLayoutTest` |
-| R30 | The system shall consolidate coverage, Trae status, generation time, and row-count explanations into one collapsible “口径与数据覆盖” block; Trae status shall be shown only when trae-cn is selected; the Qoder shadow range shall be shown only when the shadow toggle is on or explicitly marked “未计入”; footer counts shall distinguish “库内 / 本页”; generation time shall appear once. Missing-day hints shall be summarized as coverage (“活跃 N/M 天”), not a 10-date list. | `tests.test_html.HtmlCoverageBlockTest` |
+| R30 | The system shall consolidate coverage, Trae status, generation time, and row-count explanations into one help panel opened from a question-mark icon, not a standalone report block; Trae status shall be shown only when trae-cn is selected; the Qoder shadow range shall be shown only when the shadow toggle is on or explicitly marked “未计入”; footer counts shall distinguish “库内 / 本页”; generation time shall appear once. Missing-day hints shall be summarized as coverage (“活跃 N/M 天”), not a 10-date list. | `tests.test_html.HtmlCoverageBlockTest` |
 | R31 | In Top 8, bar length and percentage shall use the same denominator, or the label shall explicitly say “相对第一”; the sort label shall name the active unit and scope (“按 tokens 排序 · 当前区间”). If the grand total is 0, percentages shall show `—` rather than `0%` / `NaN`. | `tests.test_html.HtmlTopListTest` |
 | R32 | The token metric selector shall live in the Token panel, the Qoder shadow toggle in the Credits panel, the estimate panel shall be labeled “Trae 弱估算”, and the shadow axis shall have a title; each control shall have an accessible name and its scope shall be visible. If shadow data is unavailable, the toggle shall be hidden or disabled with a reason; if a panel has no rows, it shall show one empty card rather than a blank chart. | `tests.test_html.HtmlChartControlsTest` |
 | R33 | While the user scrolls past the top bar, a compact sticky filter bar (date, agents, search) shall remain available, with a back-to-top control; at ≤640px it shall collapse into a button / sheet that can be dismissed with Escape, and shall not cover content when the page is short. | `tests.test_html.HtmlNavigationTest` |
@@ -374,6 +374,7 @@ usage est --source trae-cn --group-by day,model
 | R40 | When the agent selection changes, the system shall keep the model / project / search row’s control widths and positions stable; select controls shall use fixed widths (or fixed flex-basis) so option changes do not resize the row, long values shall truncate with ellipsis while the dropdown still shows full text, and the search input shall keep a stable width. At ≤640px the row may wrap at fixed breakpoints, but switching agents shall not change the wrapping or order. | `tests.test_html.HtmlFilterLayoutTest` |
 | R42 | While a credits agent is selected, the system shall render the same four-card credit KPI sequence for Qoder and Trae CN — `区间 credits` (the only primary card), `免费 credits`, `区间日均`, `最新额度余额` — use the same credits chart container and a credit-only detail table by default; fields Trae CN does not provide (free credits, quota snapshot) shall show `—` with a reason, and Qoder / Trae credits shall never be summed. | `tests.test_html.HtmlCreditParityTest` |
 | R43 | The HTML report shall hide both Qoder shadow estimates and Trae CN weak estimates by default and expose them through one `估算` switch whose label and `aria-label` follow the selected agents; while off, estimates shall not appear in KPIs, charts, Top 8, the detail table, or footer page counts; while on, each source’s estimates shall remain separately labeled and shall not be added to credits or token truth. | `tests.test_html.HtmlCreditParityTest` |
+| R44 | While explanatory/coverage content is closed, it shall not occupy a standalone card in the report flow; a question-mark button shall open it, `aria-expanded` shall reflect the state, Escape or an outside click shall close it, Escape / close shall return focus to the button, and the button shall show a warning dot when Trae status is warn or error. At ≤640px the panel may use a fixed sheet layout. | `tests.test_html.HtmlCoverageBlockTest` |
 
 ---
 
@@ -439,12 +440,15 @@ usage est --source trae-cn --group-by day,model
 | CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
 | CHG-0006 | 补齐 Qoder 桌面端 turn credits | 已验证 | [CHG-0006](../changes/CHG-0006-qoder-turn-credits.md) |
 | CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 已验证 | [CHG-0007](../changes/CHG-0007-trae-report-parity.md) |
+| CHG-0008 | 口径说明改为问号帮助层 | 已验证 | [CHG-0008](../changes/CHG-0008-coverage-help-popover.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
 > 2026-11-16：CHG-0004（R19–R26、R39，commit `530d311`）与 CHG-0005（R27–R38、R40，commit `ebc48fe`）均已实现并验证；AC 同步写入 §5.6 / §5.7 与 `tests/ac_map.json`。
 >
 > 2026-11-16：CHG-0006（R9 / R41，commit `735d00a`）与 CHG-0007（R42 / R43，commit `735d00a`）已实现并验证：276 tests / 0 skip、覆盖率 93.3%、AC map 43 criteria / 91 identifiers；Qoder 11-14..16 credits 与 Trae 默认页结构均已实测。
+>
+> 2026-11-16：CHG-0008（R30 / R44）把独立“口径与数据覆盖”卡片收进页首问号帮助层；277 tests / 0 skip、覆盖率 93.3%、AC map 44 criteria / 92 identifiers。
 
 ---
 

@@ -182,13 +182,16 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .kpi-value{font-size:clamp(19px,2vw,27px);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.3px;margin-top:2px;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 .kpi-sub{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 .kpi.credit .kpi-sub{white-space:normal;overflow:visible}
-.coverage-block{padding:0}
-.coverage-block summary{cursor:pointer;padding:13px 16px;font-size:13.5px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
-.coverage-block summary::-webkit-details-marker{display:none}
-.coverage-block summary::before{content:"▸";color:var(--muted);transition:transform .15s}
-.coverage-block[open] summary::before{transform:rotate(90deg)}
-.coverage-body{display:flex;flex-direction:column;gap:8px;padding:0 16px 16px}
-.coverage-body p{margin:0}
+.help-wrap{position:relative}
+.help-toggle{position:relative;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface-2);color:var(--muted);font:600 14px/1 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer;display:grid;place-items:center;padding:0}
+.help-toggle:hover,.help-toggle[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.help-toggle.warn::after{content:"";position:absolute;top:-2px;right:-2px;width:7px;height:7px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--surface)}
+.help-panel{position:absolute;right:0;top:calc(100% + 10px);width:min(560px,calc(100vw - 32px));max-height:min(72vh,640px);overflow:auto;z-index:60;padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--surface);box-shadow:0 12px 36px rgba(16,24,40,.18)}
+.help-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.help-head h2{font-size:14px;margin:0}
+.help-body{display:flex;flex-direction:column;gap:8px}
+.help-body p{margin:0}
+.help-body #generated{border-top:1px solid var(--border);padding-top:8px;margin-top:2px}
 .coverage{display:block;margin:0;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft);color:var(--text);font-size:12.5px}
 .trae-status{border-color:rgba(13,148,136,.45);background:rgba(13,148,136,.08);margin-top:-4px}
 .trae-status.warn{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.1)}
@@ -329,6 +332,8 @@ footer p{margin:3px 0}
 @media (max-width:640px){
   main{padding:8px 14px 32px}
   .topbar{padding:16px 14px 8px}
+  .help-wrap{position:static}
+  .help-panel{position:fixed;left:14px;right:14px;top:64px;width:auto;max-height:calc(100vh - 84px);z-index:80}
   .filter-shell.sticky-enabled{position:static;background:none;padding-top:0}
   .filter-toggle{display:inline-flex;position:sticky;top:8px;left:auto;bottom:auto;align-self:flex-start;z-index:45;box-shadow:var(--shadow);background:var(--surface)}
   .filter-shell{display:none}
@@ -363,6 +368,24 @@ try {
   </div>
   <div class="top-actions">
     <span id="data-until" class="muted"></span>
+    <div class="help-wrap">
+      <button id="help-toggle" class="help-toggle" type="button"
+              aria-controls="help-panel" aria-expanded="false"
+              aria-label="查看口径与数据覆盖" title="查看口径与数据覆盖">?</button>
+      <div id="help-panel" class="help-panel" role="dialog" aria-modal="false"
+           aria-labelledby="help-title" hidden>
+        <div class="help-head">
+          <h2 id="help-title">口径与数据覆盖</h2>
+          <button id="help-close" class="btn ghost small" type="button">关闭</button>
+        </div>
+        <div class="help-body">
+          <p id="coverage" class="coverage" hidden></p>
+          <p id="trae-status" class="coverage trae-status" hidden></p>
+          <div id="coverage-extra"></div>
+          <p id="generated" class="muted"></p>
+        </div>
+      </div>
+    </div>
     <button id="theme" class="btn ghost small" type="button">深色模式</button>
   </div>
 </header>
@@ -394,16 +417,6 @@ try {
 
     <nav class="card agent-nav" id="agent-nav" aria-label="Agent 选择"></nav>
   </div>
-
-  <details class="card coverage-block" id="coverage-block">
-    <summary>口径与数据覆盖</summary>
-    <div class="coverage-body">
-      <p id="coverage" class="coverage" hidden></p>
-      <p id="trae-status" class="coverage trae-status" hidden></p>
-      <div id="coverage-extra"></div>
-      <p id="generated" class="muted"></p>
-    </div>
-  </details>
 
   <section class="agent-page" id="report-page" aria-label="用量报告">
     <section class="card empty-state" id="empty-state" hidden>
@@ -891,7 +904,8 @@ try {
     sheetClose: $("#sheet-close"), backTop: $("#back-top"),
     model: $("#model"), project: $("#project"), q: $("#q"),
     nav: $("#agent-nav"), coverage: $("#coverage"), traeStatus: $("#trae-status"),
-    coverageBlock: $("#coverage-block"), coverageExtra: $("#coverage-extra"),
+    coverageExtra: $("#coverage-extra"),
+    helpToggle: $("#help-toggle"), helpPanel: $("#help-panel"), helpClose: $("#help-close"),
     dataUntil: $("#data-until"),
     emptyState: $("#empty-state"), emptyTitle: $("#empty-title"),
     emptyMessage: $("#empty-message"), emptyQuota: $("#empty-quota"),
@@ -1493,6 +1507,24 @@ try {
     }
   }
 
+  function setHelpPanel(open, focus) {
+    el.helpPanel.hidden = !open;
+    el.helpToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (focus) {
+      (open ? el.helpClose : el.helpToggle).focus({ preventScroll: true });
+    }
+  }
+
+  function syncHelpAlert() {
+    var node = el.traeStatus;
+    var warn = node && !node.hidden &&
+      (node.classList.contains("warn") || node.classList.contains("error"));
+    var title = warn ? "查看口径与数据覆盖（有数据提醒）" : "查看口径与数据覆盖";
+    el.helpToggle.classList.toggle("warn", !!warn);
+    el.helpToggle.title = title;
+    el.helpToggle.setAttribute("aria-label", title);
+  }
+
   function buildControls() {
     el.start.min = DATA_SINCE || "";
     el.start.max = PICK_MAX;
@@ -1630,13 +1662,25 @@ try {
       openFilterSheet(!el.filterShell.classList.contains("sheet"));
     });
     el.sheetClose.addEventListener("click", function () { openFilterSheet(false); });
+    el.helpToggle.addEventListener("click", function () {
+      setHelpPanel(el.helpPanel.hidden, true);
+    });
+    el.helpClose.addEventListener("click", function () { setHelpPanel(false, true); });
+    document.addEventListener("click", function (event) {
+      if (el.helpPanel.hidden) return;
+      if (el.helpPanel.contains(event.target) || el.helpToggle.contains(event.target)) return;
+      setHelpPanel(false, false);
+    });
     el.backTop.addEventListener("click", function () {
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
     document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && el.filterShell.classList.contains("sheet")) {
-        openFilterSheet(false);
+      if (event.key !== "Escape") return;
+      if (!el.helpPanel.hidden) {
+        setHelpPanel(false, true);
+        return;
       }
+      if (el.filterShell.classList.contains("sheet")) openFilterSheet(false);
     });
     window.addEventListener("scroll", updateChrome, { passive: true });
     updateChrome();
@@ -3946,6 +3990,7 @@ try {
     syncAgentTotals();
     renderCoverage();
     renderTraeStatus();
+    syncHelpAlert();
     renderReport();
     persistState();
     updateChrome();

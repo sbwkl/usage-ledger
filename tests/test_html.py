@@ -1087,14 +1087,63 @@ class HtmlCoverageBlockTest(unittest.TestCase):
         cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
                                              None, None, []))
 
-    def test_coverage_block_is_single_and_conditional(self):
-        self.assertIn('id="coverage-block"', self.html)
+    def test_help_panel_replaces_standalone_coverage_block(self):
+        self.assertIn('id="help-toggle"', self.html)
+        self.assertIn('id="help-panel"', self.html)
         self.assertIn('id="coverage-extra"', self.html)
+        self.assertIn('aria-controls="help-panel"', self.html)
+        self.assertIn('role="dialog"', self.html)
+        self.assertIn('aria-expanded="false"', self.html)
+        self.assertNotIn('class="card coverage-block"', self.html)
         self.assertEqual(self.html.count('id="generated"'), 1)
         self.assertIn('state.agents.has("trae-cn")', self.html)
         self.assertIn("Qoder 影子估算未计入", self.html)
         self.assertIn("库内：", self.html)
         self.assertIn("本页：", self.html)
+        self.assertIn("function setHelpPanel", self.html)
+        self.assertIn("function syncHelpAlert", self.html)
+        self.assertIn("el.helpPanel.hidden", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_help_panel_toggle_and_warning_state(self):
+        source = extract_js(self.html, "function setHelpPanel",
+                            "function buildControls")
+        harness = r"""
+var focused = [];
+var el = {
+  helpPanel: {hidden: true},
+  helpToggle: {attrs: {}, focus: function () { focused.push("toggle"); }, classList: {
+    toggle: function (name, on) { this[name] = !!on; }
+  }, setAttribute: function (name, value) { this.attrs[name] = value; }},
+  helpClose: {focus: function () { focused.push("close"); }},
+  traeStatus: {hidden: false, classList: {contains: function (name) {
+    return name === "warn";
+  }}}
+};
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+setHelpPanel(true, true);
+eq("opened", el.helpPanel.hidden, false);
+eq("expanded", el.helpToggle.attrs["aria-expanded"], "true");
+eq("focus close", focused, ["close"]);
+setHelpPanel(false, true);
+eq("closed", el.helpPanel.hidden, true);
+eq("collapsed", el.helpToggle.attrs["aria-expanded"], "false");
+eq("focus toggle", focused, ["close", "toggle"]);
+syncHelpAlert();
+eq("warn dot", el.helpToggle.classList.warn, true);
+eq("warn title", el.helpToggle.attrs["aria-label"], "查看口径与数据覆盖（有数据提醒）");
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 class HtmlTopListTest(unittest.TestCase):

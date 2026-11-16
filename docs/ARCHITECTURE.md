@@ -139,7 +139,7 @@
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
 | `src/usage_ledger/cli.py` | 1956 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
-| `src/usage_ledger/html_report.py` | 3981 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
+| `src/usage_ledger/html_report.py` | 4026 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
@@ -498,7 +498,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
   - 每日用量按单位各一块图，控件放在所属面板；Qoder + Trae credits 同时选中时用分组柱，不堆叠；Top 8 按 Agent 分组排名，条形与百分比统一“相对第一”口径并明示；估算只作次要标注，不产生 `0 credits` 假行；
   - 明细为统一表，`Agent` 与 `单位` 列区分来源，不适用单位显示 `—`；Token / Credits / 估算列使用分组表头，宽表冻结标识列，按单位和厂商分别合计，隐藏当前筛选下全空列，分页支持页大小与跳转；
   - Qoder 影子估算与 Trae 弱估算共用一个“估算”开关，默认关闭；仅在选中对应 Agent 且存在估算数据时显示，开关文案与 `aria-label` 随选中 Agent 生成；关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数，打开后分别显示，不可与 credits 相加；
-  - 覆盖说明、Trae 数据新鲜度、生成时间与“库内 / 本页”行数合并为可折叠“口径与数据覆盖”块；Trae 状态仅选中 Trae 时渲染，由 `coverage["trae-cn.credits"]` 驱动；
+  - 覆盖说明、Trae 数据新鲜度、生成时间与“库内 / 本页”行数不再单独占据报告卡片，统一收进页首 `?` 按钮打开的帮助层；默认关闭，Esc / 点击外部 / 关闭按钮可收起并同步 `aria-expanded`，warn/error 时按钮显示提醒点；Trae 状态仅选中 Trae 时渲染，由 `coverage["trae-cn.credits"]` 驱动；
   - 日期范围默认取截至数据日的近 7 天，保留“全部”；可选“聚焦有数据区间”，默认关闭；>200 天自动按周聚合；
   - 活动指标仅选中 qoder 时显示，折叠在页底，展开后分页并冻结日期/项目，折叠时跳过重绘；
   - 图表 tooltip 支持指针 / 触控 / 键盘，点击固定、Escape / 空白处关闭；桌面滚动后保留紧凑粘性筛选条，≤640px 折叠为筛选抽屉并支持 Escape；
@@ -613,7 +613,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-276 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+277 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|
