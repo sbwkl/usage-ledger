@@ -1,7 +1,7 @@
 # CHG-0007 Trae CN credits 展示结构对齐 Qoder
 
 类型：CHG
-状态：开发中
+状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
 功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
@@ -56,7 +56,10 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
   - 打开“估算”开关后，两家分别出现估算 KPI / 图表 / 明细行；关闭后恢复默认结构。
   - 500px 下 KPI 不溢出、估算开关可用。
 - 指标 / 日志：无新增运行期埋点；验证以 DOM 快照、payload 和截图为准。
-- 结果与证据：待实现后回填。
+- 结果与证据：
+  - 自动化：`python3 -m unittest discover -s tests -t .` → 276 tests / 0 failures / 0 errors / 0 skips；`HtmlCreditParityTest` 覆盖四卡标签 / 主卡 / Trae 不支持字段 / 估算开关；覆盖率 93.3%，AC map 43/91。
+  - 手工：`/tmp/chg7-report.html` 在 1440px 与 500px 下，Qoder 和 Trae 均显示四卡（区间 credits / 免费 credits / 区间日均 / 最新额度余额）；Trae 默认无估算 KPI / 图表 / 明细行，打开“估算：Trae 弱估算”后出现 Trae 弱估算 KPI、图表和明细行；浏览器 console 无报错。
+  - 结构差异保留说明：Trae 的免费 credits 与额度余额显示 `—`，不伪造 0；活动区块仍仅由 Qoder 数据驱动。
 
 ## 6. 回滚方案
 
@@ -74,8 +77,8 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
 
 - 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) R15、R29、R32、R42、R43。
 - 截图：`/tmp/report-qoder.png`、`/tmp/report-trae.png`（2026-11-16，1440px）。
-- commit：待实现后回填。
-- 日志 / 截图 / 测试报告：待实现后回填。
+- commit：`735d00a`（实现 + 测试 + 文档）。
+- 日志 / 截图 / 测试报告：`/tmp/chg7-report.html`、`/tmp/chg7-qoder.png`、`/tmp/chg7-trae.png`、`/tmp/chg7-qoder-500.png`、`/tmp/chg7-trae-500.png`。
 
 ## 9. 变更记录
 
@@ -83,3 +86,4 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
 |---|---|---|
 | 提议 | wayne（待评审） | 2026-11-16 用户反馈 + 1440px Qoder / Trae 报告截图 |
 | 开发中 | wayne | 2026-11-16 在 `feat/html-report-ux` 开始实现 |
+| 已验证 | wayne | 2026-11-16 276 tests / 0 skip、覆盖率 93.3%；1440 / 500px 截图与估算开关实测通过；commit `735d00a` |

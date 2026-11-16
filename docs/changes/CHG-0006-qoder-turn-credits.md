@@ -1,7 +1,7 @@
 # CHG-0006 补齐 Qoder 桌面端 turn credits
 
 类型：CHG
-状态：开发中
+状态：已验证
 Owner：wayne
 所属模块/入口：`usage credits` / `usage html` / `src/usage_ledger/collectors.py`
 功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
@@ -56,7 +56,10 @@ Qoder 新桌面端从 2026-11-13 晚间起不再把逐请求 `usage.credits` 写
   - 用本机 `usage html` 生成报告，确认 Qoder credits 的 payload 与图表覆盖 11-14 ~ 11-16，且 11-12 / 11-13 既有转录行不被重复追加。
   - 对比 SQLite `usage_credit` 的日聚合与 DB `turn_credits` 日聚合（差值为转录独有请求）。
 - 观测：`usage doctor` / `usage credits` 的 qoder.credits 覆盖日期与 notes 应说明合并来源；无新数据时不应重复写入。
-- 结果与证据：待实现后回填。
+- 结果与证据：
+  - 自动化：`python3 -m unittest discover -s tests -t .` → 276 tests / 0 failures / 0 errors / 0 skips；`scripts/check_test_policy.py` 通过；`scripts/check_ac_map.py` → 43 criteria / 91 mapped identifiers；覆盖率 93.3%（collectors 95.2%）。
+  - 手工：`USAGE_LEDGER_DB=/tmp/usage-ledger-chg6.db PYTHONPATH=src python3 -m usage_ledger backfill --source qoder` 后，`credits --since 2026-11-10 --until 2026-11-16` 的日值为 11-14 67.75/13、11-15 102.92/43、11-16 123.40/27；`usage html --source qoder --offline` payload 同样覆盖 11-14..16。
+  - 融合检查：11-12/13 同时存在转录行（1367/536 请求）和 DB turn 行（1/3 条），按 `qoder-turn:` 前缀分列；样本未出现重复 request_set_id。
 
 ## 6. 回滚方案
 
@@ -74,8 +77,8 @@ Qoder 新桌面端从 2026-11-13 晚间起不再把逐请求 `usage.credits` 写
 
 - 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) R9、R41。
 - 实测报告：`/tmp/usage-report-sit.html`（2026-11-16 生成）。
-- commit：待实现后回填。
-- 日志 / 截图 / 测试报告：待实现后回填。
+- commit：`735d00a`（实现 + 测试 + 文档）。
+- 日志 / 截图 / 测试报告：`/tmp/usage-ledger-chg6.db`、`/tmp/chg6-qoder.html`、`/tmp/coverage-run.log`。
 
 ## 9. 变更记录
 
@@ -83,3 +86,4 @@ Qoder 新桌面端从 2026-11-13 晚间起不再把逐请求 `usage.credits` 写
 |---|---|---|
 | 提议 | wayne（待评审） | 2026-11-16 用户反馈 + DB / 转录 / 报表 payload 实测 |
 | 开发中 | wayne | 2026-11-16 在 `feat/html-report-ux` 开始实现 |
+| 已验证 | wayne | 2026-11-16 276 tests / 0 skip、覆盖率 93.3%、AC map 43/91；本机 Qoder 11-14..16 已出现在 credits payload；commit `735d00a` |

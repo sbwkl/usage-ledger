@@ -437,14 +437,14 @@ usage est --source trae-cn --group-by day,model
 | CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../changes/CHG-0003-docs-status.md) |
 | CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) |
 | CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
-| CHG-0006 | 补齐 Qoder 桌面端 turn credits | 提议 | [CHG-0006](../changes/CHG-0006-qoder-turn-credits.md) |
-| CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 提议 | [CHG-0007](../changes/CHG-0007-trae-report-parity.md) |
+| CHG-0006 | 补齐 Qoder 桌面端 turn credits | 已验证 | [CHG-0006](../changes/CHG-0006-qoder-turn-credits.md) |
+| CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 已验证 | [CHG-0007](../changes/CHG-0007-trae-report-parity.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
 > 2026-11-16：CHG-0004（R19–R26、R39，commit `530d311`）与 CHG-0005（R27–R38、R40，commit `ebc48fe`）均已实现并验证；AC 同步写入 §5.6 / §5.7 与 `tests/ac_map.json`。
 >
-> 2026-11-16：用户反馈 Qoder 11-14 ~ 11-16 credits 缺失、Trae CN 展示结构需与 Qoder 一致；建立 CHG-0006（R9 / R41）与 CHG-0007（R42 / R43），待实现后回填验证证据。
+> 2026-11-16：CHG-0006（R9 / R41，commit `735d00a`）与 CHG-0007（R42 / R43，commit `735d00a`）已实现并验证：276 tests / 0 skip、覆盖率 93.3%、AC map 43 criteria / 91 identifiers；Qoder 11-14..16 credits 与 Trae 默认页结构均已实测。
 
 ---
 
