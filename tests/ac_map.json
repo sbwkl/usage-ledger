@@ -102,6 +102,33 @@
       ],
       "R18": [
         "tests.test_cli_output.LiveCommandTest.test_live_reads_sources_without_db_writes"
+      ],
+      "R19": [
+        "tests.test_html.HtmlDateRangeTest"
+      ],
+      "R20": [
+        "tests.test_html.HtmlEmptyStateTest"
+      ],
+      "R21": [
+        "tests.test_html.HtmlEmptyStateTest"
+      ],
+      "R22": [
+        "tests.test_html.HtmlActivityTest"
+      ],
+      "R23": [
+        "tests.test_html.HtmlActivityTest"
+      ],
+      "R24": [
+        "tests.test_html.HtmlFilterLinkageTest"
+      ],
+      "R25": [
+        "tests.test_html.HtmlFilterLinkageTest"
+      ],
+      "R26": [
+        "tests.test_html.HtmlFilterLinkageTest"
+      ],
+      "R39": [
+        "tests.test_html.HtmlDateRangeTest"
       ]
     }
   }

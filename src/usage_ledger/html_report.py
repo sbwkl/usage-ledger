@@ -209,6 +209,10 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .chart-wrap .shadow-dot{fill:var(--muted);opacity:.55;pointer-events:none}
 .chart-wrap .axis-right text{fill:var(--muted);font-size:10.5px;opacity:.85}
 .empty{display:grid;place-items:center;min-height:200px;color:var(--muted);font-size:13px}
+.empty-state{padding:28px 20px;text-align:center}
+.empty-state h2{font-size:16px;margin:0 0 6px}
+.empty-state p{margin:4px 0}
+.empty-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px}
 .tooltip{position:absolute;z-index:5;top:8px;left:0;transform:translateX(-50%);min-width:190px;max-width:290px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:9px 11px;pointer-events:none;display:none}
 .tt-head{font-size:12px;font-weight:650;margin-bottom:2px}
 .tt-meta{font-size:11px;color:var(--muted);margin-bottom:6px}
@@ -296,6 +300,7 @@ try {
     </div>
   </div>
   <div class="top-actions">
+    <span id="data-until" class="muted"></span>
     <span id="generated" class="muted"></span>
     <button id="theme" class="btn ghost small" type="button">深色模式</button>
   </div>
@@ -322,8 +327,18 @@ try {
   <p id="trae-status" class="coverage trae-status" hidden></p>
 
   <section class="agent-page" id="report-page" aria-label="用量报告">
+    <section class="card empty-state" id="empty-state" hidden>
+      <h2 id="empty-title">当前区间无数据</h2>
+      <p id="empty-message" class="muted"></p>
+      <p id="empty-quota" class="muted" hidden></p>
+      <div class="empty-actions">
+        <button id="empty-all" class="btn" type="button">查看全部</button>
+        <button id="empty-shadow" class="btn ghost" type="button" hidden>打开影子估算</button>
+        <button id="empty-reset" class="btn ghost" type="button">重置筛选</button>
+      </div>
+    </section>
     <section class="kpis" id="kpis" aria-label="汇总指标"></section>
-    <section class="grid" style="margin-top:16px">
+    <section class="grid" id="report-grid" style="margin-top:16px">
       <div class="card chart-card">
         <div class="card-head">
           <h2>每日用量</h2>
@@ -455,7 +470,7 @@ try {
   var ACTIVITY_FIELDS = ["sessions", "prompts", "assistant_calls", "assistant_with_metrics",
                          "turns", "tool_calls", "duration_ms"];
   var ACTIVITY_LABELS = { sessions: "活跃会话", prompts: "提示数", assistant_calls: "assistant 调用",
-                          assistant_with_metrics: "带指标", turns: "turns",
+                          assistant_with_metrics: "带指标", turns: "轮次",
                           tool_calls: "工具调用", duration_ms: "运行时长" };
   var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed",
                        kilo: "#10b981", cline: "#65a30d", qoder: "#e11d48", "trae-cn": "#0d9488" };
@@ -600,7 +615,7 @@ try {
     latestDay(latestDay(activityBounds[1], creditBounds[1]),
               latestDay(estBounds[1], traeEstBounds[1])));
   var TODAY = localToday();
-  var PICK_MAX = DATA_UNTIL > TODAY ? DATA_UNTIL : TODAY;
+  var PICK_MAX = DATA_UNTIL || TODAY;
 
   function allBounds() {
     if (!DATA_SINCE || !DATA_UNTIL) return { start: DATA_SINCE, end: DATA_UNTIL };
@@ -625,7 +640,7 @@ try {
     return state.shadow && state.agents.has("qoder") && EST.length > 0;
   }
 
-  var initialRange = allBounds();
+  var initialRange = defaultDateRange(DATA_SINCE, DATA_UNTIL, TODAY);
   var state = {
     agents: new Set(AGENTS),
     start: initialRange.start,
@@ -638,6 +653,8 @@ try {
     shadow: false,
     sortKey: "day",
     sortDir: "desc",
+    activitySortKey: "day",
+    activitySortDir: "desc",
     page: 0,
     pageSize: 50
   };
@@ -646,6 +663,11 @@ try {
     start: $("#start"), end: $("#end"), presets: $("#presets"), reset: $("#reset"),
     model: $("#model"), project: $("#project"), q: $("#q"),
     nav: $("#agent-nav"), coverage: $("#coverage"), traeStatus: $("#trae-status"),
+    dataUntil: $("#data-until"),
+    emptyState: $("#empty-state"), emptyTitle: $("#empty-title"),
+    emptyMessage: $("#empty-message"), emptyQuota: $("#empty-quota"),
+    emptyAll: $("#empty-all"), emptyShadow: $("#empty-shadow"),
+    emptyReset: $("#empty-reset"), reportGrid: $("#report-grid"),
     kpis: $("#kpis"), metricField: $("#metric-field"), metric: $("#metric"),
     shadowSwitch: $("#shadow-switch"), shadow: $("#shadow"),
     panelToken: $("#panel-token"), panelCredits: $("#panel-credits"), panelEst: $("#panel-est"),
@@ -658,6 +680,7 @@ try {
     modelUnit: $("#model-unit"), projectUnit: $("#project-unit"),
     models: $("#models"), projects: $("#projects"),
     thead: $("#thead"), tbody: $("#tbody"), rowinfo: $("#rowinfo"),
+    tokenTable: $("#token-table"),
     pageinfo: $("#pageinfo"), prev: $("#prev"), next: $("#next"),
     shadowNote: $("#shadow-note"),
     activityBlock: $("#activity-block"), activityKpis: $("#activity-kpis"),
@@ -757,6 +780,68 @@ try {
     return dayString(date);
   }
 
+  function defaultDateRange(dataSince, dataUntil, today) {
+    var end = dataUntil || today;
+    var start = addDays(end, -6);
+    if (dataSince && start < dataSince) start = dataSince;
+    return { start: start, end: end };
+  }
+
+  function presetDateRange(kind, days, dataSince, dataUntil, today) {
+    var end = dataUntil || today;
+    if (kind === "latest") return { start: end, end: end };
+    if (kind === "all") return { start: dataSince || "", end: dataUntil || "" };
+    var start = addDays(end, -(number(days || 7) - 1));
+    if (dataSince && start < dataSince) start = dataSince;
+    return { start: start, end: end };
+  }
+
+  function clampDateRange(start, end, dataSince, dataUntil, today) {
+    var lo = dataSince || "";
+    var hi = dataUntil || today;
+    if (!start) start = lo || hi;
+    if (!end) end = hi;
+    if (lo && start < lo) start = lo;
+    if (lo && end < lo) end = lo;
+    if (hi && start > hi) start = hi;
+    if (hi && end > hi) end = hi;
+    if (start > end) end = start;
+    return { start: start, end: end };
+  }
+
+  function activityBuckets(rows, start, end, fields) {
+    var days = enumerateDays(start, end);
+    if (!days.length) return [];
+    var weekly = days.length > 200;
+    var buckets = [];
+    var index = new Map();
+    days.forEach(function (day) {
+      var key = weekly ? weekStart(day) : day;
+      if (!index.has(key)) {
+        var values = {};
+        (fields || []).forEach(function (field) { values[field] = 0; });
+        var bucket = { key: key, start: day, end: day, values: values };
+        index.set(key, bucket);
+        buckets.push(bucket);
+      } else {
+        index.get(key).end = day;
+      }
+    });
+    (rows || []).forEach(function (row) {
+      var key = weekly ? weekStart(row.day) : row.day;
+      var bucket = index.get(key);
+      if (!bucket) return;
+      (fields || []).forEach(function (field) {
+        bucket.values[field] += number(row[field]);
+      });
+    });
+    buckets.forEach(function (bucket) {
+      bucket.label = bucket.start.slice(5);
+      bucket.tooltip = weekly ? bucket.start + " ~ " + bucket.end : bucket.start;
+    });
+    return buckets;
+  }
+
   function setAttrs(node, attrs) {
     Object.keys(attrs).forEach(function (key) {
       var value = attrs[key];
@@ -786,10 +871,11 @@ try {
     var map = new Map();
     rows.forEach(function (row) {
       var name = row[key] || "-";
-      if (!map.has(name)) map.set(name, { key: name, total: 0, turns: 0 });
+      if (!map.has(name)) map.set(name, { key: name, total: 0, turns: 0, rows: 0 });
       var entry = map.get(name);
       entry.total += number(row.total);
       entry.turns += number(row.turns);
+      entry.rows += 1;
     });
     return Array.from(map.values());
   }
@@ -833,17 +919,23 @@ try {
     return TRAE_EST.filter(function (row) { return matchesFilters(row, ignore); });
   }
 
-  function dimensionRows() {
-    var rows = TOKEN_ROWS.filter(function (row) { return state.agents.has(row.source); });
+  function dimensionRows(ignore) {
+    var rows = TOKEN_ROWS.filter(function (row) {
+      return state.agents.has(row.source) && matchesFilters(row, ignore);
+    });
     if (hasCreditsSelected()) {
       rows = rows.concat(CREDIT_ROWS.filter(function (row) {
-        return state.agents.has(row.source);
+        return state.agents.has(row.source) && matchesFilters(row, ignore);
       }).map(function (row) {
         return { day: row.day, source: row.source, model: row.model,
                  project: row.project, total: row.credits, turns: 0 };
       }));
     }
-    if (state.agents.has("trae-cn")) rows = rows.concat(TRAE_EST);
+    if (state.agents.has("trae-cn")) {
+      rows = rows.concat(TRAE_EST.filter(function (row) {
+        return matchesFilters(row, ignore);
+      }));
+    }
     return rows;
   }
 
@@ -853,28 +945,60 @@ try {
   }
 
   function navTotal(agent) {
-    if (agent === "all") return sumField(TOKEN_ROWS, "total");
+    if (agent === "all") {
+      return TOKEN_ROWS.reduce(function (acc, row) {
+        return acc + (matchesFilters(row) ? number(row.total) : 0);
+      }, 0);
+    }
     var kind = agentKind(agent);
     if (kind === "credits") {
       return CREDIT_ROWS.reduce(function (acc, row) {
-        return acc + (row.source === agent ? number(row.credits) : 0);
+        return acc + (row.source === agent && matchesFilters(row) ? number(row.credits) : 0);
       }, 0);
     }
-    if (kind === "estimate") return sumField(TRAE_EST, "total");
+    if (kind === "estimate") {
+      return TRAE_EST.reduce(function (acc, row) {
+        return acc + (matchesFilters(row) ? number(row.total) : 0);
+      }, 0);
+    }
     return TOKEN_ROWS.reduce(function (acc, row) {
-      return acc + (row.source === agent ? number(row.total) : 0);
+      return acc + (row.source === agent && matchesFilters(row) ? number(row.total) : 0);
     }, 0);
   }
 
+  function navHasRows(agent) {
+    if (agent === "all") return TOKEN_ROWS.some(function (row) { return matchesFilters(row); });
+    var kind = agentKind(agent);
+    if (kind === "credits") {
+      return CREDIT_ROWS.some(function (row) {
+        return row.source === agent && matchesFilters(row);
+      });
+    }
+    if (kind === "estimate") {
+      return TRAE_EST.some(function (row) { return matchesFilters(row); });
+    }
+    return TOKEN_ROWS.some(function (row) {
+      return row.source === agent && matchesFilters(row);
+    });
+  }
+
   function navTotalText(agent) {
+    if (!navHasRows(agent)) return "—";
     var value = navTotal(agent);
     var kind = agent === "all" ? "token" : agentKind(agent);
-    if (kind === "credits") {
-      var hasRows = CREDIT_ROWS.some(function (row) { return row.source === agent; });
-      return hasRows ? fmtCompact(value) + " cr" : "—";
-    }
+    if (kind === "credits") return fmtCompact(value) + " cr";
     if (kind === "estimate") return fmtCompact(value) + " est";
     return fmtCompact(value);
+  }
+
+  function syncAgentTotals() {
+    Array.prototype.forEach.call(el.nav.querySelectorAll("[data-agent]"), function (button) {
+      var small = button.querySelector("small");
+      if (small) small.textContent = navTotalText(button.dataset.agent);
+      button.title = sourceLabel(button.dataset.agent) + " · " +
+        KIND_LABELS[agentKind(button.dataset.agent)] +
+        "，数字为当前区间汇总；单击只看，再次单击恢复全部；⌘/Ctrl/Shift+单击多选";
+    });
   }
 
   function addKpiTo(host, label, value, sub, primary, className) {
@@ -914,8 +1038,6 @@ try {
 
   function applyAgentSelection(names) {
     state.agents = new Set(names);
-    state.model = "";
-    state.project = "";
     state.page = 0;
     rebuildDimensionSelects();
     syncAgentFilter();
@@ -974,7 +1096,7 @@ try {
     });
   }
 
-  function fillSelect(select, options, allLabel, labelFn) {
+  function fillSelect(select, options, allLabel, labelFn, emptyLabel) {
     select.textContent = "";
     var all = document.createElement("option");
     all.value = "";
@@ -983,19 +1105,28 @@ try {
     options.forEach(function (option) {
       var item = document.createElement("option");
       item.value = option.key;
-      item.textContent = labelFn(option.key);
+      item.textContent = labelFn(option.key) + " · " + fmtInt(option.rows) + " 行";
       select.appendChild(item);
     });
+    if (!options.length && emptyLabel) {
+      var empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = emptyLabel;
+      empty.disabled = true;
+      select.appendChild(empty);
+    }
   }
 
   function rebuildDimensionSelects() {
-    var rows = dimensionRows();
-    var models = groupTotals(rows, "model").sort(byTotal);
-    var projects = groupTotals(rows, "project").sort(byTotal);
-    fillSelect(el.model, models, "全部模型", function (key) { return key; });
+    var models = groupTotals(dimensionRows("model"), "model")
+      .filter(function (item) { return item.rows > 0; }).sort(byTotal);
+    var projects = groupTotals(dimensionRows("project"), "project")
+      .filter(function (item) { return item.rows > 0; }).sort(byTotal);
+    fillSelect(el.model, models, "全部模型", function (key) { return key; },
+               "当前筛选无模型");
     fillSelect(el.project, projects, "全部项目", function (key) {
       return key === "-" ? "（未标注）" : key;
-    });
+    }, "当前筛选无项目");
     if (!models.some(function (item) { return item.key === state.model; })) state.model = "";
     if (!projects.some(function (item) { return item.key === state.project; })) state.project = "";
     el.model.value = state.model;
@@ -1014,7 +1145,7 @@ try {
     el.end.max = PICK_MAX;
     syncDateInputs();
 
-    [{ label: "今日", kind: "today" }, { label: "全部", kind: "all" },
+    [{ label: "最新", kind: "latest" }, { label: "全部", kind: "all" },
      { label: "近 7 天", days: 7 },
      { label: "近 30 天", days: 30 }, { label: "近 90 天", days: 90 }].forEach(function (preset) {
       var button = document.createElement("button");
@@ -1022,17 +1153,12 @@ try {
       button.className = "btn ghost small";
       button.textContent = preset.label;
       button.addEventListener("click", function () {
-        var bounds = allBounds();
-        var end = preset.kind === "all" ? (bounds.end || DATA_UNTIL) : TODAY;
-        var start = preset.kind === "today" ? TODAY
-                  : preset.kind === "all" ? (bounds.start || DATA_SINCE)
-                  : addDays(end, -(preset.days - 1));
-        var minDay = bounds.start || DATA_SINCE;
-        if (start < minDay) start = minDay;
-        state.start = start;
-        state.end = end;
+        var range = presetDateRange(preset.kind, preset.days, DATA_SINCE, DATA_UNTIL, TODAY);
+        state.start = range.start;
+        state.end = range.end;
         syncDateInputs();
         state.page = 0;
+        rebuildDimensionSelects();
         renderAll();
       });
       el.presets.appendChild(button);
@@ -1043,11 +1169,13 @@ try {
     el.model.addEventListener("change", function () {
       state.model = el.model.value;
       state.page = 0;
+      rebuildDimensionSelects();
       renderAll();
     });
     el.project.addEventListener("change", function () {
       state.project = el.project.value;
       state.page = 0;
+      rebuildDimensionSelects();
       renderAll();
     });
 
@@ -1057,6 +1185,7 @@ try {
       searchTimer = setTimeout(function () {
         state.q = el.q.value.trim().toLowerCase();
         state.page = 0;
+        rebuildDimensionSelects();
         renderAll();
       }, 120);
     });
@@ -1079,6 +1208,20 @@ try {
     });
 
     el.reset.addEventListener("click", resetFilters);
+    el.emptyAll.addEventListener("click", function () {
+      state.start = DATA_SINCE;
+      state.end = DATA_UNTIL;
+      syncDateInputs();
+      state.page = 0;
+      rebuildDimensionSelects();
+      renderAll();
+    });
+    el.emptyReset.addEventListener("click", resetFilters);
+    el.emptyShadow.addEventListener("click", function () {
+      state.shadow = true;
+      el.shadow.checked = true;
+      renderAll();
+    });
     el.prev.addEventListener("click", function () {
       if (state.page > 0) { state.page -= 1; renderAll(); }
     });
@@ -1090,20 +1233,22 @@ try {
     var end = el.end.value;
     if (!start) start = DATA_SINCE;
     if (!end) end = DATA_UNTIL;
-    if (start > end) {
+    if (start && end && start > end) {
       if (event.target === el.start) end = start;
       else start = end;
     }
-    el.start.value = start;
-    el.end.value = end;
-    state.start = start;
-    state.end = end;
+    var range = clampDateRange(start, end, DATA_SINCE, DATA_UNTIL, TODAY);
+    el.start.value = range.start;
+    el.end.value = range.end;
+    state.start = range.start;
+    state.end = range.end;
     state.page = 0;
+    rebuildDimensionSelects();
     renderAll();
   }
 
   function resetFilters() {
-    var range = allBounds();
+    var range = defaultDateRange(DATA_SINCE, DATA_UNTIL, TODAY);
     state.agents = new Set(AGENTS);
     state.start = range.start;
     state.end = range.end;
@@ -1114,6 +1259,8 @@ try {
     state.shadow = false;
     state.sortKey = "day";
     state.sortDir = "desc";
+    state.activitySortKey = "day";
+    state.activitySortDir = "desc";
     state.page = 0;
     syncDateInputs();
     el.model.value = "";
@@ -1150,7 +1297,6 @@ try {
     el.metric.value = state.metric;
     el.modelUnit.textContent = units.join(" / ");
     el.projectUnit.textContent = units.join(" / ");
-    el.activityBlock.hidden = !state.agents.has("qoder") || !ACTIVITY.length;
     if (!state.agents.has("qoder")) {
       state.shadow = false;
       el.shadow.checked = false;
@@ -1330,6 +1476,73 @@ try {
     host.appendChild(card);
   }
 
+  function shouldShowEmptyState(counts) {
+    return number(counts.token) + number(counts.credit) + number(counts.est) +
+      number(counts.activity) <= 0;
+  }
+
+  function traeCreditState(rows, cacheRows, coverage) {
+    if (rows && rows.length) return null;
+    var cov = coverage || {};
+    if (cacheRows && cacheRows.length) {
+      return {
+        label: "当前区间无 Trae credits",
+        sub: "缓存中有 " + fmtInt(cacheRows.length) +
+          " 行，当前范围没有会话",
+        tone: "warn"
+      };
+    }
+    if (cov.refresh_error) {
+      return {
+        label: "刷新失败",
+        sub: (cov.available ? "使用缓存 · " : "暂无缓存数据 · ") + cov.refresh_error,
+        tone: "error"
+      };
+    }
+    if (cov.available) {
+      return {
+        label: "无 credits 数据",
+        sub: "刷新成功，但本地没有 Trae 会话",
+        tone: "warn"
+      };
+    }
+    return {
+      label: "未同步",
+      sub: "运行 usage html（默认刷新）或 usage sync --source trae-cn --remote",
+      tone: "warn"
+    };
+  }
+
+  function renderEmptyState(empty, counts) {
+    el.emptyState.hidden = !empty;
+    if (!empty) return;
+    var hasBounds = !!(DATA_SINCE || DATA_UNTIL);
+    el.emptyTitle.textContent = hasBounds ? "当前区间无数据" : "报告没有可用数据";
+    var rangeText = state.start && state.end ? state.start + " ~ " + state.end : "未选择范围";
+    var message = hasBounds
+      ? "数据截至 " + (DATA_UNTIL || "—") + "；当前范围 " + rangeText + " 没有可展示的数据。"
+      : "没有可用的 token、credits、估算或活动数据；请先运行 usage backfill 或检查源路径。";
+    if (state.agents.has("qoder") && !state.shadow && EST.some(function (row) {
+      return matchesFilters(row);
+    })) {
+      message += " 当前区间只有 Qoder 影子估算，打开后可查看。";
+    }
+    el.emptyMessage.textContent = message;
+    var quota = quotaSummary();
+    if (quota) {
+      el.emptyQuota.hidden = false;
+      el.emptyQuota.textContent = "最新额度快照：" + fmtQuota(quota.remaining) +
+        " credits（与区间无关）";
+    } else {
+      el.emptyQuota.hidden = true;
+      el.emptyQuota.textContent = "";
+    }
+    var shadowPossible = state.agents.has("qoder") && !state.shadow && EST.some(function (row) {
+      return matchesFilters(row);
+    });
+    el.emptyShadow.hidden = !shadowPossible;
+  }
+
   function renderQoderCreditKpis(host, rows) {
     var billable = 0;
     var free = 0;
@@ -1364,11 +1577,9 @@ try {
     var cov = COVERAGE["trae-cn.credits"] || {};
     var estRows = traeRowsFor();
     if (!rows.length) {
-      addKpiTo(host, "区间 credits", traeUnavailableWord(),
-        cov.refresh_error
-          ? "暂无缓存数据 · " + cov.refresh_error
-          : "运行 usage html（默认刷新）或 usage sync --source trae-cn --remote",
-        true, "credit");
+      var cacheRows = CREDIT_ROWS.filter(function (row) { return row.source === "trae-cn"; });
+      var stateInfo = traeCreditState(rows, cacheRows, cov);
+      addKpiTo(host, "区间 credits", stateInfo.label, stateInfo.sub, true, "credit");
       if (estRows.length) {
         addKpiTo(host, "弱 est Token", fmtCompact(sumField(estRows, "total")),
           fmtInt(sumField(estRows, "requests")) + " 请求 · 不可与 credits 相加",
@@ -2141,6 +2352,26 @@ try {
     return fmtInt(value);
   }
 
+  function sortRows(rows, key, dir, numericKeys, tieKey) {
+    return rows.slice().sort(function (a, b) {
+      var av = a[key];
+      var bv = b[key];
+      var aNull = av === null || av === undefined || av === "";
+      var bNull = bv === null || bv === undefined || bv === "";
+      if (aNull || bNull) {
+        if (aNull && bNull) return 0;
+        return aNull ? 1 : -1;
+      }
+      var cmp;
+      if (numericKeys[key]) cmp = number(av) - number(bv);
+      else cmp = String(av).localeCompare(String(bv), "zh-CN");
+      if (cmp === 0 && tieKey) {
+        cmp = String(a[tieKey] || "").localeCompare(String(b[tieKey] || ""), "zh-CN");
+      }
+      return dir === "asc" ? cmp : -cmp;
+    });
+  }
+
   function renderDataTable(config) {
     var columns = config.columns;
     var rows = config.rows;
@@ -2421,21 +2652,43 @@ try {
       "不可与 credits 相加。Trae 弱 est 是另一套影子，二者不能合并。";
   }
 
+  function visibleCounts() {
+    return {
+      token: tokenRowsFor().length,
+      credit: creditRowsFor().length,
+      est: (state.shadow ? qoderEstRowsFor().length : 0) + traeRowsFor().length,
+      activity: state.agents.has("qoder") ? filteredActivity().length : 0
+    };
+  }
+
   function renderReport() {
-    renderKpis();
-    renderCharts();
-    renderTopLists();
-    var units = activeUnits();
-    var rows = reportRows();
-    var creditSources = selectedCreditAgents();
-    renderDataTable({
-      thead: el.thead, tbody: el.tbody, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
-      prev: el.prev, next: el.next, columns: reportColumns(units, creditSources), rows: rows,
-      emptyText: "无匹配数据",
-      info: function (all) { return tableInfo(all, units); }
-    });
-    renderShadowNote();
-    renderActivity();
+    var counts = visibleCounts();
+    var empty = shouldShowEmptyState(counts);
+    var hasNumeric = counts.token + counts.credit + counts.est > 0;
+    var hasActivity = counts.activity > 0;
+    renderEmptyState(empty, counts);
+    el.kpis.hidden = !hasNumeric;
+    el.reportGrid.hidden = !hasNumeric;
+    el.tokenTable.hidden = !hasNumeric;
+    el.activityBlock.hidden = !hasActivity;
+    if (el.activityBlock.hidden) el.activityBlock.open = false;
+    if (empty) return;
+    if (hasNumeric) {
+      renderKpis();
+      renderCharts();
+      renderTopLists();
+      var units = activeUnits();
+      var rows = reportRows();
+      var creditSources = selectedCreditAgents();
+      renderDataTable({
+        thead: el.thead, tbody: el.tbody, rowinfo: el.rowinfo, pageinfo: el.pageinfo,
+        prev: el.prev, next: el.next, columns: reportColumns(units, creditSources), rows: rows,
+        emptyText: "无匹配数据",
+        info: function (all) { return tableInfo(all, units); }
+      });
+      renderShadowNote();
+    }
+    if (el.activityBlock.open && hasActivity) renderActivity();
   }
 
   function filteredActivity() {
@@ -2476,30 +2729,25 @@ try {
   function renderActivityChart(rows) {
     el.activityChart.textContent = "";
     el.activityTooltip.style.display = "none";
-    var byDay = new Map();
-    rows.forEach(function (row) {
-      if (!byDay.has(row.day)) byDay.set(row.day, emptyActivityTotals());
-      var bucket = byDay.get(row.day);
-      ACTIVITY_FIELDS.forEach(function (field) { bucket[field] += number(row[field]); });
-    });
-    var days = Array.from(byDay.keys()).sort();
     el.activityLegend.textContent = "";
-    if (!days.length) {
+    if (!rows.length) {
       var empty = document.createElement("div");
       empty.className = "empty";
       empty.textContent = "所选范围内没有活动数据";
       el.activityChart.appendChild(empty);
+      el.activityHint.textContent = "";
       return;
     }
 
+    var buckets = activityBuckets(rows, state.start, state.end, ACTIVITY_FIELDS);
     var metric = state.activityMetric;
     var width = Math.max(el.activityChart.clientWidth || 900, 320);
     var height = 240;
     var margin = { top: 14, right: 14, bottom: 28, left: 62 };
     var plotW = Math.max(width - margin.left - margin.right, 10);
     var plotH = height - margin.top - margin.bottom;
-    var maximum = days.reduce(function (acc, day) {
-      return Math.max(acc, byDay.get(day)[metric]);
+    var maximum = buckets.reduce(function (acc, bucket) {
+      return Math.max(acc, number(bucket.values[metric]));
     }, 0);
     var scale = niceScale(maximum, 4);
     var svg = svgEl("svg", {
@@ -2520,20 +2768,19 @@ try {
       svg.appendChild(text);
     });
 
-    var band = plotW / days.length;
+    var band = plotW / buckets.length;
     var barW = Math.max(1.5, Math.min(26, band * 0.66));
     var color = COLORS.qoder || "#e11d48";
     var hoverLine = svgEl("line", {
       x1: 0, x2: 0, y1: margin.top, y2: margin.top + plotH, class: "hover-line"
     });
 
-    function showTooltip(day, event) {
-      var bucket = byDay.get(day);
+    function showTooltip(bucket, event) {
       var tip = el.activityTooltip;
       tip.textContent = "";
       var head = document.createElement("div");
       head.className = "tt-head";
-      head.textContent = day;
+      head.textContent = bucket.tooltip;
       tip.appendChild(head);
       var meta = document.createElement("div");
       meta.className = "tt-meta";
@@ -2548,7 +2795,7 @@ try {
         var value = document.createElement("span");
         value.className = "tt-val";
         value.textContent = field === "duration_ms"
-          ? fmtDuration(bucket[field]) : fmtInt(bucket[field]);
+          ? fmtDuration(bucket.values[field]) : fmtInt(bucket.values[field]);
         row.appendChild(name);
         row.appendChild(value);
         tip.appendChild(row);
@@ -2565,8 +2812,8 @@ try {
       el.activityTooltip.style.left = x + "px";
     }
 
-    days.forEach(function (day, index) {
-      var value = byDay.get(day)[metric];
+    buckets.forEach(function (bucket, index) {
+      var value = number(bucket.values[metric]);
       var x = margin.left + band * index + (band - barW) / 2;
       var slice = (value / scale.max) * plotH;
       if (slice > 0) {
@@ -2583,7 +2830,7 @@ try {
         var center = margin.left + band * index + band / 2;
         hoverLine.setAttribute("x1", center);
         hoverLine.setAttribute("x2", center);
-        showTooltip(day, event);
+        showTooltip(bucket, event);
       });
       hit.addEventListener("mousemove", positionTooltip);
       hit.addEventListener("mouseleave", function () {
@@ -2595,8 +2842,8 @@ try {
     });
     svg.appendChild(hoverLine);
 
-    var labelCount = Math.min(days.length, Math.max(2, Math.floor(plotW / 90)));
-    var step = labelCount <= 1 ? 1 : (days.length - 1) / (labelCount - 1);
+    var labelCount = Math.min(buckets.length, Math.max(2, Math.floor(plotW / 90)));
+    var step = labelCount <= 1 ? 1 : (buckets.length - 1) / (labelCount - 1);
     var used = new Set();
     for (var k = 0; k < labelCount; k += 1) {
       var idx = Math.round(k * step);
@@ -2607,13 +2854,13 @@ try {
         y: height - 8,
         "text-anchor": "middle"
       });
-      label.textContent = days[idx].slice(5);
+      label.textContent = buckets[idx].label;
       svg.appendChild(label);
     }
     el.activityChart.appendChild(svg);
 
-    var metricTotal = days.reduce(function (acc, day) {
-      return acc + byDay.get(day)[metric];
+    var metricTotal = buckets.reduce(function (acc, bucket) {
+      return acc + number(bucket.values[metric]);
     }, 0);
     var item = document.createElement("span");
     item.className = "legend-item";
@@ -2629,13 +2876,20 @@ try {
     item.appendChild(amount);
     el.activityLegend.appendChild(item);
 
-    var withMetrics = days.reduce(function (acc, day) {
-      return acc + byDay.get(day).assistant_with_metrics;
+    var withMetrics = buckets.reduce(function (acc, bucket) {
+      return acc + number(bucket.values.assistant_with_metrics);
     }, 0);
-    var assistant = days.reduce(function (acc, day) {
-      return acc + byDay.get(day).assistant_calls;
+    var assistant = buckets.reduce(function (acc, bucket) {
+      return acc + number(bucket.values.assistant_calls);
     }, 0);
-    el.activityHint.textContent = "turnMetrics 覆盖 " +
+    var activeBuckets = buckets.filter(function (bucket) {
+      return ACTIVITY_FIELDS.some(function (field) {
+        return number(bucket.values[field]) > 0;
+      });
+    }).length;
+    var unit = buckets.length && buckets[0].end !== buckets[0].start ? "周" : "天";
+    el.activityHint.textContent = "活跃 " + activeBuckets + " " + unit + " / 共 " +
+      buckets.length + " " + unit + "（完整日期轴，缺失显示 0）；turnMetrics 覆盖 " +
       (assistant ? pct(withMetrics / assistant) : "—") +
       "；未带 metrics 的 assistant 其 turns/时长为 0，不代表没使用；活动与 credits 口径不同，不可相加。";
   }
@@ -2647,29 +2901,57 @@ try {
     { key: "prompts", label: "提示", type: "num" },
     { key: "assistant_calls", label: "assistant", type: "num" },
     { key: "assistant_with_metrics", label: "带指标", type: "num" },
-    { key: "turns", label: "turns", type: "num" },
+    { key: "turns", label: "轮次", type: "num" },
     { key: "tool_calls", label: "工具调用", type: "num" },
     { key: "duration_ms", label: "运行时长", type: "num" }
   ];
 
   function renderActivityTable(rows) {
-    var sorted = rows.slice().sort(function (a, b) {
-      if (a.day !== b.day) return a.day < b.day ? 1 : -1;
-      return String(a.project).localeCompare(String(b.project), "zh-CN");
+    var numericKeys = {};
+    ACTIVITY_COLUMNS.forEach(function (column) {
+      if (column.type === "num") numericKeys[column.key] = true;
     });
+    var sorted = sortRows(rows, state.activitySortKey, state.activitySortDir,
+                          numericKeys, "project");
+    var focusedKey = null;
+    if (document.activeElement && document.activeElement.classList.contains("th-btn")) {
+      focusedKey = document.activeElement.dataset.key;
+    }
     el.activityThead.textContent = "";
     var headerRow = document.createElement("tr");
     ACTIVITY_COLUMNS.forEach(function (column) {
       var th = document.createElement("th");
       if (column.type === "num") th.className = "num";
+      th.setAttribute("aria-sort", state.activitySortKey === column.key
+        ? (state.activitySortDir === "asc" ? "ascending" : "descending") : "none");
       var button = document.createElement("button");
       button.type = "button";
       button.className = "th-btn";
+      button.dataset.key = column.key;
       button.appendChild(document.createTextNode(column.label));
+      if (state.activitySortKey === column.key) {
+        var arrow = document.createElement("span");
+        arrow.className = "arrow";
+        arrow.textContent = state.activitySortDir === "asc" ? "▲" : "▼";
+        button.appendChild(arrow);
+      }
+      button.addEventListener("click", function () {
+        if (state.activitySortKey === column.key) {
+          state.activitySortDir = state.activitySortDir === "asc" ? "desc" : "asc";
+        } else {
+          state.activitySortKey = column.key;
+          state.activitySortDir = column.type === "num" ? "desc" : "asc";
+        }
+        renderActivity();
+      });
       th.appendChild(button);
       headerRow.appendChild(th);
     });
     el.activityThead.appendChild(headerRow);
+    if (focusedKey) {
+      var restored = el.activityThead.querySelector('.th-btn[data-key="' + focusedKey + '"]');
+      if (restored) restored.focus({ preventScroll: true });
+    }
 
     el.activityTbody.textContent = "";
     var toolTotal = 0;
@@ -2808,6 +3090,7 @@ try {
 
   function renderAll() {
     syncShell();
+    syncAgentTotals();
     renderCoverage();
     renderTraeStatus();
     renderReport();
@@ -2818,6 +3101,7 @@ try {
   rebuildDimensionSelects();
   applyTheme(document.documentElement.dataset.theme || "light");
   el.activityMetric.value = state.activityMetric;
+  el.dataUntil.textContent = DATA_UNTIL ? "数据截至 " + DATA_UNTIL : "无可用数据";
   el.generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
   renderFooter();
   renderAll();

@@ -474,5 +474,335 @@ class QoderHtmlTest(unittest.TestCase):
         self.assertIsNone(re.search(r'(?:src|href)=["\']https?://', html))
 
 
+def extract_js(html, start_marker, end_marker):
+    start = html.index(start_marker)
+    end = html.index(end_marker, start)
+    return html[start:end]
+
+
+class HtmlDateRangeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_default_range_is_last_seven_days(self):
+        source = extract_js(self.html, "function parseDay", "function setAttrs")
+        harness = r"""
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var r = defaultDateRange("2026-06-01", "2026-11-15", "2026-11-16");
+eq("default start", r.start, "2026-11-09");
+eq("default end", r.end, "2026-11-15");
+r = defaultDateRange("2026-11-12", "2026-11-15", "2026-11-16");
+eq("clamp to since", r.start, "2026-11-12");
+r = defaultDateRange("", "", "2026-11-16");
+eq("empty fallback start", r.start, "2026-11-10");
+eq("empty fallback end", r.end, "2026-11-16");
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_presets_anchor_to_data_until(self):
+        source = extract_js(self.html, "function parseDay", "function setAttrs")
+        harness = r"""
+%s
+var number = function (value) { var n = Number(value); return isFinite(n) ? n : 0; };
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+function check(name, kind, days, expectedStart, expectedEnd) {
+  var r = presetDateRange(kind, days, "2026-06-01", "2026-11-15", "2026-11-16");
+  eq(name + " start", r.start, expectedStart);
+  eq(name + " end", r.end, expectedEnd);
+}
+check("latest", "latest", 0, "2026-11-15", "2026-11-15");
+check("all", "all", 0, "2026-06-01", "2026-11-15");
+check("7d", "days", 7, "2026-11-09", "2026-11-15");
+check("30d", "days", 30, "2026-10-17", "2026-11-15");
+var clamped = clampDateRange("2026-11-16", "2026-11-20", "2026-06-01", "2026-11-15", "2026-11-16");
+eq("future start clamped", clamped.start, "2026-11-15");
+eq("future end clamped", clamped.end, "2026-11-15");
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_html_shows_data_until_and_latest_preset(self):
+        self.assertIn("最新", self.html)
+        self.assertIn("数据截至", self.html)
+        self.assertIn("function defaultDateRange", self.html)
+        self.assertIn("data-until", self.html)
+
+
+class HtmlEmptyStateTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_empty_state_decision(self):
+        source = extract_js(self.html, "function shouldShowEmptyState",
+                            "function renderTraeCreditKpis")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("all empty", shouldShowEmptyState({token: 0, credit: 0, est: 0, activity: 0}), true);
+eq("token present", shouldShowEmptyState({token: 1, credit: 0, est: 0, activity: 0}), false);
+eq("activity present", shouldShowEmptyState({token: 0, credit: 0, est: 0, activity: 1}), false);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_trae_kpi_distinguishes_out_of_range_from_unsynced(self):
+        source = extract_js(self.html, "function shouldShowEmptyState",
+                            "function renderTraeCreditKpis")
+        harness = r"""
+%s
+function fmtInt(value) { return String(value); }
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var st = traeCreditState([], [{day: "2026-10-01"}], {available: true, refresh_error: null});
+eq("out of range label", st.label, "当前区间无 Trae credits");
+st = traeCreditState([], [], {available: false, refresh_error: null});
+eq("unsynced label", st.label, "未同步");
+st = traeCreditState([], [], {available: false, refresh_error: "HTTP 401"});
+eq("refresh failure label", st.label, "刷新失败");
+st = traeCreditState([], [], {available: true, refresh_error: null});
+eq("no data label", st.label, "无 credits 数据");
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_empty_state_markup(self):
+        self.assertIn('id="empty-state"', self.html)
+        self.assertIn('id="empty-quota"', self.html)
+        self.assertIn("与区间无关", self.html)
+        self.assertIn("当前区间无数据", self.html)
+
+
+class HtmlActivityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_activity_chart_uses_full_date_buckets(self):
+        source = extract_js(self.html, "function parseDay", "function setAttrs")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var rows = [
+  {day: "2026-07-09", tool_calls: 1},
+  {day: "2026-08-22", tool_calls: 2}
+];
+var buckets = activityBuckets(rows, "2026-07-01", "2026-08-31", ["tool_calls"]);
+eq("bucket count", buckets.length, 62);
+eq("first day", buckets[0].key, "2026-07-01");
+function value(day) {
+  var found = buckets.filter(function (bucket) { return bucket.key === day; });
+  return found.length ? found[0].values.tool_calls : null;
+}
+eq("gap is zero", value("2026-07-10"), 0);
+eq("july value", value("2026-07-09"), 1);
+eq("august value", value("2026-08-22"), 2);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_activity_table_sort_updates_aria_sort(self):
+        source = extract_js(self.html, "function sortRows", "function renderDataTable")
+        harness = r"""
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var rows = [
+  {day: "2026-07-09", tool_calls: 1},
+  {day: "2026-07-10", tool_calls: 3},
+  {day: "2026-07-08", tool_calls: 2}
+];
+var sorted = sortRows(rows, "tool_calls", "desc", {tool_calls: true});
+eq("numeric desc", sorted.map(function (row) { return row.tool_calls; }), [3, 2, 1]);
+sorted = sortRows(rows, "day", "asc", {});
+eq("text asc", sorted.map(function (row) { return row.day; }),
+   ["2026-07-08", "2026-07-09", "2026-07-10"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("aria-sort", self.html)
+        self.assertIn("activitySortKey", self.html)
+
+
+class HtmlFilterLinkageTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.html = render_html(build_payload([], ("day", "source", "model", "project"),
+                                             None, None, []))
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_dimension_rows_follow_range_and_search(self):
+        source = extract_js(self.html, "function groupTotals", "function pageMetric")
+        harness = r"""
+var state = {agents: new Set(["claude"]), start: "2026-11-09", end: "2026-11-15",
+             model: "", project: "", q: ""};
+var TOKEN_ROWS = [
+  {day: "2026-11-10", source: "claude", model: "m1", project: "p1", total: 10, turns: 1},
+  {day: "2026-10-01", source: "claude", model: "m2", project: "p2", total: 20, turns: 1}
+];
+var CREDIT_ROWS = [];
+var EST = [];
+var TRAE_EST = [];
+function hasCreditsSelected() { return false; }
+function hasQoderShadowSelected() { return false; }
+%s
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+function keys(rows, key) {
+  return groupTotals(rows, key).map(function (item) { return item.key; });
+}
+eq("date range", keys(dimensionRows("model"), "model"), ["m1"]);
+state.q = "m1";
+eq("search", keys(dimensionRows("model"), "model"), ["m1"]);
+state.q = "";
+state.project = "p1";
+eq("project filters models", keys(dimensionRows("model"), "model"), ["m1"]);
+state.project = "";
+state.model = "m1";
+eq("model filters projects", keys(dimensionRows("project"), "project"), ["p1"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_agent_chip_totals_follow_range(self):
+        source = extract_js(self.html, "function navTotal", "function addKpiTo")
+        harness = r"""
+var state = {start: "2026-11-09", end: "2026-11-15", model: "", project: "", q: "",
+             agents: new Set(["claude", "codex"])};
+var TOKEN_ROWS = [
+  {day: "2026-11-10", source: "claude", total: 10},
+  {day: "2026-10-01", source: "claude", total: 20},
+  {day: "2026-11-10", source: "codex", total: 30}
+];
+var CREDIT_ROWS = [];
+var TRAE_EST = [];
+function matchesFilters(row) { return row.day >= state.start && row.day <= state.end; }
+function agentKind(name) { return name === "qoder" || name === "trae-cn" ? "credits" : "token"; }
+function fmtCompact(value) { return String(value); }
+function fmtInt(value) { return String(value); }
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function sumField(rows, field) {
+  return rows.reduce(function (acc, row) { return acc + number(row[field]); }, 0);
+}
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("claude range total", navTotal("claude"), 10);
+eq("codex range total", navTotal("codex"), 30);
+eq("out of range excluded", navTotal("trae-cn"), 0);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_select_all_preserves_other_filters(self):
+        source = extract_js(self.html, "function applyAgentSelection",
+                            "function buildAgentFilter")
+        harness = r"""
+var AGENTS = ["claude", "codex"];
+var state = {agents: new Set(["claude"]), model: "m1", project: "p1", q: "x", page: 2};
+function rebuildDimensionSelects() {}
+function syncAgentFilter() {}
+function renderAll() {}
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+applyAgentSelection(["claude", "codex"]);
+eq("agents", Array.from(state.agents).join(","), "claude,codex");
+eq("model kept", state.model, "m1");
+eq("project kept", state.project, "p1");
+eq("search kept", state.q, "x");
+eq("page reset", state.page, 0);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("applyAgentSelection(AGENTS.slice())", self.html)
+
+
 if __name__ == "__main__":
     unittest.main()

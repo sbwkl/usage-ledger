@@ -339,6 +339,20 @@ usage est --source trae-cn --group-by day,model
 | R17 | If a source root/file is missing, broken, or unparsable, then the system shall isolate the failure, count/skip bad records, and continue producing results from other sources rather than aborting the whole run. | `test_missing_root_is_unavailable`、`test_broken_session_file_is_isolated`、`test_bad_lines_and_shapes_are_skipped`、`test_missing_db_is_unavailable` |
 | R18 | When `usage live` runs, the system shall read sources directly without DB writes and show the latest completed turns; target latency <0.3s. | 手工 `usage live` 计时；**当前实测约 2.3s，未达标，见 §6 P1-1** |
 
+### 5.6 HTML 报表体验（CHG-0004）
+
+| ID | 需求（EARS） | 验收 / 测试映射 |
+|---|---|---|
+| R19 | When the report is opened after the data-until date, the system shall anchor the “最新 / 7 / 30 / 90 天” presets and the date pickers to `DATA_UNTIL`, display “数据截至 YYYY-MM-DD”, and reject or clamp dates after `DATA_UNTIL`; the preset previously labeled “今日” shall be labeled “最新”. | `tests.test_html.HtmlDateRangeTest` |
+| R20 | While Trae CN is selected and the current range has no Trae credit rows but cached credit data exists outside the range, the system shall show “当前区间无 Trae credits” instead of “未同步”; it shall show “未同步” only when no credit cache exists, and “刷新失败（使用缓存）” only when refresh failed and cache is being used. | `tests.test_html.HtmlEmptyStateTest` |
+| R21 | When the current range has no token, credit, estimate, or activity rows, the system shall render one page-level empty state, hide zero-only KPI blocks, blank charts, the empty main table, and the activity block; a quota snapshot shown in this state shall be labeled “最新快照，与区间无关”. | `tests.test_html.HtmlEmptyStateTest` |
+| R22 | When the activity chart renders for a selected range, the system shall use the same full-date buckets as the token / credits charts, plot zero for days without activity, and display “活跃 N 天 / 共 M 天” coverage; it shall not compress gaps by enumerating only days with data. | `tests.test_html.HtmlActivityTest` |
+| R23 | When a user activates an activity table column header, the system shall sort rows by that column in ascending / descending order and expose `aria-sort`; if a column is not sortable, the header shall be a plain `th` without button styling. | `tests.test_html.HtmlActivityTest` |
+| R24 | When the date range or search changes, the system shall rebuild model and project options from rows matching all other active filters, show each option’s row count, exclude zero-row options, and clear a selected value that no longer matches; rebuilding on search input shall be debounced. | `tests.test_html.HtmlFilterLinkageTest` |
+| R25 | While a date range is active, agent chips shall show totals for the current range and use the same unit / scope as the KPI blocks; if all-time totals are kept, the chip label shall explicitly say “全部时间”. | `tests.test_html.HtmlFilterLinkageTest` |
+| R26 | When the user activates “全选”, the system shall only change agent selection and shall not clear model, project, or search; “重置筛选” shall clear all filters including search. | `tests.test_html.HtmlFilterLinkageTest` |
+| R39 | When the report loads without a valid persisted filter state, the system shall set the initial range to the last 7 calendar days ending at `DATA_UNTIL` (inclusive), clamp the start to `DATA_SINCE` when fewer than 7 days exist, keep the “全部” preset available, and apply the same range to all unit panels; a valid persisted state shall take precedence over the default. | `tests.test_html.HtmlDateRangeTest` |
+
 ---
 
 ## 6. 风险与兔子洞
