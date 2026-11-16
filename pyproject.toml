@@ -14,8 +14,18 @@ dependencies = []
 usage = "usage_ledger.cli:main"
 usage-ledger = "usage_ledger.cli:main"
 
+[project.optional-dependencies]
+dev = ["coverage>=7.4"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/usage_ledger"]
+
+[tool.coverage.report]
+show_missing = true
