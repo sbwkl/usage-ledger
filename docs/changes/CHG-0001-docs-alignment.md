@@ -10,7 +10,7 @@
 | 功能卡 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md) |
 | 关联 | [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../ARCHITECTURE.md) §11、commit `02e8473`（评审修订见后续 CHG-0001 提交） |
 
-> 说明：本变更已在本地完成验证（159 tests + 链接检查），尚未合并 main，因此状态为“已验证”，不是“已发布”。
+> 说明：本变更已通过 [PR #2](https://github.com/sbwkl/usage-ledger/pull/2) 合并 `main`（`5b5f987`，2026-11-15）。文档变更没有部署产物，状态保持“已验证”，不标“已发布”。
 
 ## 摘要
 

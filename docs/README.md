@@ -7,7 +7,7 @@
 | 目录 | 只放什么 | 当前文档 |
 |---|---|---|
 | [requirements/](requirements/) | 功能卡（REQ） | [REQ-0001 本地 AI 编码工具用量台账](requirements/REQ-0001-usage-ledger.md)、[REQ-0002 测试体系完善](requirements/REQ-0002-testing.md) |
-| [changes/](changes/) | 变更文档（CHG） | [CHG-0001 需求 / 变更文档体系对齐](changes/CHG-0001-docs-alignment.md)、[CHG-0002 测试门禁与覆盖率基线](changes/CHG-0002-test-gates.md) |
+| [changes/](changes/) | 变更文档（CHG） | [CHG-0001 需求 / 变更文档体系对齐](changes/CHG-0001-docs-alignment.md)、[CHG-0002 测试门禁与覆盖率基线](changes/CHG-0002-test-gates.md)、[CHG-0003 修正合并状态](changes/CHG-0003-docs-status.md) |
 | [adr/](adr/) | 已做出、难回退的决策（ADR） | [ADR-0001 源是唯一事实来源](adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002 拉取式采集，无常驻进程](adr/ADR-0002-pull-collection-no-daemon.md) |
 | [rfcs/](rfcs/) | 跨团队、不可逆、技术不确定的方案（RFC） | 暂无；按需创建，见 [rfcs/README.md](rfcs/README.md) |
 
@@ -38,7 +38,7 @@
 ## ID 与变更约定
 
 - ID 按类型在仓库内递增，创建后不复用：`REQ-0001`、`CHG-0001`、`ADR-0001`。
-- 下一批可用 ID：`REQ-0003`、`CHG-0003`、`ADR-0003`。
+- 下一批可用 ID：`REQ-0003`、`CHG-0004`、`ADR-0003`。
 - 新功能 / 跨模块行为变更：先建 CHG，更新 REQ-0001 的 AC / 变更索引，再写代码。
 - 一次性小修：可以只有极简 CHG（问题、改动、验证、回滚），但必须回链所属模块 / 入口。
 - 跨团队、不可逆、技术不确定、影响公共接口 / 数据模型：加 RFC。
