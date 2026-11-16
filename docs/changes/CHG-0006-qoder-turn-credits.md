@@ -23,7 +23,7 @@ Qoder 新桌面端从 2026-11-13 晚间起不再把逐请求 `usage.credits` 写
      - 11-13：3 条，5.23 credits
      - 11-14：13 条，67.75 credits
      - 11-15：43 条，102.92 credits
-     - 11-16：26 条，112.50 credits
+     - 11-16：26 条，112.50 credits（首次扫描时点；验证阶段数据库继续写入，最终为 27 条 / 123.40，见 §5）
   4. 抽样核对 11-13 22:28 / 22:33 / 22:34 的 DB `turn_id`，对应转录中同时间的 user / assistant 消息均无 `usage`；DB 的 `turn_credits_request_set_id` 也没有命中任何转录 `usage.request_id`。因此两源在样本上互补，不是同一请求的重复记录。
 - 不做的后果：Qoder 最近 3 天在 credits KPI、图表、Top 8、明细表中全部显示为无数据；用户会误以为没有消耗。
 
