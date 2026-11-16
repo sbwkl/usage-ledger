@@ -547,6 +547,26 @@ class SqliteStore:
             ).fetchone()[0]
         return self.conn.execute("SELECT COUNT(*) FROM usage_credit").fetchone()[0]
 
+    def credit_request_ids(self, source: str | None = None) -> set[str]:
+        if source:
+            rows = self.conn.execute(
+                "SELECT request_id FROM usage_credit WHERE source=?", (source,))
+        else:
+            rows = self.conn.execute("SELECT request_id FROM usage_credit")
+        return {row[0] for row in rows}
+
+    def delete_credits(self, request_ids) -> int:
+        ids = list(dict.fromkeys(request_ids))
+        deleted = 0
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" for _ in chunk)
+            cursor = self.conn.execute(
+                "DELETE FROM usage_credit WHERE request_id IN (%s)" % marks, chunk)
+            deleted += cursor.rowcount
+        self.conn.commit()
+        return deleted
+
     def credit_bounds(self, source: str | None = None) -> tuple[str | None, str | None, float | None]:
         if source:
             row = self.conn.execute(

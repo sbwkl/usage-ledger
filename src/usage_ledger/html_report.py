@@ -831,6 +831,10 @@ try {
     }
   }
 
+  function persistedFlag(value) {
+    return value === true || value === 1 || value === "1" || value === "true";
+  }
+
   function applyPersistedState(target, raw, fallback) {
     if (!raw || typeof raw !== "object") return;
     var start = String(raw.start || "");
@@ -852,8 +856,8 @@ try {
     if (ACTIVITY_METRIC_KEYS.indexOf(raw.activityMetric) >= 0) {
       target.activityMetric = raw.activityMetric;
     }
-    target.shadow = raw.shadow === true || raw.shadow === "1";
-    target.focusRange = raw.focusRange === true || raw.focusRange === "1";
+    target.shadow = persistedFlag(raw.shadow);
+    target.focusRange = persistedFlag(raw.focusRange);
     ["sortKey", "activitySortKey"].forEach(function (key) {
       if (typeof raw[key] === "string" && raw[key]) target[key] = raw[key];
     });
@@ -2900,6 +2904,8 @@ try {
     state.model = state.model === key ? "" : key;
     el.model.value = state.model;
     state.page = 0;
+    refreshFocusAfterFilterChange();
+    rebuildDimensionSelects();
     renderAll();
   }
 
@@ -2907,6 +2913,8 @@ try {
     state.project = state.project === key ? "" : key;
     el.project.value = state.project;
     state.page = 0;
+    refreshFocusAfterFilterChange();
+    rebuildDimensionSelects();
     renderAll();
   }
 
@@ -3078,6 +3086,7 @@ try {
       var values = {};
       columns.forEach(function (column) {
         if (column.unit !== unit) return;
+        if (source && column.source && column.source !== source) return;
         values[column.key] = rows.reduce(function (acc, row) {
           if (row.unit !== unit) return acc;
           if (source && row.source !== source) return acc;
@@ -3111,6 +3120,13 @@ try {
       });
     }
     return out;
+  }
+
+  function totalCellValue(column, total) {
+    if (column.unit !== total.unit) return null;
+    if (column.source && column.source !== total.source) return null;
+    if (total.values[column.key] === undefined) return null;
+    return total.values[column.key];
   }
 
   function renderDataTable(config) {
@@ -3231,7 +3247,8 @@ try {
             if (column.key !== "day" && column.key !== "source") td.classList.add("sticky-wide");
             td.style.left = sticky.left[column.key] + "px";
           }
-          if (column.unit && row.unit !== column.unit) {
+          if ((column.unit && row.unit !== column.unit) ||
+              (column.source && row.source !== column.source)) {
             td.textContent = "—";
             td.classList.add("zero");
           } else if (column.key === "day") {
@@ -3283,14 +3300,12 @@ try {
             .forEach(function (column) {
               var td = document.createElement("td");
               if (column.type === "num") td.className = "num";
-              if (column.unit !== total.unit) {
-                td.textContent = "—";
-                td.classList.add("zero");
-              } else if (total.values[column.key] === undefined) {
+              var value = totalCellValue(column, total);
+              if (value === null) {
                 td.textContent = "—";
                 td.classList.add("zero");
               } else {
-                td.textContent = columnFmt(column, total.values[column.key]);
+                td.textContent = columnFmt(column, value);
               }
               tr.appendChild(td);
             });
@@ -3397,15 +3412,17 @@ try {
                      unit: "credit", fmt: fmtCredits, group: "Credits" });
       if (qoderCredit) {
         columns.push({ key: "free_credits", label: "免费 credits", type: "num",
-                       unit: "credit", fmt: fmtCredits, group: "Credits" });
+                       unit: "credit", source: "qoder", fmt: fmtCredits,
+                       group: "Credits" });
         columns.push({ key: "credit_requests", label: "请求", type: "num",
-                       unit: "credit", fmt: fmtInt, group: "Credits" });
+                       unit: "credit", source: "qoder", fmt: fmtInt, group: "Credits" });
         columns.push({ key: "free_requests", label: "免费请求", type: "num",
-                       unit: "credit", fmt: fmtInt, group: "Credits" });
+                       unit: "credit", source: "qoder", fmt: fmtInt, group: "Credits" });
       }
       if (traeCredit) {
         columns.push({ key: "credit_sessions", label: "会话", type: "num",
-                       unit: "credit", fmt: fmtInt, group: "Credits" });
+                       unit: "credit", source: "trae-cn", fmt: fmtInt,
+                       group: "Credits" });
       }
     }
     if (units.has("est")) {
@@ -4013,6 +4030,7 @@ try {
     renderTraeStatus();
     syncHelpAlert();
     renderReport();
+    renderFooter();
     persistState();
     updateChrome();
   }
@@ -4038,7 +4056,6 @@ try {
   el.pageSize.value = String(state.pageSize);
   el.dataUntil.textContent = DATA_UNTIL ? "数据截至 " + DATA_UNTIL : "无可用数据";
   el.generated.textContent = "生成于 " + fmtDateTime(DATA.generated_at);
-  renderFooter();
   renderAll();
 })();
 </script>

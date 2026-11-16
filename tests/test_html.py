@@ -918,13 +918,16 @@ var columns = [
   {key: "source", identity: true},
   {key: "input", unit: "token", type: "num", group: "Token"},
   {key: "credits", unit: "credit", type: "num", group: "Credits"},
-  {key: "free_credits", unit: "credit", type: "num", group: "Credits"},
+  {key: "free_credits", unit: "credit", type: "num", source: "qoder", group: "Credits"},
+  {key: "credit_sessions", unit: "credit", type: "num", source: "trae-cn",
+   group: "Credits"},
   {key: "est_total", unit: "est", type: "num", group: "估算"}
 ];
 var rows = [
   {day: "2026-11-10", source: "claude", unit: "token", input: 10},
   {day: "2026-11-10", source: "qoder", unit: "credit", credits: 2, free_credits: 0},
-  {day: "2026-11-10", source: "trae-cn", unit: "credit", credits: 3, free_credits: null},
+  {day: "2026-11-10", source: "trae-cn", unit: "credit", credits: 3,
+   free_credits: null, credit_sessions: 4},
   {day: "2026-11-10", source: "trae-cn", unit: "est", est_total: 5}
 ];
 var kept = pruneColumns(columns, rows).map(function (c) { return c.key; });
@@ -938,6 +941,12 @@ eq("token total", totals[0].values.input, 10);
 eq("qoder credits", totals[1].values.credits, 2);
 eq("trae credits", totals[2].values.credits, 3);
 eq("est total", totals[3].values.est_total, 5);
+var freeCol = columns.find(function (c) { return c.key === "free_credits"; });
+var sessionCol = columns.find(function (c) { return c.key === "credit_sessions"; });
+eq("qoder free", totalCellValue(freeCol, totals[1]), 0);
+eq("qoder sessions dash", totalCellValue(sessionCol, totals[1]), null);
+eq("trae sessions", totalCellValue(sessionCol, totals[2]), 4);
+eq("trae free dash", totalCellValue(freeCol, totals[2]), null);
 """ % source
         proc = subprocess.run([shutil.which("node"), "-e", harness],
                               capture_output=True, text=True)
@@ -1381,6 +1390,36 @@ eq("bad page size", normalizePageSize("999", [25, 50], 50), 50);
         self.assertIn("URLSearchParams", self.html)
         self.assertIn("STATE_KEY", self.html)
 
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_url_boolean_state_round_trip(self):
+        source = extract_js(self.html, "function persistedFlag", "function stateSnapshot")
+        harness = r"""
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var params = new URLSearchParams();
+params.set("shadow", true);
+params.set("focusRange", false);
+var raw = {};
+params.forEach(function (value, key) { raw[key] = value; });
+eq("shadow true", persistedFlag(raw.shadow), true);
+eq("focus false", persistedFlag(raw.focusRange), false);
+eq("native bool", persistedFlag(true), true);
+eq("url one", persistedFlag("1"), true);
+eq("url false", persistedFlag("false"), false);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("target.shadow = persistedFlag(raw.shadow)", self.html)
+        self.assertIn("target.focusRange = persistedFlag(raw.focusRange)", self.html)
+
 
 class HtmlFocusRangeTest(unittest.TestCase):
     @classmethod
@@ -1431,6 +1470,46 @@ eq("no data", focusBounds(), ["", ""]);
         self.assertIn("聚焦有数据区间", self.html)
         self.assertIn("defaultDateRange", self.html)
         self.assertIn("无可聚焦的数据区间", self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_top8_dimension_pick_refreshes_focus_and_selects(self):
+        source = extract_js(self.html, "function pickModel", "function renderTopLists")
+        harness = r"""
+var state = {model: "", project: "", page: 3};
+var el = {model: {value: ""}, project: {value: ""}};
+var calls = [];
+function refreshFocusAfterFilterChange() { calls.push("focus"); }
+function rebuildDimensionSelects() { calls.push("rebuild"); }
+function renderAll() { calls.push("render"); }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+pickModel("m1");
+eq("model", state.model, "m1");
+eq("model page", state.page, 0);
+eq("model calls", calls, ["focus", "rebuild", "render"]);
+calls = [];
+pickModel("m1");
+eq("model cleared", state.model, "");
+eq("model clear calls", calls, ["focus", "rebuild", "render"]);
+calls = [];
+pickProject("p1");
+eq("project", state.project, "p1");
+eq("project calls", calls, ["focus", "rebuild", "render"]);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_footer_refreshes_after_filters(self):
+        source = extract_js(self.html, "function renderAll", "buildAgentFilter")
+        self.assertIn("renderFooter();", source)
 
 
 class HtmlFilterLayoutTest(unittest.TestCase):

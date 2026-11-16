@@ -137,7 +137,8 @@
         "tests.test_html.HtmlKpiLayoutTest"
       ],
       "R30": [
-        "tests.test_html.HtmlCoverageBlockTest"
+        "tests.test_html.HtmlCoverageBlockTest",
+        "tests.test_html.HtmlFocusRangeTest.test_footer_refreshes_after_filters"
       ],
       "R31": [
         "tests.test_html.HtmlTopListTest"
@@ -158,10 +159,12 @@
         "tests.test_html.HtmlLabelsTest"
       ],
       "R37": [
-        "tests.test_html.HtmlStatePersistenceTest"
+        "tests.test_html.HtmlStatePersistenceTest",
+        "tests.test_html.HtmlStatePersistenceTest.test_url_boolean_state_round_trip"
       ],
       "R38": [
-        "tests.test_html.HtmlFocusRangeTest"
+        "tests.test_html.HtmlFocusRangeTest",
+        "tests.test_html.HtmlFocusRangeTest.test_top8_dimension_pick_refreshes_focus_and_selects"
       ],
       "R39": [
         "tests.test_html.HtmlDateRangeTest"
@@ -171,10 +174,12 @@
       ],
       "R41": [
         "tests.test_collectors.QoderTurnCreditsTest",
-        "tests.test_collectors.QoderSignatureTest"
+        "tests.test_collectors.QoderSignatureTest",
+        "tests.test_cli.QoderCliTest.test_incremental_backfill_skips_turn_request_seen_in_transcript"
       ],
       "R42": [
-        "tests.test_html.HtmlCreditParityTest"
+        "tests.test_html.HtmlCreditParityTest",
+        "tests.test_html.HtmlTableLayoutTest"
       ],
       "R43": [
         "tests.test_html.HtmlCreditParityTest"

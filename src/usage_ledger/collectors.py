@@ -1095,7 +1095,8 @@ def scan_qoder_transcripts(root: str | None = None,
 
 
 def scan_qoder_turn_credits(db_path: str,
-                            result: SourceResult | None = None) -> SourceResult:
+                            result: SourceResult | None = None,
+                            known_request_ids: set[str] | None = None) -> SourceResult:
     if result is None:
         result = SourceResult("qoder.credits")
     if not os.path.exists(db_path):
@@ -1139,7 +1140,8 @@ def scan_qoder_turn_credits(db_path: str,
     finally:
         conn.close()
 
-    seen = {row.request_id for row in result.credits if row.request_id}
+    seen = set(known_request_ids or ())
+    seen.update(row.request_id for row in result.credits if row.request_id)
     credits = []
     for (session_id, message_id, created_at, value,
          request_set_id, cwd, model) in rows:
@@ -1152,13 +1154,15 @@ def scan_qoder_turn_credits(db_path: str,
         if not isinstance(created_at, (int, float)) or created_at <= 0:
             result.key_kinds["turn_credits:bad_timestamp"] += 1
             continue
+        turn_request_id = "qoder-turn:%s:%s" % (session_id, message_id)
         if request_set_id and request_set_id in seen:
             result.key_kinds["turn_credits:duplicate"] += 1
+            result.superseded_credit_ids.append(turn_request_id)
             continue
         ts = created_at / 1000.0
         project = os.path.basename(str(cwd).rstrip("/")) if cwd else ""
         credits.append(Credit(
-            request_id="qoder-turn:%s:%s" % (session_id, message_id),
+            request_id=turn_request_id,
             ts=ts, day=local_day(ts), project=project,
             model=str(model or "unknown"), session=str(session_id),
             credits=float(value), billable=True))
@@ -1244,10 +1248,11 @@ def scan_qoder_quota(log_root: str | None = None,
 
 def scan_qoder_credit_sources(home: str | None = None,
                               file_state: dict | None = None,
-                              result: SourceResult | None = None) -> SourceResult:
+                              result: SourceResult | None = None,
+                              known_request_ids: set[str] | None = None) -> SourceResult:
     home = home or os.path.expanduser("~")
     result = scan_qoder_transcripts(qoder_transcript_root(home), file_state, result)
-    result = scan_qoder_turn_credits(qoder_paths(home)[1], result)
+    result = scan_qoder_turn_credits(qoder_paths(home)[1], result, known_request_ids)
     return scan_qoder_quota(qoder_log_root(home), result)
 
 
@@ -1313,7 +1318,8 @@ def source_signatures(home: str | None = None,
 def collect_all(home: str | None = None, sources: list[str] | None = None,
                 skip_qoder_tokens: bool = False,
                 activity_cursor_ms: int | None = None,
-                transcript_state: dict | None = None) -> list[SourceResult]:
+                transcript_state: dict | None = None,
+                known_credit_request_ids: set[str] | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
     wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
                              "cline"])
@@ -1339,7 +1345,8 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
         if not skip_qoder_tokens:
             results.append(scan_qoder_tokens(token_db))
         results.append(scan_qoder_activity(activity_db, cursor_ms=activity_cursor_ms))
-        results.append(scan_qoder_credit_sources(home, transcript_state))
+        results.append(scan_qoder_credit_sources(
+            home, transcript_state, known_request_ids=known_credit_request_ids))
     if "trae-cn" in wanted:
         results.append(scan_trae_cn_est(home=home))
     if "cline" in wanted:
