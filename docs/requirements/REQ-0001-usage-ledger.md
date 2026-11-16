@@ -243,7 +243,7 @@ usage est --source trae-cn --group-by day,model
 - **Trae 弱估算**：固定标注“弱估算（hook 可见内容，不含系统提示 / 工具定义）”与“不可与任何真值或额度相加”。
 - **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算。
 - **数据新鲜度**：页首显示 Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步），由后端 `coverage["trae-cn.credits"]` 驱动；不在前端猜测。
-- **日期范围**：v0.6.0 默认取全部数据覆盖；[CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)（开发中）将改为“默认近 7 天（截至数据日）”，并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；浅色 / 深色主题记在 `localStorage`。
+- **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；浅色 / 深色主题记在 `localStorage`。见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)。
 - **快照属性**：HTML 是生成时快照，再次打开旧文件不会更新；生成过程中可能按联网规则刷新 Trae credits。
 
 ### 3.7 新鲜度与调度
@@ -413,12 +413,12 @@ usage est --source trae-cn --group-by day,model
 |---|---|---|---|
 | CHG-0001 | 需求 / 变更文档体系对齐 | 已验证 | [CHG-0001](../changes/CHG-0001-docs-alignment.md) |
 | CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../changes/CHG-0003-docs-status.md) |
-| CHG-0004 | HTML 报表空状态与筛选联动修复 | 开发中 | [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) |
+| CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) |
 | CHG-0005 | HTML 报表展示与交互优化 | 开发中 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
-> 2026-11-16：CHG-0004 / CHG-0005 已评审通过，状态“开发中”。两份 CHG 中的 R19–R40 为本次新增 AC，实现时写入 §5 与 `tests/ac_map.json`（门禁要求每条 AC 映射真实测试），并在 CHG 中补验证证据。
+> 2026-11-16：CHG-0004 已实现并验证（R19–R26、R39 写入 §5.6 与 `tests/ac_map.json`，commit `530d311`）；CHG-0005（R27–R38、R40）仍为“开发中”。
 
 ---
 

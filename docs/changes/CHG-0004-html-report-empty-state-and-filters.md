@@ -1,7 +1,7 @@
 # CHG-0004 HTML 报表空状态与筛选联动修复
 
 类型：CHG
-状态：开发中
+状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
 功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
@@ -29,7 +29,7 @@ Owner：wayne
 
 ## 3. 行为 / AC delta
 
-> 拟新增 REQ-0001 §5 的 R19–R26 与 R39。**当前阶段不写入 REQ §5 与 `tests/ac_map.json`**：仓库门禁要求每条 R 至少映射一个真实存在的测试（[scripts/check_ac_map.py](../../scripts/check_ac_map.py)），而实现与测试尚未开始。进入“开发中”时先把 R19–R26、R39 写入 REQ §5，并在同一 CHG 内补齐 `tests/ac_map.json` 映射；在此之前以本节为 AC 事实源。
+> R19–R26 与 R39 已写入 [REQ-0001 §5.6](../requirements/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到 `HtmlDateRangeTest` / `HtmlEmptyStateTest` / `HtmlActivityTest` / `HtmlFilterLinkageTest`；本节保留为本次 AC delta 记录。
 
 - **R19**：When the report is opened after the data-until date, the system shall anchor the “最新 / 7 / 30 / 90 天” presets and the date pickers to `DATA_UNTIL`, display “数据截至 YYYY-MM-DD”, and reject or clamp dates after `DATA_UNTIL`; the preset previously labeled “今日” shall be labeled “最新”.
 - **R20**：While Trae CN is selected and the current range has no Trae credit rows but cached credit data exists outside the range, the system shall show “当前区间无 Trae credits” instead of “未同步”; it shall show “未同步” only when no credit cache exists, and “刷新失败（使用缓存）” only when refresh failed and cache is being used.
@@ -55,16 +55,16 @@ Owner：wayne
 
 ## 5. 验证与观测
 
-- 自动化测试（实现时新增，`tests/test_html.py` 的 Node harness；最终名称以实现为准）：
-  - `test_presets_anchor_to_data_until`
-  - `test_default_range_is_last_seven_days`
-  - `test_trae_kpi_distinguishes_out_of_range_from_unsynced`
-  - `test_empty_range_renders_single_empty_state`
-  - `test_activity_chart_uses_full_date_buckets`
-  - `test_activity_table_sort_updates_aria_sort`
-  - `test_dimension_selects_follow_date_and_search`
-  - `test_agent_chip_totals_follow_range`
-  - `test_select_all_preserves_other_filters_reset_clears_all`
+- 自动化测试（新增 11 个，`tests/test_html.py` 的 Node / 静态 harness）：
+  - `HtmlDateRangeTest`：`test_default_range_is_last_seven_days`、`test_presets_anchor_to_data_until`、`test_html_shows_data_until_and_latest_preset`
+  - `HtmlEmptyStateTest`：`test_empty_state_decision`、`test_trae_kpi_distinguishes_out_of_range_from_unsynced`、`test_empty_state_markup`
+  - `HtmlActivityTest`：`test_activity_chart_uses_full_date_buckets`、`test_activity_table_sort_updates_aria_sort`
+  - `HtmlFilterLinkageTest`：`test_dimension_rows_follow_range_and_search`、`test_agent_chip_totals_follow_range`、`test_select_all_preserves_other_filters`
+- 门禁结果（2026-11-16，`feat/html-report-ux`，worktree）：
+  - `python3 -m unittest discover -s tests -t .`：255 tests，OK，0 skip
+  - `python3 scripts/check_test_policy.py`：255 tests，0 failures / 0 errors / 0 skips；fast suite 1.358s（budget 5.0s）
+  - `python3 scripts/check_ac_map.py`：REQ-0001 27 criteria / 74 mapped identifiers，passed
+  - 分支覆盖率：TOTAL 93.6%（threshold 85.0%，baseline 80.9%），`store.py` 97.1%、`collectors.py` 96.3%、`cli.py` 93.5%、`scheduler.py` 98.2%，`check_coverage.py` passed
 - 手工验收（Chrome 1440×900 与 500×900）：
   1. 用 2026-11-15 生成的报告在 2026-11-16 打开；清空 URL / localStorage 后首次加载默认应为 11-09 ~ 11-15；点“最新”仍为 11-15；点“全部”为 06-01 ~ 11-15；页面显示“数据截至 2026-11-15”；日期选择器不能选 11-16 之后。
   2. 用空区间 fixture（或已知无数据的日期）生成报告：只出现一个空状态，并提示切换到“全部”；不出现 17 张 0 卡、空白图、空表、活动块；Trae 不显示“未同步”；若显示额度卡，必须带“最新快照，与区间无关”。
@@ -74,8 +74,16 @@ Owner：wayne
   6. 把范围收窄到最近 15 天：模型 / 项目下拉的选项数下降且只含非零行；选择后不出现空表；切换日期时失效选项被清空。
   7. 近 7 天时 chip 数字等于 KPI 的区间总 Token；若保留全时段数字，chip 必须有“全部时间”。
   8. 选中模型后点“全选”：模型筛选保持；点“重置筛选”：模型 / 项目 / 搜索全部清空。
-- 回归：`python3 -m unittest discover -s tests -t .`；`python3 scripts/check_test_policy.py`；`python3 scripts/check_ac_map.py`；覆盖率按 [README.md 的测试与门禁](../../README.md#测试与门禁) 的命令执行。实现后附通过数、跳过数、覆盖率变化与 commit。
-- 观测：HTML 无外部请求、CSP 不变；页面 console 零错误；Node 缺失时测试按现有白名单策略处理，不静默 skip。
+  实测（使用 `PYTHONPATH=src python3 -m usage_ledger html --offline --output /tmp/usage-report-chg4.html`，数据截至 2026-11-16）：
+  1. 首次加载默认 11-10 ~ 11-16，显示“数据截至 2026-11-16”与“最新”预设；“最新”为 11-16，“全部”为 06-01 ~ 11-16，日期选择器 max 为 11-16。
+  2. 范围设为 2026-10-24：只出现一个空状态，KPI / 图表 / 主表 / 活动块隐藏；额度快照标注“最新额度快照：…（与区间无关）”。
+  3. 范围设为 06-01 ~ 10-01 且保留 trae-cn：KPI 显示“当前区间无 Trae credits / 缓存中有 14 行，当前范围没有会话”，同屏 Qoder token / credits 正常；未误报“未同步”。
+  4. 范围设为 06-01 ~ 11-16 并展开活动：横轴覆盖 169 天，提示“活跃 85 天 / 共 169 天（完整日期轴，缺失显示 0）”；07-09 → 08-22 空档保留。
+  5. 点击活动表“提示”表头：`aria-sort` 由 `descending` 切到 `ascending`，首行随之变化；表头为按钮且可键盘聚焦。
+  6. 范围收窄到 06-01 ~ 10-01：模型 / 项目下拉只保留有行选项并显示“· N 行”；搜索 `glm` 后模型仅剩 `GLM-5.3-Flash · 12 行`，失效的已选模型被清空。
+  7. 该范围内 chip 显示 `qoder 519 cr`、`trae-cn —`、`kilo —`，与 KPI 区间口径一致；全选后模型与搜索保持，重置筛选后回到默认近 7 天且模型 / 项目 / 搜索清空。
+- 回归：上述门禁命令全部通过；`git diff --check` 无空白错误。
+- 观测：HTML 无外部请求、CSP 不变；注入式 Chrome DOM 检查未捕获 JS error；Node 缺失时按现有白名单策略处理，不静默 skip。
 
 ## 6. 回滚方案
 
@@ -98,7 +106,7 @@ Owner：wayne
 - 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) §3.6、R8、R15。
 - 同批展示优化：[CHG-0005](CHG-0005-html-report-display-and-interaction.md)。
 - 实测报告：`usage html` 生成于 `2026-11-15T08:00:38+08:00`；payload 统计与视口测量见 §2。
-- commit / PR / release：待实现。
+- commit：`530d311`（实现 + 测试）；`sit` / `main` 尚未合并，合并 `main` 需用户明确同意。
 
 ## 9. 变更记录
 
@@ -108,3 +116,4 @@ Owner：wayne
 | 提议（补充） | wayne（待评审） | 2026-11-16 用户补充：默认范围改为近 7 天（R39） |
 | 就绪 | wayne | 2026-11-16 用户审核通过 CHG-0004 范围 |
 | 开发中 | wayne | 2026-11-16 在 `feat/html-report-ux` 开始实现 |
+| 已验证 | wayne | 2026-11-16 自动化 255 tests / 0 skip、覆盖率 93.6%、AC map 27 criteria 通过；Chrome 1440 / 500 手工验收 R19–R26、R39；commit `530d311` |
