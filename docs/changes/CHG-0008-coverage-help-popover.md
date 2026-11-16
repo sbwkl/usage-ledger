@@ -63,7 +63,7 @@ Owner：wayne
 ## 8. 关联与证据
 
 - 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) R30 / R44。
-- commit：待回填。
+- commit：`7ff22fb`（实现 + 测试 + 文档）。
 - 截图 / 测试报告：`/tmp/chg8-report.html`、`/tmp/chg8-1440.png`、`/tmp/chg8-500.png`。
 
 ## 9. 变更记录

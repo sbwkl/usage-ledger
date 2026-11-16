@@ -448,7 +448,7 @@ usage est --source trae-cn --group-by day,model
 >
 > 2026-11-16：CHG-0006（R9 / R41，commit `735d00a`）与 CHG-0007（R42 / R43，commit `735d00a`）已实现并验证：276 tests / 0 skip、覆盖率 93.3%、AC map 43 criteria / 91 identifiers；Qoder 11-14..16 credits 与 Trae 默认页结构均已实测。
 >
-> 2026-11-16：CHG-0008（R30 / R44）把独立“口径与数据覆盖”卡片收进页首问号帮助层；277 tests / 0 skip、覆盖率 93.3%、AC map 44 criteria / 92 identifiers。
+> 2026-11-16：CHG-0008（R30 / R44，commit `7ff22fb`）把独立“口径与数据覆盖”卡片收进页首问号帮助层；277 tests / 0 skip、覆盖率 93.3%、AC map 44 criteria / 92 identifiers。
 
 ---
 
