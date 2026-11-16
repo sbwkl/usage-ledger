@@ -149,10 +149,11 @@ usage est --source trae-cn --group-by day,model
   - 提取：`chat_session_messages` 按 `created_at` 归属本地日；`role=user` 计 `prompts` 与会话数，`role=assistant` 计 `assistant_calls`；`payload_json.turnMetrics.turnCount` / `durationMs` 分别计 `turns` / `duration`；`parts` 中 `type=tool` 计 `tool_calls`；有 `turnMetrics` 的 assistant 单独计 `assistant_with_metrics`。
   - 存储：按 `source + day + project` 整日替换，不做逐条 request 去重；每日全量重建受影响日期。
   - 边界：只用于观察使用强度，不参与 token、成本或 credits 计算；仅 Qoder 有活动数据。
-- **qoder.credits（额度真值）** — `~/.qoder/projects/**/*.jsonl` 转录。
-  - 提取：每条 assistant 响应的 `usage.request_id`、`usage.credits`、`usage.billable`；`billable=true` 计入日消耗与请求数，免费请求单列 `free_credits`；归属响应时间所在本地日；项目取 `cwd` basename。
-  - 去重：`request_id`；重复解析幂等覆盖。
-  - 额度余额：另从 `~/Library/Application Support/com.qoder.app.stable/logs/*/main*.log*` 的 `用量响应摘要` 提取快照；只展示当前余额 / 总量，不用非单调快照差分推导日消耗。
+- **qoder.credits（额度真值）** — 两条只读来源：
+  - 转录 `~/.qoder/projects/**/*.jsonl`：每条 assistant 响应的 `usage.request_id`、`usage.credits`、`usage.billable`；`billable=true` 计入日消耗与请求数，免费请求单列 `free_credits`；归属响应时间所在本地日；项目取 `cwd` basename。
+  - 桌面端 `main.sqlite.chat_session_messages`：2026-11-13 晚间起新客户端把每轮金额写在 `turn_credits`；每条非空值（含 0）按 `qoder-turn:<session_id>:<message_id>` 输出 `billable=true` 的 credit，项目 / 模型取 `chat_sessions.cwd` basename / `chat_sessions.model`，归属 `created_at` 本地日；`turn_credits_request_set_id` 命中转录 `request_id` 时跳过，避免重复。
+  - 去重：转录按 `request_id`；DB 行使用 `qoder-turn:` 前缀；两源重复解析幂等覆盖。
+  - 额度余额：另从 `~/Library/Application Support/com.qoder.app.stable/logs/*/main*.log*` 的 `用量响应摘要` 提取快照；只展示当前余额 / 总量，不用非单调快照差分推导日消耗。 `qoder.credits` 的源签名同时跟踪转录、日志、活动库及 WAL。
 - **qoder.est（估算 token）** — 同一批 Qoder 转录。
   - 提取：要求响应带 `usage.context_usage_ratio`；`est_input = round(ratio × 200000)`，`est_output = round(输出字符数 ÷ 模型系数)`；系数 `gfmodel=3.85`、`dfmodel=4.58`、其他 `3.8`。
   - 去重 / 跳过：键为 `<session>:<响应时间戳>`；无 `ratio` 的旧版转录跳过，避免与历史 token 真值重复。
@@ -235,13 +236,12 @@ usage est --source trae-cn --group-by day,model
 
 - **文件形态**：单文件 HTML，CSS / JS / SVG 全内联，CSP `default-src 'none'`，无外部请求；可离线分发或归档。
 - **Agent 多选**：页面顶部唯一选择区，列出 claude、codex、opencode、kilo、cline、qoder、trae-cn，chip 上带各自汇总值；至少保留一个。单击只看该 Agent，再次单击恢复全选；⌘ / Ctrl / Shift+单击增减成员；另有“全选”按钮。
-- **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算` 按单位分组；每组内卡片保持连续，整个 KPI 区只有一张主卡；区间无行的单位合并为一张“无数据”卡，不铺零卡；500px 下数值完整显示、不省略。Qoder credits 显示余额 / 区间 billable / 免费 / 日均；Trae credits 显示区间 credits / 会话数 / 覆盖天数 / 模型数；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
-- **每日图表**：Token 按 Agent 堆叠；credits 单选时单序列 / 堆叠，Qoder + Trae 同时选中时改为分组柱状图，不堆叠成一个总数；Trae 弱估算显示 est 输入 / 输出堆叠。
+- **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算` 按单位分组；每组内卡片保持连续，整个 KPI 区只有一张主卡；区间无行的单位合并为一张“无数据”卡，不铺零卡；500px 下数值完整显示、不省略。Qoder 与 Trae credits 使用同一组四张卡：`区间 credits`（主卡；Qoder 为 billable，Trae 为会话级）、`免费 credits`、`区间日均`、`最新额度余额`；Trae 不提供的免费额度 / 额度快照显示 `—` 并说明原因，Qoder 的余额 / 请求数、Trae 的会话数 / 模型数放在副文案。Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
+- **每日图表**：Token 按 Agent 堆叠；credits 单选时使用同一图表容器与坐标轴，Qoder 为 billable / 免费双序列，Trae 为 billable 单序列（不伪造免费序列）；Qoder + Trae 同时选中时改为分组柱状图，不堆叠成一个总数；Qoder 影子估算与 Trae 弱估算默认隐藏，打开“估算”开关后分别显示，且不与 credits 相加。
 - **Top 8**：模型与项目各 Top 8，按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比同用“相对第一”口径并明示，排序标签写明单位与当前区间，总计为 0 时百分比显示 `—`；估算只作为同一 Agent 行的次要标注，不把只有估算的行显示成 `0 credits`。
-- **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，Token / Credits / 估算列使用分组表头。宽于容器时冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按单位和厂商分别显示合计行，Qoder 与 Trae credits 不合并；分页提供页大小与直接跳转，1440px 下不使用表内纵向滚动。
-- **Qoder 影子 est**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子 est、明细追加影子行，始终注明不可与 credits 相加。
-- **Trae 弱估算**：固定标注“弱估算（hook 可见内容，不含系统提示 / 工具定义）”与“不可与任何真值或额度相加”。
-- **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期 / 项目，折叠时跳过重绘，只挂载当前页行。
+- **明细表**：统一一张表，`Agent` 与 `单位` 列区分来源和口径；不适用的列显示 `—`；Trae credits 的计数列叫“会话”，Qoder 叫“请求”；按天 × Agent × 模型 × 项目聚合，Token / Credits / 估算列使用分组表头。默认只显示 token / credits 行；Qoder 影子估算与 Trae 弱估算由同一个“估算”开关控制，打开后才追加估算行。宽于容器时冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按单位和厂商分别显示合计行，Qoder 与 Trae credits 不合并；分页提供页大小与直接跳转，1440px 下不使用表内纵向滚动。
+- **估算开关**：Qoder 影子估算与 Trae 弱估算默认关闭，仅在选中对应 Agent 且存在估算数据时显示开关；开关文案与 `aria-label` 随选中 Agent 生成。关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数；打开后 Qoder 显示影子 est、Trae 显示弱估算，始终注明不可与 credits 相加。
+- **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期 / 项目，折叠时跳过重绘，只挂载当前页行。Trae 没有活动数据时不渲染空活动区。
 - **数据新鲜度**：Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步）放入页首可折叠的“口径与数据覆盖”块，且仅选中 Trae 时渲染；由后端 `coverage["trae-cn.credits"]` 驱动，不在前端猜测。
 - **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；可选“聚焦有数据区间”默认关闭，关闭时恢复近 7 天。见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)。
 - **展示与交互**：覆盖说明、Trae 状态、生成时间与行数口径合并为一个可折叠块，生成时间只出现一次；筛选行使用固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件的宽高与换行；图表 tooltip 支持触控与键盘；页面滚动后保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`，URL 优先，无效状态丢弃或夹紧；主题仍单独持久化。见 [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md)。
@@ -314,7 +314,8 @@ usage est --source trae-cn --group-by day,model
 |---|---|---|
 | R7 | When Qoder IDE history is available, the system shall import its token truth into the `qoder` source with the same schema/口径 as other token sources, covering 2026-06-01 ~ 2026-09-16. | `tests/test_collectors.py::QoderTokenTest`、`test_backfill_stores_tokens_and_activity` |
 | R8 | While Qoder desktop activity data is available, the system shall store sessions/prompts/tool calls/turns/duration in the separate `qoder.activity` track, show it only when Qoder is selected, and exclude it from token/cost calculations. | `QoderActivityTest`、`test_activity_only_refresh_when_activity_db_touches`、`test_html_contains_activity_and_coverage` |
-| R9 | When Qoder transcripts contain per-request billing fields, the system shall aggregate `billable=true` credits into `qoder.credits`, use quota snapshots only for current balance/cross-check (not daily derivation), and expose them via `usage credits`. | `QoderCreditsTest`、`test_backfill_stores_credits_and_estimates`、`StoreTest.test_credit_sources_are_separated` |
+| R9 | When Qoder transcripts contain per-request billing fields or the desktop database contains `turn_credits`, the system shall aggregate both into `qoder.credits`, use quota snapshots only for current balance/cross-check (not daily derivation), and expose the merged rows via `usage credits` / `usage html`. | `QoderCreditsTest`、`QoderTurnCreditsTest`、`test_backfill_stores_credits_and_estimates`、`StoreTest.test_credit_sources_are_separated` |
+| R41 | When Qoder desktop `chat_session_messages` carries numeric `turn_credits` (including 0), the system shall emit one billable credit per row keyed `qoder-turn:<session_id>:<message_id>`, attribute it to the local day of `created_at`, take project from `chat_sessions.cwd` basename and model from `chat_sessions.model`, merge it with transcript credits, skip a DB row whose `turn_credits_request_set_id` matches a transcript `request_id`, tolerate an older schema without the column, and include the activity DB / WAL in the `qoder.credits` source signature. | `tests.test_collectors.QoderTurnCreditsTest`、`tests.test_collectors.QoderSignatureTest` |
 | R10 | When Qoder transcripts have `context_usage_ratio` and text, the system shall compute `qoder.est` input/output estimates, label them as `est`, skip records without ratio, and never add them to credits or token truth. | `QoderCreditsTest`、`test_estimate_only_rows_not_ranked_as_zero_credit`、`test_model_labels_follow_qoder_display_names` |
 
 ### 5.3 Trae CN
@@ -371,6 +372,8 @@ usage est --source trae-cn --group-by day,model
 | R37 | When filters, sort, or page change, the system shall persist them in the URL hash or `localStorage` and restore them on load; URL state shall win when both exist. Invalid agents, dates, models, projects, or page numbers shall be dropped or clamped; persisted state shall not contain token, credit, quota, or session values. The theme toggle shall remain persisted. | `tests.test_html.HtmlStatePersistenceTest` |
 | R38 | The system shall provide an opt-in “聚焦有数据区间” toggle that sets the range to the union of days with data for the selected units and shows the resulting start / end; the default is the last 7 days per CHG-0004 R39, and disabling the toggle restores that default range. If no selected unit has data, the toggle shall be disabled with a reason. | `tests.test_html.HtmlFocusRangeTest` |
 | R40 | When the agent selection changes, the system shall keep the model / project / search row’s control widths and positions stable; select controls shall use fixed widths (or fixed flex-basis) so option changes do not resize the row, long values shall truncate with ellipsis while the dropdown still shows full text, and the search input shall keep a stable width. At ≤640px the row may wrap at fixed breakpoints, but switching agents shall not change the wrapping or order. | `tests.test_html.HtmlFilterLayoutTest` |
+| R42 | While a credits agent is selected, the system shall render the same four-card credit KPI sequence for Qoder and Trae CN — `区间 credits` (the only primary card), `免费 credits`, `区间日均`, `最新额度余额` — use the same credits chart container and a credit-only detail table by default; fields Trae CN does not provide (free credits, quota snapshot) shall show `—` with a reason, and Qoder / Trae credits shall never be summed. | `tests.test_html.HtmlCreditParityTest` |
+| R43 | The HTML report shall hide both Qoder shadow estimates and Trae CN weak estimates by default and expose them through one `估算` switch whose label and `aria-label` follow the selected agents; while off, estimates shall not appear in KPIs, charts, Top 8, the detail table, or footer page counts; while on, each source’s estimates shall remain separately labeled and shall not be added to credits or token truth. | `tests.test_html.HtmlCreditParityTest` |
 
 ---
 
@@ -434,10 +437,14 @@ usage est --source trae-cn --group-by day,model
 | CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../changes/CHG-0003-docs-status.md) |
 | CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) |
 | CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
+| CHG-0006 | 补齐 Qoder 桌面端 turn credits | 提议 | [CHG-0006](../changes/CHG-0006-qoder-turn-credits.md) |
+| CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 提议 | [CHG-0007](../changes/CHG-0007-trae-report-parity.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
 > 2026-11-16：CHG-0004（R19–R26、R39，commit `530d311`）与 CHG-0005（R27–R38、R40，commit `ebc48fe`）均已实现并验证；AC 同步写入 §5.6 / §5.7 与 `tests/ac_map.json`。
+>
+> 2026-11-16：用户反馈 Qoder 11-14 ~ 11-16 credits 缺失、Trae CN 展示结构需与 Qoder 一致；建立 CHG-0006（R9 / R41）与 CHG-0007（R42 / R43），待实现后回填验证证据。
 
 ---
 

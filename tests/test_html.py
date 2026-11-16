@@ -209,6 +209,9 @@ function hasCreditsSelected() { return true; }
 function hasQoderShadowSelected() {
   return state.shadow && state.agents.has("qoder") && EST.length > 0;
 }
+function hasTraeEstimateSelected() {
+  return state.shadow && state.agents.has("trae-cn") && TRAE_EST.length > 0;
+}
 function matchesFilters() { return true; }
 %s
 function eq(name, actual, expected) {
@@ -468,8 +471,8 @@ class QoderHtmlTest(unittest.TestCase):
                          ("2026-10-01", "GLM-5.3-Flash", 50_000, 1, 1))
         self.assertEqual(est["project"], "proj-x")
         self.assertEqual(payload["est"]["totals"]["requests"], 1)
-        self.assertIn("区间 billable", html)
-        self.assertIn("影子：Qoder 估算 token", html)
+        self.assertIn("区间 credits", html)
+        self.assertIn("billable 请求", html)
         self.assertIn("最新额度余额", html)
         self.assertIn("Credits 按 Agent 分列", html)
         self.assertIn("不可与 token 真值或额度相加", html)
@@ -709,6 +712,7 @@ var EST = [];
 var TRAE_EST = [];
 function hasCreditsSelected() { return false; }
 function hasQoderShadowSelected() { return false; }
+function hasTraeEstimateSelected() { return false; }
 %s
 function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
 function eq(name, actual, expected) {
@@ -947,6 +951,136 @@ class HtmlKpiLayoutTest(unittest.TestCase):
         self.assertIn('card.className = "kpi quota-kpi"', self.html)
 
 
+class HtmlCreditParityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        credit_rows = [
+            {"day": "2026-11-14", "source": "qoder", "model": "dfmodel",
+             "project": "playground", "credits": 10.0, "free_credits": 1.0,
+             "requests": 4, "free_requests": 1},
+            {"day": "2026-11-14", "source": "trae-cn", "model": "GLM-5.3-Flash",
+             "project": "-", "credits": 20.0, "free_credits": 0.0,
+             "requests": 2, "free_requests": 0},
+        ]
+        trae_est = [
+            {"day": "2026-11-14", "model": "trae-cn", "project": "-",
+             "est_input": 100, "est_output": 10, "requests": 2},
+        ]
+        quota = {"add_on": {"day": "2026-11-16", "total": 2700, "used": 160,
+                            "remaining": 2540, "pct": 0.06}}
+        cls.payload = build_payload(
+            [], ("day", "source", "model", "project"), None, None, [],
+            credits={"quota": quota}, credit_rows=credit_rows,
+            quota=quota, trae_est_rows=trae_est,
+            coverage={"trae-cn.credits": {"available": True, "refresh_mode": "auto"}})
+        cls.html = render_html(cls.payload)
+
+    def test_credit_kpis_share_one_four_card_structure(self):
+        self.assertIn("function renderCreditKpisForSource", self.html)
+        for label in ("区间 credits", "免费 credits", "区间日均", "最新额度余额"):
+            self.assertIn(label, self.html)
+        self.assertIn("Trae API 不返回免费额度", self.html)
+        self.assertIn("Trae CN 不提供额度快照", self.html)
+        self.assertNotIn('addKpiTo(host, "会话数"', self.html)
+        self.assertNotIn('addKpiTo(host, "覆盖天数"', self.html)
+        self.assertNotIn('addKpiTo(host, "模型数"', self.html)
+        self.assertIn('aria-label="显示估算"', self.html)
+        self.assertIn('id="shadow-label"', self.html)
+        self.assertIn("Trae 弱估算未计入", self.html)
+        self.assertIn('state.shadow && state.agents.has("qoder")', self.html)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_credit_kpi_cards_match_for_qoder_and_trae(self):
+        source = extract_js(self.html, "function traeCreditDataState",
+                            "function renderQoderCreditKpis")
+        harness = r"""
+var COVERAGE = {"trae-cn.credits": {available: true, refresh_mode: "auto"}};
+var CREDIT_ROWS = [];
+var QUOTA = {add_on: {day: "2026-11-16", total: 2700, used: 160,
+                      remaining: 2540, pct: 0.06}};
+var cards = [];
+function number(value) { var n = Number(value); return isFinite(n) ? n : 0; }
+function fmtCredits(value) { return String(value); }
+function fmtInt(value) { return String(value); }
+function fmtQuota(value) { return String(value); }
+function fmtDateTime(value) { return value || "—"; }
+function pct(value) { return String(value); }
+function quotaSummary() { return QUOTA.add_on; }
+function addKpiTo(host, label, value, sub, primary, cls) {
+  cards.push({label: label, value: value, sub: sub, primary: !!primary});
+}
+function addKpiNoData(host, label, sub, primary) {
+  cards.push({label: label, value: "—", sub: sub, primary: !!primary});
+}
+function addQuotaKpi(host, quota, source) {
+  cards.push({label: "最新额度余额", value: quota ? "2540" : "—",
+              sub: source === "trae-cn" ? "Trae CN 不提供额度快照" : "本地日志无额度快照",
+              primary: false});
+}
+function traeCreditState() { return {label: "无数据", sub: ""}; }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+var qoder = [{day: "2026-11-14", model: "dfmodel", credits: 10,
+              free_credits: 1, requests: 4, free_requests: 1}];
+var trae = [{day: "2026-11-14", model: "GLM", credits: 20,
+             free_credits: 0, requests: 2, free_requests: 0}];
+renderCreditKpisForSource(cards, "qoder", qoder, true);
+eq("qoder labels", cards.map(function (c) { return c.label; }),
+   ["区间 credits", "免费 credits", "区间日均", "最新额度余额"]);
+eq("qoder primary", cards.filter(function (c) { return c.primary; }).length, 1);
+eq("qoder free", cards[1].value, "1");
+cards = [];
+renderCreditKpisForSource(cards, "trae-cn", trae, true);
+eq("trae labels", cards.map(function (c) { return c.label; }),
+   ["区间 credits", "免费 credits", "区间日均", "最新额度余额"]);
+eq("trae free is unavailable", cards[1].value, "—");
+eq("trae quota reason", cards[3].sub, "Trae CN 不提供额度快照");
+eq("trae primary", cards.filter(function (c) { return c.primary; }).length, 1);
+""" % source
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "node 不可用")
+    def test_estimates_are_off_until_shared_switch(self):
+        toggle = extract_js(self.html, "function hasTraeEstimateSelected",
+                            "var initialRange")
+        rows = extract_js(self.html, "function traeRowsFor", "function dimensionRows")
+        harness = r"""
+var TRAE_EST = [{day: "2026-11-14", total: 110}];
+var EST = [{day: "2026-11-14", total: 20}];
+var state = {shadow: false, agents: new Set(["trae-cn"])};
+%s
+function matchesFilters() { return true; }
+%s
+function eq(name, actual, expected) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) {
+    console.error(name + ": " + a + " != " + e);
+    process.exitCode = 1;
+  }
+}
+eq("trae off by default", hasTraeEstimateSelected(), false);
+eq("no trae rows by default", traeRowsFor().length, 0);
+state.shadow = true;
+eq("trae on with switch", hasTraeEstimateSelected(), true);
+eq("trae rows with switch", traeRowsFor().length, 1);
+""" % (toggle, rows)
+        proc = subprocess.run([shutil.which("node"), "-e", harness],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("if (!hasTraeEstimateSelected()) return [];", self.html)
+        self.assertIn("return rows.concat(estimateRows());", self.html)
+
+
 class HtmlCoverageBlockTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1020,7 +1154,7 @@ class HtmlChartControlsTest(unittest.TestCase):
         self.assertIn("shadowAxisTitle", self.html)
         self.assertIn("axis-title", self.html)
         self.assertIn('aria-label="Token 指标"', self.html)
-        self.assertIn('aria-label="显示 Qoder 影子估算"', self.html)
+        self.assertIn('aria-label="显示估算"', self.html)
 
 
 class HtmlNavigationTest(unittest.TestCase):
@@ -1178,6 +1312,7 @@ var TRAE_EST = [];
 function matchesQuery() { return true; }
 function hasTokenSelected() { return true; }
 function hasCreditsSelected() { return true; }
+function hasTraeEstimateSelected() { return false; }
 function minMaxDay(rows) {
   var min = "", max = "";
   rows.forEach(function (row) {

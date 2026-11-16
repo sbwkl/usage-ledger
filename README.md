@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。269 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。276 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -62,7 +62,7 @@ usage-ledger/
 │   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
 │   │   └── REQ-0002-testing.md       功能卡（测试体系）
 │   ├── changes/
-│   │   └── CHG-0001 ~ CHG-0005      变更记录（CHG-0004 / CHG-0005 已验证）
+│   │   └── CHG-0001 ~ CHG-0007      变更记录（CHG-0004 / CHG-0005 已验证）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
@@ -95,11 +95,11 @@ usage-ledger/
 ## 需求、变更与决策
 
 - 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
-- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0005；[CHG-0004](docs/changes/CHG-0004-html-report-empty-state-and-filters.md) 与 [CHG-0005](docs/changes/CHG-0005-html-report-display-and-interaction.md) 已验证）。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0007；[CHG-0004](docs/changes/CHG-0004-html-report-empty-state-and-filters.md) 与 [CHG-0005](docs/changes/CHG-0005-html-report-display-and-interaction.md) 已验证；[CHG-0006](docs/changes/CHG-0006-qoder-turn-credits.md)、[CHG-0007](docs/changes/CHG-0007-trae-report-parity.md) 为本次 Qoder / Trae 展示修复）。
 - 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0006`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0008`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
@@ -188,7 +188,7 @@ usage --stateless report        # 绕过数据库与自动刷新，直读源
 
 ## Qoder 额度（credits）与估算 token（est）
 
-Qoder 新版客户端不再写 token，但转录 JSONL 保留了每请求的服务端计费字段与上下文比例：
+Qoder 新版客户端不再写 token；转录 JSONL 在 2026-11-13 之前保留每请求的服务端计费字段与上下文比例，之后把每轮金额写入桌面端 `main.sqlite` 的 `chat_session_messages.turn_credits`。两条来源合并后进入同一个 `qoder.credits` 轨：
 
 ```bash
 usage credits                       # 每天 billable credits / 请求数 / 免费 credits / 快照数
@@ -197,7 +197,7 @@ usage est --group-by day,model      # 估算输入/输出 token 与覆盖请求�
 usage est --stateless --group-by model   # 绕过数据库直读转录
 ```
 
-- **credits 是服务端真值**：`billable=true` 的 `usage.credits` 逐请求累计，已与 main.log 配额快照增量核对（+18.16 vs +20、+31.62 vs +32 等）；免费请求单独列出，不计配额。
+- **credits 是服务端真值**：转录中 `billable=true` 的 `usage.credits` 逐请求累计；桌面端 `turn_credits` 按轮累计，`request_id = qoder-turn:<session>:<message>`，两源用 `request_set_id` / `request_id` 精确去重。免费请求单独列出，不计配额；`turn_credits` 无免费拆分，按 billable 计入。
 - **余额来自日志快照**：`main.log` 的 `用量响应摘要` 仅保留约一周、`used` 非单调，因此只用于展示当前余额/总量，不用来推导日消耗。
 - **est 是估算值**：`est_input = context_usage_ratio × 200K`，`est_output = 字符数 ÷ 模型系数`（gfmodel 3.85 / dfmodel 4.58 / 其他 3.8）。旧版无 `ratio` 的转录跳过，避免与历史 token 真值重复。
 - **模型显示名**：库里保留 Qoder 内部键（`dfmodel`、`gfmodel` 等），报表 / HTML / `top models` 在展示层映射为界面名
@@ -309,12 +309,12 @@ usage --stateless html --output /tmp/usage.html   # 不读库、不联网；Trae
 - **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder、trae-cn（精确 credits），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个；Trae credits 未同步时 chip 显示 `—` 而不是伪造 0
 - **点击语义**：单击只看该 Agent，再次单击恢复全选；⌘/Ctrl/Shift+单击增减成员；另有“全选”按钮
 - **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
-- **KPI 按单位分组**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder：额度余额/区间 billable/免费/日均；Trae CN：区间 credits/会话数/覆盖天数/模型数）、`估算`；每组卡片连续排列，全页只有一张主卡，空单位合并为一张“无数据”卡；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令
-- **每日用量**：每个单位一块图——Token 按 Agent 堆叠；credits 单选时单序列/堆叠，Qoder + Trae 同时选中时改为**分组柱状图**，不堆叠成一个总数；Trae 弱估算为估算输入/输出堆叠；控件位于各自面板，影子轴有标题
+- **KPI 按单位分组**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder 与 Trae CN 共用四卡：区间 credits / 免费 credits / 区间日均 / 最新额度余额，Trae 不提供的免费额度与额度快照显示 `—` 并说明原因）、`估算`；每组卡片连续排列，全页只有一张主卡，空单位合并为一张“无数据”卡；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令
+- **每日用量**：每个单位一块图——Token 按 Agent 堆叠；credits 单选时使用同一图表结构，Qoder 为 billable / 免费双序列，Trae 为 billable 单序列（不伪造免费序列），Qoder + Trae 同时选中时改为**分组柱状图**，不堆叠成一个总数；Qoder 影子估算 / Trae 弱估算默认隐藏，打开“估算”开关后分别显示；控件位于各自面板，影子轴有标题
 - **模型 Top 8 / 项目 Top 8**：按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比统一“相对第一”口径并明示，总计为 0 时显示 `—`
-- **明细**：统一一张表，`Agent` 与 `单位` 列区分来源和口径，不适用该单位的列显示 `—`；Token / Credits / 估算列使用分组表头，宽表冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按天 × Agent × 模型 × 项目聚合，按单位和厂商分列合计（Qoder / Trae credits 不合并），分页支持页大小与跳转，1440px 下无表内纵向滚动
-- **Qoder 影子估算**：开关默认关闭，仅在选中 qoder 时可用；打开后在 credits 图叠加右轴虚线、KPI 增加影子估算、明细追加影子行，始终注明不可与 credits 相加
-- **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」
+- **明细**：统一一张表，`Agent` 与 `单位` 列区分来源和口径，不适用该单位的列显示 `—`；默认只显示 token / credits 行，打开“估算”开关后才追加 Qoder 影子估算 / Trae 弱估算行；Token / Credits / 估算列使用分组表头，宽表冻结日期 / Agent（>640px 再冻结模型 / 项目），隐藏当前筛选下全空的列；按天 × Agent × 模型 × 项目聚合，按单位和厂商分列合计（Qoder / Trae credits 不合并），分页支持页大小与跳转，1440px 下无表内纵向滚动
+- **估算开关**：Qoder 影子估算与 Trae 弱估算共用一个“估算”开关，默认关闭；仅选中对应 Agent 且存在估算数据时显示，开关文案与 `aria-label` 随选中 Agent 生成。关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数；打开后分别显示并始终注明不可与 credits 相加
+- **Trae CN 弱估算**：固定标注「弱估算（hook 可见内容，不含系统提示/工具定义）」与「不可与任何真值或额度相加」；默认隐藏，需打开“估算”开关查看
 - **口径与数据覆盖**：覆盖说明、Trae credits 状态、生成时间与行数口径合并为一个可折叠块；Trae 状态仅在选中 Trae 时显示，影子范围仅在开关打开或明确标注“未计入”时出现，页脚区分“库内 / 本页”
 - **活动指标**（会话/提示/工具调用/时长）：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期/项目，折叠时跳过重绘
 - **日期范围**：默认取截至数据日的近 7 天；「全部」为全量，避免把单日/短周期 Agent 的图压成一条线；可选“聚焦有数据区间”，默认关闭，关闭时恢复近 7 天

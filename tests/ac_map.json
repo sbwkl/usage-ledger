@@ -127,9 +127,6 @@
       "R26": [
         "tests.test_html.HtmlFilterLinkageTest"
       ],
-      "R39": [
-        "tests.test_html.HtmlDateRangeTest"
-      ],
       "R27": [
         "tests.test_html.HtmlTableLayoutTest"
       ],
@@ -166,8 +163,21 @@
       "R38": [
         "tests.test_html.HtmlFocusRangeTest"
       ],
+      "R39": [
+        "tests.test_html.HtmlDateRangeTest"
+      ],
       "R40": [
         "tests.test_html.HtmlFilterLayoutTest"
+      ],
+      "R41": [
+        "tests.test_collectors.QoderTurnCreditsTest",
+        "tests.test_collectors.QoderSignatureTest"
+      ],
+      "R42": [
+        "tests.test_html.HtmlCreditParityTest"
+      ],
+      "R43": [
+        "tests.test_html.HtmlCreditParityTest"
       ]
     }
   }

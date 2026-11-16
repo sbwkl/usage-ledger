@@ -445,9 +445,9 @@ try {
           <div class="card-head">
             <div class="head-tags"><h3>Credits</h3><span class="unit-tag">credits</span></div>
             <label class="switch" id="shadow-switch" hidden>
-              <input type="checkbox" id="shadow" aria-label="显示 Qoder 影子估算">
+              <input type="checkbox" id="shadow" aria-label="显示估算">
               <span class="switch-track" aria-hidden="true"></span>
-              <span>影子：Qoder 估算 token</span>
+              <span id="shadow-label">估算</span>
             </label>
           </div>
           <div class="legend" id="legend-credits"></div>
@@ -763,7 +763,7 @@ try {
     return state.agents.has(name) && agentKind(name) === "credits";
   }
   function hasTraeEstimateSelected() {
-    return state.agents.has("trae-cn") && TRAE_EST.length > 0;
+    return state.shadow && state.agents.has("trae-cn") && TRAE_EST.length > 0;
   }
   function hasQoderShadowSelected() {
     return state.shadow && state.agents.has("qoder") && EST.length > 0;
@@ -899,6 +899,7 @@ try {
     emptyReset: $("#empty-reset"), reportGrid: $("#report-grid"),
     kpis: $("#kpis"), metricField: $("#metric-field"), metric: $("#metric"),
     shadowSwitch: $("#shadow-switch"), shadow: $("#shadow"),
+    shadowLabel: $("#shadow-label"),
     panelToken: $("#panel-token"), panelCredits: $("#panel-credits"), panelEst: $("#panel-est"),
     chartToken: $("#chart-token"), tooltipToken: $("#tooltip-token"),
     legendToken: $("#legend-token"), hintToken: $("#hint-token"),
@@ -1148,7 +1149,7 @@ try {
   }
 
   function traeRowsFor(ignore) {
-    if (!state.agents.has("trae-cn")) return [];
+    if (!hasTraeEstimateSelected()) return [];
     return TRAE_EST.filter(function (row) { return matchesFilters(row, ignore); });
   }
 
@@ -1164,7 +1165,7 @@ try {
                  project: row.project, total: row.credits, turns: 0 };
       }));
     }
-    if (state.agents.has("trae-cn")) {
+    if (hasTraeEstimateSelected()) {
       rows = rows.concat(TRAE_EST.filter(function (row) {
         return matchesFilters(row, ignore);
       }));
@@ -1399,7 +1400,7 @@ try {
         return matchesDimensionFilters(row);
       }));
     }
-    if (state.agents.has("trae-cn")) {
+    if (hasTraeEstimateSelected()) {
       rows = rows.concat(TRAE_EST.filter(function (row) {
         return matchesDimensionFilters(row);
       }));
@@ -1702,7 +1703,7 @@ try {
           ? "Qoder credits + 影子估算" : "Qoder credits");
       }
       if (state.agents.has("trae-cn")) {
-        creditUnits.push(TRAE_EST.length
+        creditUnits.push(TRAE_EST.length && state.shadow
           ? "Trae credits + 弱估算" : "Trae credits");
       }
       units.push(creditUnits.join(" / "));
@@ -1711,12 +1712,21 @@ try {
     el.panelCredits.hidden = !hasCreditsSelected();
     el.panelEst.hidden = !hasTraeEstimateSelected();
     el.metricField.hidden = !hasTokenSelected();
-    el.shadowSwitch.hidden = !state.agents.has("qoder") || !EST.length;
+    var qoderEst = state.agents.has("qoder") && EST.length > 0;
+    var traeEst = state.agents.has("trae-cn") && TRAE_EST.length > 0;
+    var estAvailable = qoderEst || traeEst;
+    var estLabels = [];
+    if (qoderEst) estLabels.push("Qoder 影子估算");
+    if (traeEst) estLabels.push("Trae 弱估算");
+    el.shadowSwitch.hidden = !estAvailable;
+    el.shadowLabel.textContent = estLabels.length ? "估算：" + estLabels.join(" / ") : "估算";
+    el.shadow.setAttribute("aria-label", estLabels.length
+      ? "显示 " + estLabels.join(" / ") : "显示估算");
     el.shadow.checked = state.shadow;
     el.metric.value = state.metric;
     el.modelUnit.textContent = units.join(" / ");
     el.projectUnit.textContent = units.join(" / ");
-    if (!state.agents.has("qoder") || !EST.length) {
+    if (!estAvailable) {
       state.shadow = false;
       el.shadow.checked = false;
       el.shadowNote.hidden = true;
@@ -1757,9 +1767,11 @@ try {
       var traeCredit = creditBoundsBySource["trae-cn"] || ["", ""];
       if (traeCredit[0]) parts.push("Trae credits " + traeCredit[0] + " ~ " + traeCredit[1]);
       else parts.push("Trae credits " + traeUnavailableWord());
-      if (traeEstBounds[0]) {
+      if (state.shadow && traeEstBounds[0]) {
         parts.push("Trae 弱估算 " + traeEstBounds[0] + " ~ " + traeEstBounds[1] +
           "（仅覆盖安装 hook 后的请求）");
+      } else if (TRAE_EST.length) {
+        parts.push("Trae 弱估算未计入（开关关闭）");
       }
     }
     if (qoderToken && state.agents.has("qoder")) {
@@ -1888,7 +1900,7 @@ try {
     return null;
   }
 
-  function addQuotaKpi(host, quota) {
+  function addQuotaKpi(host, quota, source) {
     var card = document.createElement("div");
     card.className = "kpi quota-kpi";
     var label = document.createElement("div");
@@ -1901,7 +1913,7 @@ try {
     card.appendChild(label);
     card.appendChild(value);
     card.appendChild(sub);
-    if (quota) {
+    if (quota && source === "qoder") {
       var total = number(quota.total);
       var used = number(quota.used);
       var remaining = number(quota.remaining);
@@ -1925,7 +1937,9 @@ try {
       card.appendChild(track);
     } else {
       value.textContent = "—";
-      sub.textContent = "本地日志无额度快照";
+      sub.textContent = source === "trae-cn"
+        ? "Trae CN 不提供额度快照"
+        : "本地日志无额度快照";
     }
     host.appendChild(card);
   }
@@ -1997,9 +2011,27 @@ try {
     el.emptyShadow.hidden = !shadowPossible;
   }
 
-  function renderQoderCreditKpis(host, rows, primary) {
+  function traeCreditDataState() {
+    var cov = COVERAGE["trae-cn.credits"] || {};
+    if (cov.refresh_error) {
+      return " · 缓存数据（" + (fmtDateTime(cov.last_sync_at) || "无同步时间") + "）";
+    }
+    if (cov.refresh_mode === "offline") return " · 离线缓存";
+    if (cov.stale) return " · 数据可能过期";
+    return "";
+  }
+
+  function renderCreditKpisForSource(host, source, rows, primary) {
     if (!rows.length) {
-      addKpiNoData(host, "Qoder credits · 无数据", "当前区间没有 Qoder credits 行", primary);
+      var cov = COVERAGE["trae-cn.credits"] || {};
+      var stateInfo = source === "trae-cn"
+        ? traeCreditState(rows,
+            CREDIT_ROWS.filter(function (row) { return row.source === "trae-cn"; }), cov)
+        : null;
+      addKpiNoData(host, "Credits · 无数据",
+        stateInfo ? stateInfo.label + " · " + stateInfo.sub
+                  : "当前区间没有 Qoder credits 行",
+        !!primary);
       return;
     }
     var billable = 0;
@@ -2007,52 +2039,42 @@ try {
     var requests = 0;
     var freeRequests = 0;
     var days = {};
+    var models = {};
     rows.forEach(function (row) {
       billable += row.credits;
       free += row.free_credits;
       requests += row.requests;
       freeRequests += row.free_requests;
       days[row.day] = true;
+      models[row.model] = true;
     });
     var dayCount = Object.keys(days).length;
-    addQuotaKpi(host, quotaSummary());
-    addKpiTo(host, "区间 billable credits", fmtCredits(billable),
-      fmtInt(requests) + " billable 请求 · 服务端逐请求计费真值", primary, "credit");
-    addKpiTo(host, "免费 credits", fmtCredits(free), fmtInt(freeRequests) + " 免费请求",
-      false, "credit");
+    var qoder = source === "qoder";
+    addKpiTo(host, "区间 credits", fmtCredits(billable),
+      fmtInt(requests) + (qoder ? " billable 请求" : " 会话") +
+      (qoder ? " · 服务端逐请求计费真值"
+             : " · 服务端会话级计费真值" + traeCreditDataState()),
+      !!primary, "credit");
+    if (qoder) {
+      addKpiTo(host, "免费 credits", fmtCredits(free),
+        fmtInt(freeRequests) + " 免费请求", false, "credit");
+    } else {
+      addKpiTo(host, "免费 credits", "—", "Trae API 不返回免费额度", false, "credit");
+    }
     addKpiTo(host, "区间日均", fmtCredits(dayCount ? billable / dayCount : 0),
-      fmtInt(dayCount) + " 天有数据", false, "credit");
+      qoder ? fmtInt(dayCount) + " 天有数据"
+            : fmtInt(dayCount) + " 天有数据 · " +
+              fmtInt(Object.keys(models).length) + " 个模型",
+      false, "credit");
+    addQuotaKpi(host, qoder ? quotaSummary() : null, source);
+  }
+
+  function renderQoderCreditKpis(host, rows, primary) {
+    renderCreditKpisForSource(host, "qoder", rows, primary);
   }
 
   function renderTraeCreditKpis(host, rows, primary) {
-    var cov = COVERAGE["trae-cn.credits"] || {};
-    if (!rows.length) {
-      var cacheRows = CREDIT_ROWS.filter(function (row) { return row.source === "trae-cn"; });
-      var stateInfo = traeCreditState(rows, cacheRows, cov);
-      addKpiTo(host, "区间 credits", stateInfo.label, stateInfo.sub, !!primary, "credit");
-      return;
-    }
-    var credits = 0;
-    var sessions = 0;
-    var days = {};
-    var models = {};
-    rows.forEach(function (row) {
-      credits += row.credits;
-      sessions += row.requests;
-      days[row.day] = true;
-      models[row.model] = true;
-    });
-    var dataState = "";
-    if (cov.refresh_error) dataState = " · 缓存数据（" + fmtDateTime(cov.last_sync_at) + "）";
-    else if (cov.refresh_mode === "offline") dataState = " · 离线缓存";
-    if (cov.stale && !dataState) dataState = " · 数据可能过期";
-    addKpiTo(host, "区间 credits", fmtCredits(credits),
-      fmtInt(sessions) + " 会话 · 服务端会话级计费真值" + dataState, !!primary, "credit");
-    addKpiTo(host, "会话数", fmtCompact(sessions), fmtInt(sessions) + " 会话");
-    addKpiTo(host, "覆盖天数", fmtInt(Object.keys(days).length),
-      fmtInt(Object.keys(days).length) + " 天有数据");
-    addKpiTo(host, "模型数", fmtInt(Object.keys(models).length),
-      fmtInt(Object.keys(models).length) + " 个模型");
+    renderCreditKpisForSource(host, "trae-cn", rows, primary);
   }
 
   function renderEstKpis(host, primary) {
@@ -2073,7 +2095,7 @@ try {
         "shadow credit");
       used = true;
     }
-    if (state.shadow) {
+    if (state.shadow && state.agents.has("qoder")) {
       if (shadowRows.length) {
         addKpiTo(host, "Qoder 影子估算 Token", fmtCompact(sumField(shadowRows, "total")),
           fmtInt(sumField(shadowRows, "requests")) + " 请求 · 不可与 credits 相加",
@@ -2103,7 +2125,7 @@ try {
           : "Trae CN · 精确 Credits（会话级）");
       }
       var subset = rows.filter(function (row) { return row.source === source; });
-      var isPrimary = !!primary && first;
+      var isPrimary = !!primary && first && subset.length > 0;
       if (source === "qoder") renderQoderCreditKpis(host, subset, isPrimary);
       else renderTraeCreditKpis(host, subset, isPrimary);
       if (subset.length) first = false;
@@ -2550,7 +2572,7 @@ try {
         });
       } else if (traeOnly) {
         var traeDefs = [
-          { label: "Trae credits", color: COLORS["trae-cn"] || "#0d9488",
+          { label: "billable（计入配额）", color: COLORS["trae-cn"] || "#0d9488",
             value: function (row) { return row.credits; } }
         ];
         renderStackChart({
@@ -2563,7 +2585,7 @@ try {
           tooltipFormat: fmtCredits, hasRows: creditRows.length > 0,
           emptyText: "当前区间无 Trae credits"
         });
-        hintBits.push("Trae 为会话级归属日，不是逐请求日");
+        hintBits.push("Trae 为会话级归属日，不是逐请求日；API 不返回免费 credits");
       } else {
         var groupedDefs = creditSources.map(function (source) {
           return {
@@ -3373,14 +3395,22 @@ try {
   }
 
   function renderShadowNote() {
-    if (!hasQoderShadowSelected()) {
+    var parts = [];
+    if (hasQoderShadowSelected()) {
+      parts.push("Qoder 影子估算由转录文本与 context_usage_ratio 推算（" +
+        EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 聚合；仅覆盖带 ratio 的请求，" +
+        "不可与 credits 相加");
+    }
+    if (hasTraeEstimateSelected()) {
+      parts.push(TRAE_NOTE + "（" + TRAE_FACTOR + "），仅覆盖安装 hook 后的请求，" +
+        "误差可能数倍，不可与 credits 相加");
+    }
+    if (!parts.length) {
       el.shadowNote.hidden = true;
       return;
     }
     el.shadowNote.hidden = false;
-    el.shadowNote.textContent = "Qoder 影子估算由转录文本与 context_usage_ratio 推算（" +
-      EST_FACTOR + "，±30~40%），按 天 × 模型 × 项目 聚合；仅覆盖带 ratio 的请求，" +
-      "不可与 credits 相加。Trae 弱估算是另一套影子，二者不能合并。";
+    el.shadowNote.textContent = parts.join("；") + "。两类估算也不能合并。";
   }
 
   function visibleCounts() {
@@ -3814,7 +3844,7 @@ try {
       "）与 Credits 计费（" +
       (CREDIT_AGENTS.length ? CREDIT_AGENTS.map(sourceLabel).join(" / ") : "无数据") +
       "）分别按各自单位汇总，同一页面并列展示但不跨单位相加；" +
-      "Qoder 影子 token 与 Trae 弱估算归入估算，同样不可相加。";
+      "Qoder 影子 token 与 Trae 弱估算归入估算，默认隐藏，打开“估算”开关后分别显示，也不可相加。";
     host.appendChild(classify);
     if (QODER_TOKEN_ROWS.length) {
       var history = document.createElement("p");
@@ -3859,13 +3889,14 @@ try {
     if (EST.length) {
       var estNote = document.createElement("p");
       estNote.textContent = "Qoder 影子估算 token 由转录文本与上下文比例推算（" + EST_FACTOR +
-        "，±30~40% 误差），不可与 token 真值或额度相加。";
+        "，±30~40% 误差），默认隐藏，打开“估算”开关后查看；不可与 token 真值或额度相加。";
       host.appendChild(estNote);
     }
     if (TRAE_EST.length) {
       var traeNote = document.createElement("p");
       traeNote.textContent = TRAE_NOTE + "；仅覆盖安装 hook 后的请求，" +
-        "误差可能数倍且方向不定，只适合看趋势，不可与 token 真值或额度相加。";
+        "误差可能数倍且方向不定，只适合看趋势，默认隐藏，打开“估算”开关后查看，" +
+        "不可与 token 真值或额度相加。";
       host.appendChild(traeNote);
     }
     var scope = document.createElement("p");

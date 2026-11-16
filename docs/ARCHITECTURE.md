@@ -53,7 +53,7 @@
 | OpenCode | 有（SQLite `message` / `session_message`） | — | `opencode` 源 |
 | Kilo | 有（与 OpenCode 同构） | — | `kilo` 源 |
 | Cline（CLI / Desktop） | 有（`~/.cline/data/sessions/**/*.messages.json` 的 `metrics`） | — | `cline` 源（§6.7） |
-| Qoder | 仅历史（IDE 旧库，止于 2026-09-16） | 活动元数据、每请求 credits、转录文本 | 四轨（§6.4–6.6） |
+| Qoder | 仅历史（IDE 旧库，止于 2026-09-16） | 活动元数据、转录逐请求 credits、桌面端 turn credits、转录文本 | 四轨（§6.4–6.6） |
 | Trae CN | 无（加密库，密钥运行时下发） | 同源 usage API 的会话级 credits；官方 hooks 的事件元数据（会话/工具/字符数） | `trae-cn.credits` 真值 + `trae-cn.est` 弱估算（§6.8–6.9） |
 | ChatGPT 桌面 | 无本地数据 | 无 | 不采集，`doctor` 说明 |
 | WorkBuddy | 推测有（本机未安装） | — | 未实现 |
@@ -130,7 +130,7 @@
 | 文件 | 行数 | 关键符号 | 说明 |
 |---|---:|---|---|
 | `src/usage_ledger/models.py` | 142 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
-| `src/usage_ledger/collectors.py` | 1265 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
+| `src/usage_ledger/collectors.py` | 1348 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
 | `src/usage_ledger/trae_auth.py` | 368 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
 | `src/usage_ledger/trae_credits.py` | 512 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
@@ -139,7 +139,7 @@
 | `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
 | `src/usage_ledger/cli.py` | 1956 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
-| `src/usage_ledger/html_report.py` | 3950 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
+| `src/usage_ledger/html_report.py` | 3981 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
 | `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
@@ -401,14 +401,16 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ### 6.6 Qoder 额度 / 估算 / 余额（`qoder.credits`）
 
-一次转录扫描同时产出 credit 与 estimate：
+一次转录扫描加一次桌面库扫描共同产出 credit，同时产出 estimate：
 
 - 转录路径：`~/.qoder/projects/**/*.jsonl`（含 subagents），逐文件游标；文件变大从 `offset − 1MiB` 续读并丢弃半行，文件截断则从头读。
 - 响应聚合：同一 `sessionId + timestamp` 的多条 assistant 行合并为一个响应；`chars_out = text + thinking + json(tool_use.input)` 字符数；`chars_in` 来自上一条 user 的 `tool_result` + `humanInput.text`（二选一，不重复计）。
-- credit：`usage.request_id` 存在且 `usage.credits` 为数字时写一行；`billable` 照抄。键 = `request_id`。
+- 转录 credit：`usage.request_id` 存在且 `usage.credits` 为数字时写一行；`billable` 照抄。键 = `request_id`。
+- 桌面 turn credit：`chat_session_messages.turn_credits` 非空（含 0）时写一行，`billable=true`，`created_at` 归属本地日，项目 = `chat_sessions.cwd` basename，模型 = `chat_sessions.model`；键 = `qoder-turn:<session_id>:<message_id>`。若 `turn_credits_request_set_id` 命中转录 `request_id`，跳过 DB 行；旧库无该列时静默跳过。
 - estimate：`est_input = round(context_usage_ratio × 200000)`；`est_output = round(chars_out ÷ factor[model])`，factor：`gfmodel 3.85` / `dfmodel 4.58` / 默认 `3.8`；`ratio` 缺失则该请求不计估算并计数。键 = `sessionId:timestamp`。
 - 余额快照：扫 `~/Library/Application Support/com.qoder.app.stable/logs/*/main*.log*`，匹配 `用量响应摘要`，解析 `userQuota` / `addOnQuota` 的 total/used/remaining 与 `totalUsagePercentage`；键 = `(requestId, quota_kind)`。
-- 实测：284 个转录/日志文件 / 9,815 credit / 9,815 est / 26 快照 / 1,509ms。
+- 源签名：`qoder.credits` 同时跟踪转录、日志、活动库 `main.sqlite` 与 WAL；活动库更新会触发 credits 重扫。
+- 实测：19956 条 token 记录；`qoder.credits` 本批 18140 请求 / 190 快照，`turn_credits` 覆盖 2026-11-12..16（2026-11-16 本机）。
 
 ### 6.7 Cline（`cline`）
 
@@ -492,10 +494,10 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 客户端职责：
   - 顶部只有一个 Agent 多选区（可同时选 token 计费与 credits 计费 Agent，至少保留一个），不做页面分组；单击只看、再次单击恢复全选，⌘/Ctrl/Shift+单击增减成员，另有“全选”按钮；无数据 credit chip 显示 `—`；
   - 同一页按单位并列渲染：tokens / credits / est 各自汇总，**不跨单位相加**；KPI 按单位分组，整页只有一张主卡，空单位合并为一张“无数据”卡；
-  - credits 按 Agent 分块：Qoder（逐请求）、Trae CN（会话级）；没有 Trae 缓存时按本次刷新结果显示“未同步”或“刷新失败 + 暂无缓存数据”卡片与刷新命令；
+  - credits 按 Agent 分块：Qoder（逐请求 + 桌面 turn）、Trae CN（会话级），两家共用四卡 KPI：区间 credits / 免费 credits / 区间日均 / 最新额度余额；Trae 不提供的字段显示 `—` 并说明原因；没有 Trae 缓存时按本次刷新结果显示“未同步”或“刷新失败 + 暂无缓存数据”卡片与刷新命令；
   - 每日用量按单位各一块图，控件放在所属面板；Qoder + Trae credits 同时选中时用分组柱，不堆叠；Top 8 按 Agent 分组排名，条形与百分比统一“相对第一”口径并明示；估算只作次要标注，不产生 `0 credits` 假行；
   - 明细为统一表，`Agent` 与 `单位` 列区分来源，不适用单位显示 `—`；Token / Credits / 估算列使用分组表头，宽表冻结标识列，按单位和厂商分别合计，隐藏当前筛选下全空列，分页支持页大小与跳转；
-  - 「影子：Qoder 估算 token」默认关闭，仅在选中 qoder 时可用；Trae 弱估算作为 Trae 的估算面板/影子卡片；
+  - Qoder 影子估算与 Trae 弱估算共用一个“估算”开关，默认关闭；仅在选中对应 Agent 且存在估算数据时显示，开关文案与 `aria-label` 随选中 Agent 生成；关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数，打开后分别显示，不可与 credits 相加；
   - 覆盖说明、Trae 数据新鲜度、生成时间与“库内 / 本页”行数合并为可折叠“口径与数据覆盖”块；Trae 状态仅选中 Trae 时渲染，由 `coverage["trae-cn.credits"]` 驱动；
   - 日期范围默认取截至数据日的近 7 天，保留“全部”；可选“聚焦有数据区间”，默认关闭；>200 天自动按周聚合；
   - 活动指标仅选中 qoder 时显示，折叠在页底，展开后分页并冻结日期/项目，折叠时跳过重绘；
@@ -611,11 +613,11 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-269 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+276 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|
-| `tests/test_collectors.py` | 24 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、Cline metrics 映射/回退/坏文件隔离、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、子源签名独立 |
+| `tests/test_collectors.py` | 28 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、Cline metrics 映射/回退/坏文件隔离、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、桌面 turn credits 合并/去重、子源签名独立 |
 | `tests/test_store.py` | 9 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state、credit source 分列与旧库迁移 |
 | `tests/test_cli.py` | 15 | backfill 幂等、report 与 stateless 一致、stateless 不写库、分组过滤、自动刷新、单源刷新、Cline 回填与自动刷新、doctor 缺口、源不可用时不归档、Qoder 四轨落库、token mtime 跳过、活动单独刷新、doctor 双台账 |
 | `tests/test_cli_trae.py` | 19 | Trae CN hook 安装/状态/同步、est 查询、credits 远程同步、html 默认/offline/stateless 刷新、max-age 复用、失败回退与 strict 退出、credits 按 source 展示、doctor 凭证来源与 dry-run 未登录提示、错误脱敏、宽权限告警 |
@@ -623,7 +625,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | `tests/test_trae_credits.py` | 33 | 凭证优先级/权限/不泄漏、storage.json 默认与过期、窗口不取未来、分页（短页未达 total 继续）/重试/401、响应归一、重复会话、超限拆分、幂等同步、项目映射、coverage/max-age/stale |
 | `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
 | `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |
-| `tests/test_html.py` | 16 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案 |
+| `tests/test_html.py` | 17 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案、credits KPI 对齐与估算开关 |
 | `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
 | `tests/test_qoder_models.py` | 2 | Qoder 内部模型键 → 显示名映射 |
 

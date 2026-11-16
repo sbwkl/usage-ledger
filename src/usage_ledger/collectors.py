@@ -1094,6 +1094,86 @@ def scan_qoder_transcripts(root: str | None = None,
     return result
 
 
+def scan_qoder_turn_credits(db_path: str,
+                            result: SourceResult | None = None) -> SourceResult:
+    if result is None:
+        result = SourceResult("qoder.credits")
+    if not os.path.exists(db_path):
+        result.notes.append("活动库不存在：%s（turn_credits 不可用）" % db_path)
+        return result
+    try:
+        conn = _open_ro(db_path)
+    except sqlite3.Error as exc:
+        result.errors.append((db_path, str(exc)))
+        return result
+    try:
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "chat_session_messages" not in tables:
+            result.notes.append("活动库缺少 chat_session_messages，turn_credits 不可用")
+            return result
+        columns = {row[1] for row in conn.execute(
+            "PRAGMA table_info(chat_session_messages)").fetchall()}
+        if "turn_credits" not in columns:
+            result.notes.append("chat_session_messages 无 turn_credits 列（旧版 Qoder），已跳过")
+            return result
+        select = ["m.session_id", "m.message_id", "m.created_at", "m.turn_credits"]
+        select.append("m.turn_credits_request_set_id"
+                      if "turn_credits_request_set_id" in columns else "NULL")
+        join = ""
+        if "chat_sessions" in tables:
+            session_columns = {row[1] for row in conn.execute(
+                "PRAGMA table_info(chat_sessions)").fetchall()}
+            join = "LEFT JOIN chat_sessions s ON s.session_id = m.session_id"
+            select.append("s.cwd" if "cwd" in session_columns else "NULL")
+            select.append("s.model" if "model" in session_columns else "NULL")
+        else:
+            select.extend(["NULL", "NULL"])
+        sql = ("SELECT %s FROM chat_session_messages m %s "
+               "WHERE m.turn_credits IS NOT NULL" % (", ".join(select), join))
+        try:
+            rows = conn.execute(sql).fetchall()
+        except sqlite3.Error as exc:
+            result.errors.append((db_path, "turn_credits 查询失败：%s" % exc))
+            return result
+    finally:
+        conn.close()
+
+    seen = {row.request_id for row in result.credits if row.request_id}
+    credits = []
+    for (session_id, message_id, created_at, value,
+         request_set_id, cwd, model) in rows:
+        if not session_id or not message_id:
+            result.key_kinds["turn_credits:missing_id"] += 1
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            result.key_kinds["turn_credits:bad_value"] += 1
+            continue
+        if not isinstance(created_at, (int, float)) or created_at <= 0:
+            result.key_kinds["turn_credits:bad_timestamp"] += 1
+            continue
+        if request_set_id and request_set_id in seen:
+            result.key_kinds["turn_credits:duplicate"] += 1
+            continue
+        ts = created_at / 1000.0
+        project = os.path.basename(str(cwd).rstrip("/")) if cwd else ""
+        credits.append(Credit(
+            request_id="qoder-turn:%s:%s" % (session_id, message_id),
+            ts=ts, day=local_day(ts), project=project,
+            model=str(model or "unknown"), session=str(session_id),
+            credits=float(value), billable=True))
+    result.credits.extend(credits)
+    result.key_kinds["turn_credits"] += len(credits)
+    if credits:
+        result.available = True
+        days = [row.day for row in credits]
+        result.notes.append("turn_credits 覆盖 %s..%s（桌面端每轮金额）"
+                            % (min(days), max(days)))
+    else:
+        result.notes.append("turn_credits 无可用记录")
+    return result
+
+
 def scan_qoder_quota(log_root: str | None = None,
                      result: SourceResult | None = None) -> SourceResult:
     log_root = log_root or qoder_log_root()
@@ -1167,6 +1247,7 @@ def scan_qoder_credit_sources(home: str | None = None,
                               result: SourceResult | None = None) -> SourceResult:
     home = home or os.path.expanduser("~")
     result = scan_qoder_transcripts(qoder_transcript_root(home), file_state, result)
+    result = scan_qoder_turn_credits(qoder_paths(home)[1], result)
     return scan_qoder_quota(qoder_log_root(home), result)
 
 
@@ -1210,7 +1291,8 @@ def source_signatures(home: str | None = None,
             log_root = qoder_log_root(home)
             logs = (glob.glob(os.path.join(log_root, "*", "main*.log*"))
                     if os.path.isdir(log_root) else [])
-            signatures["qoder.credits"] = _latest_mtime_us(transcripts + logs)
+            signatures["qoder.credits"] = _latest_mtime_us(
+                transcripts + logs + [activity_db, activity_db + "-wal"])
             signatures["qoder.est"] = _latest_mtime_us(transcripts)
         elif source == "trae-cn":
             signature = _latest_mtime_us(trae_event_files(trae_event_dir(home)))
