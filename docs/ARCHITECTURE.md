@@ -132,11 +132,12 @@
 | `src/usage_ledger/models.py` | 143 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
 | `src/usage_ledger/collectors.py` | 1354 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
-| `src/usage_ledger/trae_auth.py` | 368 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
-| `src/usage_ledger/trae_credits.py` | 512 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
+| `src/usage_ledger/trae_auth.py` | 362 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
+| `src/usage_ledger/trae_credits.py` | 517 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
 | `src/usage_ledger/store.py` | 772 | `SqliteStore`、`SCHEMA` | 8 张表 + `meta`；WAL；批量 upsert；按天替换活动；`usage_credit.source` 迁移 |
 | `src/usage_ledger/aggregation.py` | 112 | `aggregate` `match` `merge_records` `missing_days` `period_label` | 纯函数，可单测 |
-| `src/usage_ledger/pricing.py` | 38 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
+| `src/usage_ledger/pricing.py` | 37 | `ALIASES` `PRICES` `normalize_model` `cost_for_record` | 别名表可用；价格表为空，成本恒 `unknown` |
+| `src/usage_ledger/qoder_models.py` | 35 | `qoder_model_label` | Qoder 内部模型键 → 界面显示名（展示层映射） |
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
 | `src/usage_ledger/cli.py` | 1963 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
 | `src/usage_ledger/html_report.py` | 4064 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
@@ -628,6 +629,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | `tests/test_html.py` | 17 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案、credits KPI 对齐与估算开关、明细表宽度分配、布尔状态往返、筛选后页脚 / Top 8 同步、来源专用合计列 |
 | `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
 | `tests/test_qoder_models.py` | 2 | Qoder 内部模型键 → 显示名映射 |
+| `tests/test_pricing.py` | 2 | ALIASES 字面量无重复键（AST 护栏）、free 别名归一 |
 
 测试手法：临时 HOME + `USAGE_LEDGER_SOURCE_HOME` / `USAGE_LEDGER_DB` / `TRAE_CN_STORAGE`；Claude/Codex 用脱敏 JSONL fixture；OpenCode/Qoder 在测试内建最小 SQLite；`tests/qoder_helpers.py` 提供建库与日志构造器。涉及 `html` 默认刷新的用例全部 mock `sync_trae_credits`，不读真实登录凭证、不访问网络。
 
@@ -700,6 +702,12 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | P2-7 | `_refresh_if_stale` 用 `signature > stored` | mtime 回退（文件恢复/时钟回拨）不会触发刷新；其他刷新函数用 `!=`，三套判定不一致 |
 | P2-8 | `build/lib/` 落后于 `src/` | 本地构建缓存，已 gitignore；排查问题时易误读 |
 | P2-9 | 未提交改动 | 已由 `feat/trae-cn-credits` 分支统一提交与验证；后续改动仍应走分支流程 |
+| P2-10 | `scan_sqlite_agent` 行循环无逐行错误隔离 | 查询段有 try/except，但行处理循环在其外；一条坏行（如非字符串 `cwd`）会中断整个 OpenCode/Kilo 扫描且不关闭连接。其他采集器均逐行隔离（2026-11-17 审计） |
+| P2-11 | turn credits 同批 `request_set_id` 未进去重集合 | `seen` 只含转录/库中 request ID；同批两条 turn 行共享一个 `request_set_id` 时都会计入。CHG-0006 样本未见此形态，属边界加固（2026-11-17 审计） |
+| P2-12 | `upsert_records` ON CONFLICT 不更新 `agent`/`provider` | 插入含这两列，冲突更新遗漏；重采集不会刷新旧值。影响低（取值基本不变）（2026-11-17 审计） |
+| P2-13 | `activity` CSV 与 JSON 的 `duration` 语义不一致 | CSV 在 `duration` 头下写原始毫秒；JSON 的 `duration` 是格式化字符串（另有 `duration_ms`）。测试未钉住 CSV 取值；倾向 CSV 列名改 `duration_ms`（2026-11-17 审计） |
+| P2-14 | `main()` 只捕获 `ValueError` | 内层已覆盖 sqlite/OS/Trae 错误，但漏网异常直接打印 traceback 而非 `error: …` + 退出码 2（2026-11-17 审计） |
+| P2-15 | `uv.lock` 被 gitignore | 运行期零依赖可辩护，但 dev/CI 的 coverage 版本未锁定，复现性弱；需明确决策（2026-11-17 审计） |
 
 ### 已明确接受的风险
 

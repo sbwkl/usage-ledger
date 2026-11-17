@@ -2225,7 +2225,7 @@ try {
       }
     });
     buckets.forEach(function (bucket) {
-      bucket.label = weekly ? bucket.start.slice(5) : bucket.start.slice(5);
+      bucket.label = bucket.start.slice(5);
       bucket.tooltip = weekly ? bucket.start + " ~ " + bucket.end : bucket.start;
       bucket.values = seriesDefs.map(function () { return 0; });
       bucket.shadowValue = 0;

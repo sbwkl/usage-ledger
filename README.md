@@ -62,7 +62,7 @@ usage-ledger/
 │   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
 │   │   └── REQ-0002-testing.md       功能卡（测试体系）
 │   ├── changes/
-│   │   └── CHG-0001 ~ CHG-0013      变更记录（CHG-0004 / CHG-0005 已验证）
+│   │   └── CHG-0001 ~ CHG-0014      变更记录（均已验证，状态以各 CHG 首部为准）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
@@ -95,11 +95,11 @@ usage-ledger/
 ## 需求、变更与决策
 
 - 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
-- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0007；[CHG-0004](docs/changes/CHG-0004-html-report-empty-state-and-filters.md) 与 [CHG-0005](docs/changes/CHG-0005-html-report-display-and-interaction.md) 已验证；[CHG-0006](docs/changes/CHG-0006-qoder-turn-credits.md)、[CHG-0007](docs/changes/CHG-0007-trae-report-parity.md) 为本次 Qoder / Trae 展示修复）。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0014，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
 - 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0014`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0015`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
