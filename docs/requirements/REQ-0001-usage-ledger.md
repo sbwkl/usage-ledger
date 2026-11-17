@@ -447,6 +447,7 @@ usage est --source trae-cn --group-by day,model
 | CHG-0011 | HTML 布尔筛选状态恢复 | 已验证 | [CHG-0011](../changes/CHG-0011-html-boolean-state.md) |
 | CHG-0012 | HTML 筛选后的页脚与 Top 8 同步 | 已验证 | [CHG-0012](../changes/CHG-0012-html-filter-sync.md) |
 | CHG-0013 | 明细合计的来源专用列显示 | 已验证 | [CHG-0013](../changes/CHG-0013-html-total-source-columns.md) |
+| CHG-0014 | 审计清理：重复键、死代码与过期文档引用 | 已验证 | [CHG-0014](../changes/CHG-0014-audit-cleanup.md) |
 
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
@@ -459,6 +460,8 @@ usage est --source trae-cn --group-by day,model
 > 2026-11-16：CHG-0009（R45）让明细表在卡片更宽时把剩余宽度分给非冻结数据列；278 tests / 0 skip、覆盖率 93.3%、AC map 45 criteria / 93 identifiers，1440px 填充与 500px 横向滚动实测通过。
 >
 > 2026-11-16：CHG-0010～0013 修复 code review 发现的问题：Qoder 增量 turn credits 去重 / 历史重复清理（R41）、HTML 布尔状态恢复（R37）、筛选后页脚与 Top 8 同步（R30 / R38）、来源专用合计列显示 `—`（R42）；282 tests / 0 skip、覆盖率 93.4%、AC map 45 criteria / 98 identifiers，浏览器实测通过。
+>
+> 2026-11-17：CHG-0014 全项目审计清理（无 AC 变更）：删除 ALIASES 重复键并新增 AST 护栏测试、简化 HTML 死三元、修正 README / ARCHITECTURE 过期引用与行数；284 tests / 0 skip、覆盖率 93.4%、AC map 45 criteria / 98 identifiers。审计发现的其余问题登记在 ARCHITECTURE §11（新增 P2-10 ~ P2-15），另行立项。
 
 ---
 

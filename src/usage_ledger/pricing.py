@@ -21,7 +21,6 @@ ALIASES = {
     "deepseek-v4-flash": "deepseek-v4-flash",
     "minimax/minimax-m3:free": "minimax-m3",
     "kilo-auto/free": "kilo-auto",
-    "minimax/minimax-m3.1-flash:free": "minimax-m3.1-flash",
 }
 
 # Prices USD per 1M tokens; unknown -> None
