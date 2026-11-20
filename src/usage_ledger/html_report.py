@@ -15,6 +15,7 @@ AGENT_KINDS = {
     "kilo": "token",
     "cline": "token",
     "antigravity": "token",
+    "codearts": "token",
     "qoder": "credits",
     "trae-cn": "credits",
 }
@@ -590,16 +591,19 @@ try {
   var ACTIVITY_LABELS = { sessions: "活跃会话", prompts: "提示数", assistant_calls: "assistant 调用",
                           assistant_with_metrics: "带指标", turns: "轮次",
                           tool_calls: "工具调用", duration_ms: "运行时长" };
-  var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed",
-                       kilo: "#10b981", cline: "#65a30d", antigravity: "#0891b2",
-                       qoder: "#e11d48", "trae-cn": "#0d9488" };
-  var PALETTE = ["#ef4444", "#f59e0b", "#14b8a6", "#6366f1"];
-  var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "cline", "antigravity", "qoder", "trae-cn"];
-  var AGENT_KINDS = DATA.agents || {};
-  var KIND_LABELS = { token: "精确 Token", credits: "精确 Credits", estimate: "仅估算" };
-  var AGENT_LABELS = { claude: "Claude", codex: "Codex", opencode: "OpenCode",
-                       kilo: "Kilo", cline: "Cline", antigravity: "Antigravity",
-                       qoder: "Qoder", "trae-cn": "Trae CN" };
+   var KNOWN_COLORS = { claude: "#d97706", codex: "#0ea5e9", opencode: "#7c3aed",
+                        kilo: "#10b981", cline: "#65a30d", antigravity: "#0891b2",
+                        codearts: "#d946ef",
+                        qoder: "#e11d48", "trae-cn": "#0d9488" };
+   var PALETTE = ["#ef4444", "#f59e0b", "#14b8a6", "#6366f1"];
+   var KNOWN_ORDER = ["claude", "codex", "opencode", "kilo", "cline", "antigravity",
+                      "codearts", "qoder", "trae-cn"];
+   var AGENT_KINDS = DATA.agents || {};
+   var KIND_LABELS = { token: "精确 Token", credits: "精确 Credits", estimate: "仅估算" };
+   var AGENT_LABELS = { claude: "Claude", codex: "Codex", opencode: "OpenCode",
+                        kilo: "Kilo", cline: "Cline", antigravity: "Antigravity",
+                        codearts: "CodeArts（码道）",
+                        qoder: "Qoder", "trae-cn": "Trae CN" };
   var DISPLAY_NAMES = { "trae-cn": "Trae CN", qoder: "Qoder", turns: "记录数",
                         est: "估算", used: "已用", sessions: "会话",
                         assistant_calls: "assistant 调用" };

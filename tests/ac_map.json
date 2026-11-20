@@ -206,6 +206,19 @@
         "tests.test_collectors.AntigravityTest.test_malformed_summaries_degrade",
         "tests.test_collectors.AntigravityTest.test_tokenless_copy_does_not_shadow_later_token_copy",
         "tests.test_collectors.AntigravitySignatureTest.test_signature_tracks_chunks_rotation"
+      ],
+      "R48": [
+        "tests.test_collectors.CodeArtsCollectorTest.test_maps_fields_and_key",
+        "tests.test_collectors.CodeArtsCollectorTest.test_day_is_local_day_of_time_created",
+        "tests.test_collectors.CodeArtsCollectorTest.test_skips_tokenless_and_zero_usage",
+        "tests.test_collectors.CodeArtsCollectorTest.test_broken_data_json_is_counted_not_fatal",
+        "tests.test_collectors.CodeArtsCollectorTest.test_missing_db_is_unavailable",
+        "tests.test_collectors.CodeArtsSignatureTest.test_signature_tracks_db_and_wal",
+        "tests.test_cli.CodeArtsCliTest.test_backfill_and_report_match_stateless",
+        "tests.test_cli.CodeArtsCliTest.test_backfill_is_idempotent",
+        "tests.test_cli.CodeArtsCliTest.test_report_auto_syncs_new_codearts_messages",
+        "tests.test_cli.CodeArtsCliTest.test_doctor_reports_codearts",
+        "tests.test_html.HtmlRenderTest.test_codearts_is_classified_as_token"
       ]
     }
   }

@@ -289,6 +289,17 @@ def scan_sqlite_agent(db_path: str, source_name: str, result: SourceResult | Non
     return result
 
 
+def codearts_db(home: str | None = None) -> str:
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, ".codeartsdoer", "codearts-data", "opencode.db")
+
+
+def scan_codearts(home: str | None = None,
+                  result: SourceResult | None = None) -> SourceResult:
+    # CodeArts（码道）沿用 OpenCode 旧版 schema（data.role / data.tokens），共享同一 adapter
+    return scan_sqlite_agent(codearts_db(home), "codearts", result)
+
+
 def cline_sessions_root(home: str | None = None) -> str:
     home = home or os.path.expanduser("~")
     return os.path.join(home, ".cline", "data", "sessions")
@@ -1478,7 +1489,7 @@ def source_signatures(home: str | None = None,
                       sources: list[str] | None = None) -> dict[str, int | None]:
     home = home or os.path.expanduser("~")
     wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                              "cline", "antigravity"))
+                              "cline", "antigravity", "codearts"))
     signatures = {}
     for source in wanted:
         if source == "claude":
@@ -1533,6 +1544,9 @@ def source_signatures(home: str | None = None,
             signatures[source] = _latest_mtime_us(paths)
         elif source == "antigravity":
             signatures[source] = _latest_mtime_us(_antigravity_signature_paths(home))
+        elif source == "codearts":
+            base = codearts_db(home)
+            signatures[source] = _latest_mtime_us([base, base + "-wal"])
     return signatures
 
 
@@ -1543,7 +1557,7 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
                 known_credit_request_ids: set[str] | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
     wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                             "cline", "antigravity"])
+                             "cline", "antigravity", "codearts"])
     results = []
     if "claude" in wanted:
         results.append(scan_claude(os.path.join(home, ".claude", "projects")))
@@ -1574,4 +1588,6 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
         results.append(scan_cline(home=home))
     if "antigravity" in wanted:
         results.append(scan_antigravity(home=home))
+    if "codearts" in wanted:
+        results.append(scan_codearts(home=home))
     return results

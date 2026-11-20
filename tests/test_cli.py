@@ -600,5 +600,106 @@ class AntigravityCliTest(unittest.TestCase):
         self.assertIn("antigravity", out)
 
 
+def write_codearts_db(path, rows):
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, "
+                 "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, "
+                 "data TEXT NOT NULL)")
+    for mid, data in rows:
+        conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                     (mid, "s1", data["time"]["created"], data["time"]["created"],
+                      json.dumps(data)))
+    conn.commit()
+    conn.close()
+
+
+def codearts_message(stamp_ms, input=100, output=20, cache_read=900):
+    return {"role": "assistant", "modelID": "glm-5.3-flash",
+            "providerID": "inferhub-provider",
+            "path": {"cwd": "/Users/wayne/workspace/playground"},
+            "time": {"created": stamp_ms},
+            "tokens": {"input": input, "output": output, "reasoning": 5,
+                       "cache": {"read": cache_read, "write": 0}}}
+
+
+class CodeArtsCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        db_dir = os.path.join(self.home, ".codeartsdoer", "codearts-data")
+        os.makedirs(db_dir)
+        self.codearts_db = os.path.join(db_dir, "opencode.db")
+        stamp = int(datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        write_codearts_db(self.codearts_db, [
+            ("m1", codearts_message(stamp)),
+            ("m2", codearts_message(stamp + 60_000, input=30, output=5, cache_read=0)),
+        ])
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_backfill_and_report_match_stateless(self):
+        code, _, err = self.run_cli(["backfill"])
+        self.assertEqual(code, 0, err)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 2)
+        store.close()
+
+        code, db_json, _ = self.run_cli(
+            ["report", "--source", "codearts", "--format", "json"])
+        self.assertEqual(code, 0)
+        code, source_json, _ = self.run_cli(
+            ["--stateless", "report", "--source", "codearts", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(db_json), json.loads(source_json))
+
+        rows = json.loads(db_json)
+        self.assertEqual(sum(row["input"] for row in rows), 130)
+        self.assertEqual(sum(row["output"] for row in rows), 25)
+        self.assertEqual(sum(row["cache_read"] for row in rows), 900)
+
+    def test_backfill_is_idempotent(self):
+        self.run_cli(["backfill"])
+        self.run_cli(["backfill"])
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 2)
+        store.close()
+
+    def test_report_auto_syncs_new_codearts_messages(self):
+        self.run_cli(["backfill"])
+        stamp = int(datetime(2026, 11, 20, 13, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        conn = sqlite3.connect(self.codearts_db)
+        conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                     ("m3", "s1", stamp, stamp, json.dumps(codearts_message(stamp))))
+        conn.commit()
+        conn.close()
+        bumped = stamp * 1_000_000
+        os.utime(self.codearts_db, ns=(bumped, bumped))
+
+        code, out, _ = self.run_cli(
+            ["report", "--source", "codearts", "--format", "json"])
+        self.assertEqual(code, 0)
+        rows = json.loads(out)
+        self.assertEqual(sum(row["input"] for row in rows), 230)
+
+    def test_doctor_reports_codearts(self):
+        code, out, _ = self.run_cli(["doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("codearts", out)
+
+
 if __name__ == "__main__":
     unittest.main()

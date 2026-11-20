@@ -135,6 +135,8 @@ usage est --source trae-cn --group-by day,model
   - 去重：`opencode:<message.id>`；消息跨新旧表同时存在时只计一次。
 - **kilo** — `~/.local/share/kilo/kilo.db`。
   - 提取与去重：与 OpenCode 同一 adapter，去重键 `kilo:<message.id>`。
+- **codearts（码道）** — `~/.codeartsdoer/codearts-data/opencode.db`。
+  - 提取与去重：与 OpenCode 同一 adapter（legacy `message` 表，`role` / `tokens` 在 `data` JSON 内），取 `tokens.input` / `output` / `cache.read` / `cache.write` / `reasoning`（不采 `tokens.total`），模型取 `modelID`，provider 取 `providerID`，项目取 `path.cwd` 的 basename；去重键 `codearts:<message.id>`。额度本地不落盘，不采集。
 - **cline** — `~/.cline/data/sessions/<session>/<session>.messages.json`，配套 `<session>.json` 元数据。
   - 提取：只处理 assistant 消息的 `metrics`；`input = inputTokens − cacheReadTokens − cacheWriteTokens`，`output = outputTokens`（含推理 token，不单列）；模型取 `modelInfo.id`，缺失回退元数据 `model`；项目取 `workspace_root` / `cwd` 的 basename。
   - 去重：`cline:<message.id>`；无 id 时回退 `cline:<session>:<ts>:<index>`。
@@ -241,7 +243,7 @@ usage est --source trae-cn --group-by day,model
 ### 3.6 HTML 报表
 
 - **文件形态**：单文件 HTML，CSS / JS / SVG 全内联，CSP `default-src 'none'`，无外部请求；可离线分发或归档。
-- **Agent 多选**：页面顶部唯一选择区，列出 claude、codex、opencode、kilo、cline、qoder、trae-cn，chip 上带各自汇总值；至少保留一个。单击只看该 Agent，再次单击恢复全选；⌘ / Ctrl / Shift+单击增减成员；另有“全选”按钮。
+- **Agent 多选**：页面顶部唯一选择区，列出 claude、codex、opencode、kilo、cline、antigravity、codearts、qoder、trae-cn，chip 上带各自汇总值；至少保留一个。单击只看该 Agent，再次单击恢复全选；⌘ / Ctrl / Shift+单击增减成员；另有“全选”按钮。
 - **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算` 按单位分组；每组内卡片保持连续，整个 KPI 区只有一张主卡；区间无行的单位合并为一张“无数据”卡，不铺零卡；500px 下数值完整显示、不省略。Qoder 与 Trae credits 使用同一组四张卡：`区间 credits`（主卡；Qoder 为 billable，Trae 为会话级）、`免费 credits`、`区间日均`、`最新额度余额`；Trae 不提供的免费额度 / 额度快照显示 `—` 并说明原因，Qoder 的余额 / 请求数、Trae 的会话数 / 模型数放在副文案。Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
 - **每日图表**：Token 按 Agent 堆叠；credits 单选时使用同一图表容器与坐标轴，Qoder 为 billable / 免费双序列，Trae 为 billable 单序列（不伪造免费序列）；Qoder + Trae 同时选中时改为分组柱状图，不堆叠成一个总数；Qoder 影子估算与 Trae 弱估算默认隐藏，打开“估算”开关后分别显示，且不与 credits 相加。
 - **Top 8**：模型与项目各 Top 8，按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比同用“相对第一”口径并明示，排序标签写明单位与当前区间，总计为 0 时百分比显示 `—`；估算只作为同一 Agent 行的次要标注，不把只有估算的行显示成 `0 credits`。
@@ -338,6 +340,7 @@ usage est --source trae-cn --group-by day,model
 |---|---|---|
 | R14 | When Cline session files are present, the system shall extract assistant `metrics` as token truth, subtract cache read/write from `inputTokens`, use `cline:<message.id>` as the dedup key, and skip messages without metrics without fabricating 0. | `tests/test_collectors.py::ClineTest`、`tests/test_cli.py::ClineCliTest.test_backfill_and_report_match_stateless`、`test_metrics_mapping_and_fallbacks`、`test_broken_session_file_is_isolated` |
 | R46 | When Antigravity data is present under `~/.gemini/antigravity` (IDE / hub) or `~/.gemini/antigravity-cli` (CLI), the system shall read `brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` from both roots (plus `chunks/transcript_full/*.jsonl` mirrors), emit one token record per step whose `source` is `MODEL` and which carries `input_tokens` or `output_tokens`, map `input_tokens` / `cache_read_tokens` / `output_tokens` to `input` / `cache_read` / `output` with `cache_write = 0` and `reasoning = 0`, attribute it to the local day of `created_at`, deduplicate by `step_index` within a conversation (a later copy carrying token fields wins over an earlier token-less copy) and key records `antigravity:<app_data_dir>:<conversationId>:<step_index>`, set `Record.agent` to `ide` or `cli`, take the project from the matching root's `conversation_summaries.db` `workspace_uris` basename with `default-cli-project` as fallback, parse transcripts with a streaming JSON decoder that resyncs past orphan fragments and drops objects whose `step_index` is not an integer, silently skip `MODEL` steps without token fields, degrade when one root is missing, and expose the merged rows under the single source `antigravity`. | `tests/test_collectors.py::AntigravityTest`、`AntigravitySignatureTest`、`tests/test_cli.py::AntigravityCliTest.test_backfill_and_report_match_stateless`、`test_backfill_is_idempotent`、`test_report_merges_ide_and_cli_into_one_source`、`test_doctor_reports_antigravity` |
+| R48 | When CodeArts (码道) session data is present under `~/.codeartsdoer/codearts-data/opencode.db`, the system shall read each `message` row whose `data.role` is `assistant` via the shared legacy-OpenCode adapter, map `data.tokens.input` / `output` / `cache.read` / `cache.write` / `reasoning` to `input` / `output` / `cache_read` / `cache_write` / `reasoning` without reading `tokens.total`, attribute each record to the local day of `time_created` (milliseconds), deduplicate by `message.id` and key records `codearts:<message.id>`, take the model from `data.modelID` and the provider from `data.providerID`, take the project from `data.path.cwd` basename (no project when absent), skip assistant messages without tokens or with zero token counts without fabricating 0, skip rows whose `data` JSON is unparsable while counting them instead of failing the run, degrade gracefully when the database is missing or unreadable, and expose the rows under the single source `codearts`. | `tests/test_collectors.py::CodeArtsCollectorTest`、`CodeArtsSignatureTest`、`tests/test_cli.py::CodeArtsCliTest`、`tests/test_html.py::HtmlRenderTest.test_codearts_is_classified_as_token` |
 | R15 | When `usage html` runs, the system shall generate a single-file offline page with inline CSS/JS/SVG and CSP `default-src 'none'`, support agent multi-select and per-unit separate summaries (tokens / credits / est), and label all estimation/credits/activity boundaries. | `tests/test_html.py::HtmlRenderTest.test_payload_escaped_and_offline`、`AgentSelectionTest`、`SourceAwareCreditsTest`、`TraeStatusCopyTest`、`HtmlCommandTest`、`QoderHtmlTest` |
 | R16 | When `usage schedule install` runs, the system shall install launchd jobs for hourly incremental sync, daily full rescan at 00:15, and daily prune at 00:20 with `--keep-days 90`; `--dry-run` shall write nothing. | `tests/test_scheduler.py::SchedulerTest.test_plists_have_calendar_and_environment`、`test_dry_run_writes_nothing` |
 
@@ -457,6 +460,9 @@ usage est --source trae-cn --group-by day,model
 | CHG-0014 | 审计清理：重复键、死代码与过期文档引用 | 已验证 | [CHG-0014](../changes/CHG-0014-audit-cleanup.md) |
 | CHG-0015 | 审计清理（二）：死代码、过期注释与测试文档校准 | 已验证 | [CHG-0015](../changes/CHG-0015-audit-cleanup-2.md) |
 | CHG-0016 | 接入 Google Antigravity 用量（IDE / agy 双目录合并） | 已验证 | [CHG-0016](../changes/CHG-0016-antigravity-usage-source.md) |
+| CHG-0018 | 接入 CodeArts（码道）用量（复用 SQLite agent adapter） | 已验证 | [CHG-0018](../changes/CHG-0018-codearts-usage-source.md) |
+
+> 2026-11-20：CHG-0018 新增 R48 并修改 §3.2 数据源契约（CodeArts 复用 legacy-OpenCode adapter、额度不采集）：310 tests / 0 skip、覆盖率见 §9、AC map 47 criteria / 124 identifiers；本机冻结快照实测 28 assistant 行（1 条全 0 跳过）、input 277,622 / output 6,522 / cache_read 1,329,152 / reasoning 5,732，与探针逐项一致。CHG-0017（R47）由待合入的 `feat/minimax-usage-source` 分支占用，ID 顺延。
 
 > 2026-11-20：CHG-0016 新增 R46 并修改 §3.2 数据源契约（Antigravity 双目录、额度不采集）：299 tests / 0 skip、覆盖率 93.3%、AC map 46 criteria / 113 identifiers；本机实测 17 records / 308,611 tokens 与探针一致。
 >
