@@ -79,6 +79,12 @@ class HtmlRenderTest(unittest.TestCase):
         self.assertEqual(payload["activity"][0]["tool_calls"], 7)
         self.assertEqual(payload["coverage"], coverage)
 
+    def test_minimax_is_classified_as_token(self):
+        payload = build_payload([], ("day", "source", "model", "project"), None, None, [])
+        self.assertEqual(payload["agents"]["minimax"], "token")
+        html = render_html(payload)
+        self.assertIn("MiniMax", html)
+
 
 class AgentSelectionTest(unittest.TestCase):
     @classmethod

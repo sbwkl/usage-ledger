@@ -7,7 +7,7 @@ import unittest
 from datetime import date, datetime, timedelta
 
 from src.usage_ledger.collectors import (scan_antigravity, scan_claude, scan_cline,
-                                       scan_codex, scan_qoder_activity,
+                                       scan_codex, scan_minimax, scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
                                        scan_qoder_tokens, scan_qoder_transcripts,
                                        scan_qoder_turn_credits,
@@ -15,6 +15,9 @@ from src.usage_ledger.collectors import (scan_antigravity, scan_claude, scan_cli
 from tests.antigravity_helpers import (CLI_APP, IDE_APP, app_dir, logs_dir,
                                        model_step, user_step, write_raw,
                                        write_summaries, write_transcript)
+from tests.minimax_helpers import (DEFAULT_SESSION, assistant_row, runtime_db_path,
+                                   tool_row, usage, user_row, write_messages,
+                                   write_runtime_db)
 from tests.qoder_helpers import (activity_path, create_activity_db,
                                  create_token_db, create_turn_credit_db,
                                  log_path, quota_line, token_path, transcript_path,
@@ -920,6 +923,169 @@ class AntigravitySignatureTest(unittest.TestCase):
 
             second = source_signatures(home, ["antigravity"])
             self.assertGreater(second["antigravity"], first["antigravity"])
+
+
+class MiniMaxCollectorTest(unittest.TestCase):
+    """MiniMax Code（`~/.minimax/v2/sessions`）的 token 真值采集。"""
+
+    # 真实响应时间戳（毫秒）：2026-11-20T05:47:48Z
+    ASSISTANT_TS_MS = 1795153668789
+
+    def build_home(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [
+            user_row(),
+            assistant_row("msg-a1", usage_value=usage(100, 20, 0, 0)),
+            assistant_row("msg-a2", usage_value=usage(30, 5, 900, 0),
+                          timestamp_ms=1795153671502),
+            tool_row(),
+            # 没有 usage 的 assistant：跳过并计数，不能伪造 0
+            assistant_row("msg-a3", usage_value=None),
+            # 零 token：跳过
+            assistant_row("msg-a4", usage_value=usage(0, 0, 0, 0)),
+        ])
+        write_runtime_db(home, [
+            (DEFAULT_SESSION, "/Users/wayne/workspace/playground", None),
+        ])
+        return home
+
+    def test_maps_assistant_usage_and_skips_the_rest(self):
+        result = scan_minimax(self.build_home())
+        self.assertTrue(result.healthy, result.errors)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.records), 2)
+
+        by_key = {rec.key: rec for rec in result.records}
+        first = by_key["minimax:%s:msg-a1" % DEFAULT_SESSION]
+        self.assertEqual((first.counts.input, first.counts.output,
+                          first.counts.cache_read, first.counts.cache_write,
+                          first.counts.reasoning), (100, 20, 0, 0, 0))
+        self.assertEqual(first.model, "MiniMax-M3.1-Flash")
+        self.assertEqual(first.provider, "minimax")
+        self.assertEqual(first.project, "playground")
+        self.assertEqual(first.session, DEFAULT_SESSION)
+        # 归属本地日：按毫秒时间戳换算，断言对时区不敏感
+        self.assertAlmostEqual(first.ts, self.ASSISTANT_TS_MS / 1000.0, places=3)
+        self.assertEqual(first.day,
+                         datetime.fromtimestamp(self.ASSISTANT_TS_MS / 1000.0)
+                         .strftime("%Y-%m-%d"))
+
+        cached = by_key["minimax:%s:msg-a2" % DEFAULT_SESSION]
+        self.assertEqual((cached.counts.input, cached.counts.output,
+                          cached.counts.cache_read), (30, 5, 900))
+
+        # 无 usage 与零 token 的 assistant 都被跳过，且分别计数
+        self.assertEqual(result.key_kinds["skipped:no-usage"], 1)
+        self.assertEqual(result.key_kinds["zero-usage"], 1)
+
+    def test_input_excludes_cache_read(self):
+        """口径：input 已排除 cache read，与 Claude / Codex 的非重叠口径一致。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [
+            assistant_row("msg-a1", usage_value=usage(2697, 130, 32768, 0)),
+        ])
+        result = scan_minimax(home)
+        self.assertEqual(len(result.records), 1)
+        rec = result.records[0]
+        # totalTokens = input + output + cacheRead → input 不含缓存
+        self.assertEqual(rec.counts.input + rec.counts.output + rec.counts.cache_read,
+                         35595)
+        self.assertEqual(rec.counts.input, 2697)
+
+    def test_broken_line_is_counted_not_fatal(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [
+            json.dumps(assistant_row("msg-a1")),
+            "{not json",
+            json.dumps(assistant_row("msg-a2")),
+        ])
+        result = scan_minimax(home)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.records), 2)
+        self.assertGreaterEqual(result.key_kinds["skipped:bad-line"], 1)
+
+    def test_duplicate_message_id_counted_once(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        row = assistant_row("msg-a1")
+        write_messages(home, [row, row])
+        result = scan_minimax(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.dup_dropped, 1)
+
+    def test_session_id_falls_back_to_directory_name(self):
+        """manifest.json 缺失时，用会话目录名后缀的 base64url 解码还原。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [assistant_row("msg-a1")], manifest=False)
+        result = scan_minimax(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].session, DEFAULT_SESSION)
+        self.assertEqual(result.records[0].key,
+                         "minimax:%s:msg-a1" % DEFAULT_SESSION)
+
+    def test_project_falls_back_to_project_workspace_dir(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [assistant_row("msg-a1")])
+        write_runtime_db(home, [
+            (DEFAULT_SESSION, None, "/Users/wayne/workspace/beta"),
+        ])
+        result = scan_minimax(home)
+        self.assertEqual(result.records[0].project, "beta")
+
+    def test_missing_runtime_db_degrades_to_no_project(self):
+        """运行库缺失只影响项目维度，token 真值照常产出。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [assistant_row("msg-a1")])
+        result = scan_minimax(home)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.records), 1)
+        self.assertIsNone(result.records[0].project)
+        # 降级必须可见：状态 partial + note，而不是静默当成正常
+        self.assertFalse(result.complete)
+        self.assertTrue(any("项目维度" in note for note in result.notes), result.notes)
+
+    def test_broken_runtime_db_does_not_break_collection(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_messages(home, [assistant_row("msg-a1")])
+        path = runtime_db_path(home)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("not a sqlite database")
+        result = scan_minimax(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertIsNone(result.records[0].project)
+        self.assertEqual(result.errors, [])
+        self.assertFalse(result.complete)
+
+    def test_missing_sessions_dir_is_unavailable(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        result = scan_minimax(home)
+        self.assertFalse(result.available)
+        self.assertEqual(result.records, [])
+
+
+class MiniMaxSignatureTest(unittest.TestCase):
+    def test_signature_tracks_messages_mtime(self):
+        with tempfile.TemporaryDirectory() as home:
+            first = source_signatures(home, ["minimax"])
+            self.assertIsNone(first["minimax"])
+
+            path = write_messages(home, [assistant_row("msg-a1")])
+            second = source_signatures(home, ["minimax"])
+            self.assertIsNotNone(second["minimax"])
+
+            stat = os.stat(path)
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            third = source_signatures(home, ["minimax"])
+            self.assertGreater(third["minimax"], second["minimax"])
 
 
 if __name__ == "__main__":
