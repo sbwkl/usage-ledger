@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。282 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。284 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -62,7 +62,7 @@ usage-ledger/
 │   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
 │   │   └── REQ-0002-testing.md       功能卡（测试体系）
 │   ├── changes/
-│   │   └── CHG-0001 ~ CHG-0014      变更记录（均已验证，状态以各 CHG 首部为准）
+│   │   └── CHG-0001 ~ CHG-0015      变更记录（均已验证，状态以各 CHG 首部为准）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
@@ -95,11 +95,11 @@ usage-ledger/
 ## 需求、变更与决策
 
 - 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
-- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0014，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0015，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
 - 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0015`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0016`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定

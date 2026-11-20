@@ -4,8 +4,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from datetime import date, datetime, time, timedelta
-from unittest.mock import patch
+from datetime import date, datetime, timedelta
 
 from src.usage_ledger.collectors import (scan_claude, scan_cline, scan_codex,
                                        scan_qoder_activity,
