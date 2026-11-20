@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.9.0。在 v0.8 基础上新增 CodeArts（码道）采集——单源 `codearts` 复用共享 SQLite adapter 读 `~/.codeartsdoer/codearts-data/opencode.db`（OpenCode 旧版 schema），逐 assistant 消息 token 真值；额度本地不落盘故不采集。在 v0.7 基础上新增 MiniMax Code 采集——单源 `minimax` 读会话 `messages.jsonl` 里 assistant 的 `usage`（实测 `input` 已排除 cache read，与其它源非重叠口径一致），项目维度取运行库 `local_runtime_sessions.workspace_dir`；额度本地不落盘故不采集。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。10 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录、CodeArts、MiniMax Code）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。325 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、CodeArts、MiniMax Code、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.10.0。在 v0.9 基础上新增腾讯 CodeBuddy CN 采集——单源 `codebuddy` 只读两处镜像扩展日志的 `Step execution metrics` 逐 step token 真值，按 `(traceId, step)` 去重；`inputTokens` 含 cache read 故取 `cachedMissTokens`，`credit` 实测恒 0 故不采集额度。在 v0.8 基础上新增 CodeArts（码道）采集——单源 `codearts` 复用共享 SQLite adapter 读 `~/.codeartsdoer/codearts-data/opencode.db`（OpenCode 旧版 schema），逐 assistant 消息 token 真值；额度本地不落盘故不采集。在 v0.7 基础上新增 MiniMax Code 采集——单源 `minimax` 读会话 `messages.jsonl` 里 assistant 的 `usage`（实测 `input` 已排除 cache read，与其它源非重叠口径一致），项目维度取运行库 `local_runtime_sessions.workspace_dir`；额度本地不落盘故不采集。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。11 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录、CodeArts、MiniMax Code、CodeBuddy CN）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、CodeArts、MiniMax Code、CodeBuddy CN、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -31,7 +31,8 @@
 | Antigravity（IDE + agy CLI） | ✅ token | 单源 `antigravity` 合并 `~/.gemini/antigravity`（IDE / hub）与 `~/.gemini/antigravity-cli`（CLI）两个**不共用**的 app data dir，读 `brain/<会话>/.system_generated/logs/transcript_full.jsonl` 里 `source=MODEL` 的 `input_tokens` / `cache_read_tokens` / `output_tokens`，用 `agent` 字段区分 `ide` / `cli`。实测两者不重叠的 `input` / `cache_read` 可直接映射；**额度本地不落盘**，不采集。只有 2026-11-20 起的会话带 token，之前的用量本地不可得 |
 | CodeArts（码道） | ✅ token | 复用共享 SQLite adapter 读 `~/.codeartsdoer/codearts-data/opencode.db`（OpenCode 旧版 `message` 表，`role` / `tokens` 在 `data` JSON 内）；`input` 不含 cache read，`tokens.total` 不采（口径与 opencode 一致）。**额度本地不落盘**，不采集。只有 2026-11-20 起的会话，之前的用量本地不可得 |
 | MiniMax Code（`mcode`） | ✅ token | 读 `~/.minimax/v2/sessions/<YYYY>/<MM>/<DD>/<会话>/messages.jsonl` 里 assistant 的 `usage`（`input` / `output` / `cacheRead` / `cacheWrite`）；实测 `totalTokens == input + output + cacheRead`，即 **`input` 已排除 cache read**，与 Claude / Codex 的非重叠口径一致。项目维度取运行库 `local_runtime_sessions.workspace_dir` 的 basename；`session_id` 优先读 `manifest.json`，缺失回退会话目录名后缀的 base64url 解码。**额度本地不落盘**，不采集；本机接入前的用量本地不可得 |
-| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 10 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
+| 腾讯 CodeBuddy CN（`codebuddy`） | ✅ token | 只读两处镜像扩展日志里 `[AgentReporter] ... Step execution metrics: ... usage={...}` 的逐 step 真值，按 `(traceId, step)` 去重；`inputTokens` / `totalTokens` 含 cache read 故不采，改采 `cachedMissTokens`（= `input − cache`）+ `cacheTokens` + `outputTokens`；模型 / 项目分别取日志 `Preparing model` 与 `genie-history` 映射的 workspace basename；`credit` 实测恒 0 故不采集额度。本机接入前日志无该字段，之前的用量本地不可得 |
+| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 11 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
 | Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
@@ -82,7 +83,7 @@ usage-ledger/
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   9 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算/Antigravity/MiniMax Code）
+│   ├── collectors.py   11 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算/Antigravity/CodeArts/MiniMax Code/CodeBuddy）
 │   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
 │   ├── trae_credits.py Trae CN 同源 usage API 客户端、JWT 读取、分块/分页与幂等同步
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
@@ -98,11 +99,11 @@ usage-ledger/
 ## 需求、变更与决策
 
 - 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
-- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0017，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0019，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
 - 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0018`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0020`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
@@ -258,6 +259,25 @@ usage doctor --probe minimax
 
 ---
 
+## 腾讯 CodeBuddy CN（`codebuddy`）
+
+CodeBuddy 把每次模型调用的 token 写进扩展日志；本系统只读日志，不读 prompt 正文、不联网：
+
+```bash
+usage report --source codebuddy
+usage report --source codebuddy --group-by day,project --format json
+usage doctor --probe codebuddy
+```
+
+- **两处镜像目录**：`~/Library/Application Support/CodeBuddy CN/logs/**/Tencent-Cloud.coding-copilot/*.log`（ISO 时间戳）与 `~/Library/Application Support/CodeBuddyExtension/Logs/CodeBuddyIDE/**/*.log`（方括号时间戳）。两个目录写同一批事件，按 `(traceId, step)` 去重，不会翻倍。
+- **识别**：`[AgentReporter] [<traceId>] Step execution metrics: step=<n>, duration=<ms>, usage=<json>`；同内容不带 `usage=` 的摘要行与终端命令回显都不算用量。
+- **口径**：实测 `inputTokens == cacheTokens + cachedMissTokens`，即 `inputTokens` 已含 cache read；取 `input = cachedMissTokens`、`cache_read = cacheTokens`、`output = outputTokens`、`cache_write = cachedWriteTokens`、`reasoning = 0`（`thinkingTokens` 已含在 output 中）。不采含 cache read 的 `inputTokens` / `totalTokens` / `lastTokens`。
+- **元数据**：模型取同 trace 的 `Preparing model: <显示名> (<modelId>)`，缺失记 `unknown`；会话取同 trace 的 `onAgentStart` `conversationId`，缺失回退 traceId；项目取 `genie-history/<base64url(cwd)>/current.json` 的 conversationId → workspace basename，映射不到则无项目。厂商把目录名的 base64 padding `=` 写成 `_`、部分目录还追加 `__`，解码时先剥尾部 `_` 再补 padding（本机 20/20 目录验证通过）。
+- **额度**：`usage.credit` 实测恒为 0，不是服务端计费真值；订阅额度本地不可得，**不采集**。
+- **边界**：本机接入前（2026-11-20 之前）的日志不带 usage 字段，之前的用量本地不可得；step 非整数 / usage 坏 JSON / 全零行只计数不中断；任一目录缺失只降级，都不存在则源不可用。
+
+---
+
 ## Trae CN credits（真值）与 hooks 弱估算（est）
 
 Trae CN 的本机加密库不可读、额度不落盘；本系统有两条互不相加的数据轨：
@@ -334,7 +354,7 @@ usage --stateless html --output /tmp/usage.html   # 不读库、不联网；Trae
 生成过程中 `usage html` 可能按上文规则刷新 Trae credits，`--offline` / `--stateless` 可完全避免联网。
 所有 Agent 共用一处多选与同一页报告：
 
-- **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline（精确 token）、qoder、trae-cn（精确 credits），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个；Trae credits 未同步时 chip 显示 `—` 而不是伪造 0
+- **Agent 多选**（页面顶部唯一选择区）：claude、codex、opencode、kilo、cline、codebuddy（精确 token）、qoder、trae-cn（精确 credits），标签上带各自汇总值；可同时勾选 token 计费与 credits 计费 Agent，至少保留一个；Trae credits 未同步时 chip 显示 `—` 而不是伪造 0
 - **点击语义**：单击只看该 Agent，再次单击恢复全选；⌘/Ctrl/Shift+单击增减成员；另有“全选”按钮
 - **同一页、按单位分行展示**：tokens、credits、est 单位不同，各自独立汇总，**不跨单位相加**；选择多个单位时，KPI、图表、Top 8、明细都并列展示
 - **KPI 按单位分组**：`精确 Token（tokens）`、`精确 Credits（credits）`（Qoder 与 Trae CN 共用四卡：区间 credits / 免费 credits / 区间日均 / 最新额度余额，Trae 不提供的免费额度与额度快照显示 `—` 并说明原因）、`估算`；每组卡片连续排列，全页只有一张主卡，空单位合并为一张“无数据”卡；Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令

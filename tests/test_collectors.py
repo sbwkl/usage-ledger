@@ -7,8 +7,8 @@ import unittest
 from datetime import date, datetime, timedelta, timezone
 
 from src.usage_ledger.collectors import (codearts_db, scan_antigravity, scan_claude,
-                                       scan_cline, scan_codearts, scan_codex,
-                                       scan_minimax, scan_qoder_activity,
+                                       scan_cline, scan_codearts, scan_codebuddy,
+                                       scan_codex, scan_minimax, scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
                                        scan_qoder_tokens, scan_qoder_transcripts,
                                        scan_qoder_turn_credits,
@@ -16,6 +16,10 @@ from src.usage_ledger.collectors import (codearts_db, scan_antigravity, scan_cla
 from tests.antigravity_helpers import (CLI_APP, IDE_APP, app_dir, logs_dir,
                                        model_step, user_step, write_raw,
                                        write_summaries, write_transcript)
+from tests.codebuddy_helpers import (DEFAULT_CONVERSATION, DEFAULT_MODEL_ID,
+                                     DEFAULT_TRACE, GENIE_REL, metric_line, model_line,
+                                     start_line, summary_line, usage as cb_usage,
+                                     write_genie, write_log)
 from tests.minimax_helpers import (DEFAULT_SESSION, assistant_row, runtime_db_path,
                                    tool_row, usage, user_row, write_messages,
                                    write_runtime_db)
@@ -1212,6 +1216,171 @@ class MiniMaxSignatureTest(unittest.TestCase):
             os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
             third = source_signatures(home, ["minimax"])
             self.assertGreater(third["minimax"], second["minimax"])
+
+
+class CodeBuddyCollectorTest(unittest.TestCase):
+    """腾讯 CodeBuddy CN（`codebuddy`）双目录日志镜像采集。"""
+
+    def build_home(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_genie(home)
+        write_log(home, [
+            start_line(DEFAULT_TRACE),
+            model_line(DEFAULT_TRACE),
+            metric_line(DEFAULT_TRACE, 1, cb_usage()),
+            metric_line(DEFAULT_TRACE, 2, cb_usage(output_tokens=5,
+                                                   cache_tokens=900, cache_miss=100),
+                        timestamp="2026-11-20 15:28:13.226"),
+            summary_line(DEFAULT_TRACE, 1),
+        ])
+        return home
+
+    def test_maps_step_usage_and_metadata(self):
+        result = scan_codebuddy(self.build_home())
+        self.assertTrue(result.healthy, (result.errors, result.notes))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.records), 2)
+
+        first, second = result.records
+        self.assertEqual(first.key, "codebuddy:%s:1" % DEFAULT_TRACE)
+        self.assertEqual((first.counts.input, first.counts.output,
+                          first.counts.cache_read, first.counts.cache_write,
+                          first.counts.reasoning), (600, 20, 400, 0, 0))
+        self.assertEqual((second.counts.input, second.counts.output,
+                          second.counts.cache_read), (100, 5, 900))
+        self.assertEqual(first.model, DEFAULT_MODEL_ID)
+        self.assertEqual(first.model_raw, DEFAULT_MODEL_ID)
+        self.assertEqual(first.session, DEFAULT_CONVERSATION)
+        self.assertEqual(first.project, "playground")
+        self.assertEqual(first.day, "2026-11-20")
+        self.assertEqual(second.day, "2026-11-20")
+
+    def test_input_tokens_including_cache_are_not_used(self):
+        """日志的 inputTokens 含 cache read；直接采会重复计缓存。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_log(home, [metric_line(
+            DEFAULT_TRACE, 1, cb_usage(input_tokens=999_999, cache_tokens=400,
+                                       cache_miss=600))])
+        rec = scan_codebuddy(home).records[0]
+        self.assertEqual(rec.counts.input, 600)
+        self.assertEqual(rec.counts.cache_read, 400)
+
+    def test_mirrored_roots_are_deduplicated(self):
+        home = self.build_home()
+        write_log(home, [
+            start_line(DEFAULT_TRACE, style="bracket"),
+            model_line(DEFAULT_TRACE, style="bracket"),
+            metric_line(DEFAULT_TRACE, 1, cb_usage(), style="bracket"),
+            metric_line(DEFAULT_TRACE, 2, cb_usage(output_tokens=5,
+                                                   cache_tokens=900, cache_miss=100),
+                        style="bracket", timestamp="[11/20/2026, 3:28:13 PM.226]"),
+        ], root="ide", name="playground__6b1eba.log")
+        result = scan_codebuddy(home)
+        self.assertEqual(len(result.records), 2)
+        self.assertEqual(result.dup_dropped, 2)
+        self.assertEqual(result.records[0].day, "2026-11-20")
+
+    def test_bad_lines_and_zero_usage_are_counted_not_fatal(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_log(home, [
+            metric_line(DEFAULT_TRACE, 1, cb_usage()),
+            metric_line(DEFAULT_TRACE, 2, cb_usage(output_tokens=0, cache_tokens=0,
+                                                   cache_miss=0)),
+            "2026-11-20 15:28:08.671 [info] [AgentReporter] [%s] "
+            "Step execution metrics: step=3, duration=1ms, usage={not json}"
+            % DEFAULT_TRACE,
+            "2026-11-20 15:28:08.671 [info] [AgentReporter] [%s] "
+            "Step execution metrics: step=abc, duration=1ms, usage={}"
+            % DEFAULT_TRACE,
+            summary_line(DEFAULT_TRACE, 1),
+        ])
+        result = scan_codebuddy(home)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.key_kinds["zero-usage"], 1)
+        self.assertEqual(result.key_kinds["skipped:bad-usage"], 1)
+        self.assertEqual(result.key_kinds["skipped:bad-step"], 1)
+        self.assertEqual(result.key_kinds["skipped:no-usage"], 1)
+
+    def test_metadata_fallbacks_when_logs_lack_context(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_log(home, [metric_line(DEFAULT_TRACE, 1, cb_usage())])
+        result = scan_codebuddy(home)
+        self.assertEqual(len(result.records), 1)
+        rec = result.records[0]
+        self.assertEqual(rec.session, DEFAULT_TRACE)
+        self.assertEqual(rec.model, "unknown")
+        self.assertIsNone(rec.project)
+        self.assertFalse(result.complete)
+        self.assertTrue(any("项目维度" in note for note in result.notes), result.notes)
+
+    def test_bad_genie_entry_is_counted_not_fatal(self):
+        home = self.build_home()
+        bad_dir = os.path.join(home, GENIE_REL, "not_base64!")
+        os.makedirs(bad_dir, exist_ok=True)
+        with open(os.path.join(bad_dir, "current.json"), "w", encoding="utf-8") as fh:
+            fh.write("[1, 2, 3]")
+        result = scan_codebuddy(home)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.records), 2)
+        self.assertEqual(result.records[0].project, "playground")
+        self.assertGreaterEqual(result.key_kinds["skipped:bad-genie"], 1)
+
+    def test_genie_padding_underscore_is_restored(self):
+        """厂商把 base64 padding '=' 写成 '_'：tongxing-air 不能解成 'tongxing-air?'。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        workspace = "/Users/wayne/workspace/tongxing-air"
+        write_genie(home, workspace=workspace)
+        write_log(home, [start_line(DEFAULT_TRACE),
+                         metric_line(DEFAULT_TRACE, 1, cb_usage())])
+        result = scan_codebuddy(home)
+        self.assertEqual(result.records[0].project, "tongxing-air")
+        self.assertEqual(result.key_kinds["skipped:bad-genie"], 0)
+
+    def test_genie_appended_suffix_is_restored(self):
+        """无 padding 的时间戳工作区目录名尾部追加 '__'。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_genie(home, workspace="/Users/wayne/CodeBuddy/20260928133809",
+                    suffix="__")
+        write_log(home, [start_line(DEFAULT_TRACE),
+                         metric_line(DEFAULT_TRACE, 1, cb_usage())])
+        result = scan_codebuddy(home)
+        self.assertEqual(result.records[0].project, "20260928133809")
+        self.assertEqual(result.key_kinds["skipped:bad-genie"], 0)
+
+    def test_missing_roots_is_unavailable(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        result = scan_codebuddy(home)
+        self.assertFalse(result.available)
+        self.assertEqual(result.records, [])
+
+
+class CodeBuddySignatureTest(unittest.TestCase):
+    def test_signature_tracks_both_roots(self):
+        with tempfile.TemporaryDirectory() as home:
+            first = source_signatures(home, ["codebuddy"])
+            self.assertIsNone(first["codebuddy"])
+
+            path = write_log(home, [metric_line(DEFAULT_TRACE, 1, cb_usage())])
+            second = source_signatures(home, ["codebuddy"])
+            self.assertIsNotNone(second["codebuddy"])
+
+            stat = os.stat(path)
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            third = source_signatures(home, ["codebuddy"])
+            self.assertGreater(third["codebuddy"], second["codebuddy"])
+
+            write_log(home, [metric_line(DEFAULT_TRACE, 1, cb_usage())],
+                      root="ide", name="playground__hash.log")
+            fourth = source_signatures(home, ["codebuddy"])
+            self.assertGreaterEqual(fourth["codebuddy"], third["codebuddy"])
 
 
 if __name__ == "__main__":

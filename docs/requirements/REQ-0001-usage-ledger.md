@@ -152,6 +152,11 @@ usage est --source trae-cn --group-by day,model
   - 口径：实测 `totalTokens == input + output + cacheRead` 成立，即 `input` **已排除** cache read，与 Claude / Codex 的非重叠口径一致，可直接相加。
   - 去重：`minimax:<session_id>:<message_id>`；`session_id` 优先取 `manifest.json` 的 `sessionId`，缺失回退会话目录名后缀的 base64url 解码。
   - 边界：`cacheWrite` 实测恒为 0（源未提供写入缓存计数）；无 `usage` 或零 token 的 assistant 消息跳过并计数，不伪造 0；坏行只计数不中断；运行库不可读时降级为"无项目"并记 note，不让源失败；额度本地无落盘，不采集。
+- **codebuddy（腾讯 CodeBuddy CN）** — `~/Library/Application Support/CodeBuddy CN/logs/**/Tencent-Cloud.coding-copilot/*.log` 与 `~/Library/Application Support/CodeBuddyExtension/Logs/CodeBuddyIDE/**/*.log`（两处镜像同一批事件）。
+  - 提取：读 `[AgentReporter] [<traceId>] Step execution metrics: step=<n>, duration=<ms>, usage=<json>` 行，忽略不带 `usage=` 的摘要行；`input = cachedMissTokens`（等于 `inputTokens − cacheTokens`）、`cache_read = cacheTokens`、`output = outputTokens`、`cache_write = cachedWriteTokens`、`reasoning = 0`；不采含 cache read 的 `inputTokens` / `totalTokens` / `lastTokens`，不采实测恒为 0 的 `credit`。
+  - 时间 / 元数据：兼容 `YYYY-MM-DD HH:MM:SS.mmm` 与 `[MM/DD/YYYY, h:mm:ss AM/PM.mmm]` 两种时间戳；模型取同 traceId 的 `Preparing model: <name> (<id>)`（缺则 `unknown`），会话取同 traceId 的 `onAgentStart` `conversationId`（缺则回退 traceId），项目取 `genie-history/<base64url(cwd)>/current.json` 中 conversationId 对应 workspace 的 basename；目录名把 base64 padding 的 `=` 写成 `_`、部分目录还追加 `__`，解码时先剥尾部 `_` 再补 padding（映射不到则无项目）。
+  - 去重：`codebuddy:<traceId>:<step>`；两目录镜像行与重复写行只计一次；源签名为两处日志最大 mtime。
+  - 边界：step 非整数 / `usage` JSON 坏 / 全零 token 行只计数不中断；两 root 任一缺失只降级，都不存在则源不可用；本机接入前日志无该字段，不伪造历史；默认离线不联网。
 - **qoder（历史 token）** — `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db`（只读打开）。
   - 提取：`chat_message` 中 `role=assistant` 且 `token_info` 非空的行；`input = prompt_tokens − cached_tokens`，`output = completion_tokens`，`cache_read = cached_tokens`；模型取 `model_info.model_key` 或会话首选模型；项目取 `project_name` 或 `project_uri` 的 basename。
   - 去重：`qoder:<message.id>`；本机历史覆盖 2026-06-01 ~ 2026-09-16。
@@ -188,11 +193,12 @@ usage est --source trae-cn --group-by day,model
 #### 明确未接入
 
 - **ChatGPT 桌面端**：无本地 token 数据，只存在配额；报表中不出现该源，不显示为 0。
-- **WorkBuddy**：当前 9 个采集源不包含；未实现前 `doctor` / 报表都不会出现该源。
+- **WorkBuddy**：当前 11 个采集源不包含；未实现前 `doctor` / 报表都不会出现该源。
 - **Qoder 新客户端 token**：2026-09-16 后不再写 token；只能看 credits 与 est。
 - **Trae CN 本地加密库**：SQLCipher 不可读；不尝试解密，credits 走同源 API，token 只有 hook 弱估算。
 - **Antigravity 额度（credits）**：本地不落盘，只能实时向随机端口的本机语言服务器请求（20% 粒度），不采集；token 真值与额度不相加。
 - **MiniMax Code 额度（credits）**：会话文件里的 `usage.cost` 恒为 0，运行库无配额表；订阅套餐额度只在服务端，本地不可得，不采集。
+- **CodeBuddy CN 额度（credits）**：日志 `usage.credit` 实测恒为 0，不代表服务端计费真值；订阅额度本地不可得，不采集。
 
 ### 3.3 CLI 命令参考
 
@@ -250,7 +256,7 @@ usage est --source trae-cn --group-by day,model
 ### 3.6 HTML 报表
 
 - **文件形态**：单文件 HTML，CSS / JS / SVG 全内联，CSP `default-src 'none'`，无外部请求；可离线分发或归档。
-- **Agent 多选**：页面顶部唯一选择区，列出 claude、codex、opencode、kilo、cline、antigravity、codearts、minimax、qoder、trae-cn，chip 上带各自汇总值；至少保留一个。单击只看该 Agent，再次单击恢复全选；⌘ / Ctrl / Shift+单击增减成员；另有“全选”按钮。
+- **Agent 多选**：页面顶部唯一选择区，列出 claude、codex、opencode、kilo、cline、antigravity、codearts、minimax、codebuddy、qoder、trae-cn，chip 上带各自汇总值；至少保留一个。单击只看该 Agent，再次单击恢复全选；⌘ / Ctrl / Shift+单击增减成员；另有“全选”按钮。
 - **KPI 分块**：`精确 Token（tokens）`、`精确 Credits（credits）`、`估算` 按单位分组；每组内卡片保持连续，整个 KPI 区只有一张主卡；区间无行的单位合并为一张“无数据”卡，不铺零卡；500px 下数值完整显示、不省略。Qoder 与 Trae credits 使用同一组四张卡：`区间 credits`（主卡；Qoder 为 billable，Trae 为会话级）、`免费 credits`、`区间日均`、`最新额度余额`；Trae 不提供的免费额度 / 额度快照显示 `—` 并说明原因，Qoder 的余额 / 请求数、Trae 的会话数 / 模型数放在副文案。Trae 无缓存时显示“未同步”或“刷新失败”卡片与刷新命令。
 - **每日图表**：Token 按 Agent 堆叠；credits 单选时使用同一图表容器与坐标轴，Qoder 为 billable / 免费双序列，Trae 为 billable 单序列（不伪造免费序列）；Qoder + Trae 同时选中时改为分组柱状图，不堆叠成一个总数；Qoder 影子估算与 Trae 弱估算默认隐藏，打开“估算”开关后分别显示，且不与 credits 相加。
 - **Top 8**：模型与项目各 Top 8，按主单位（优先 tokens → credits → 估算）排序；Qoder + Trae 同时选中时按 Agent 分组排名，不做跨厂商合计；条形与百分比同用“相对第一”口径并明示，排序标签写明单位与当前区间，总计为 0 时百分比显示 `—`；估算只作为同一 Agent 行的次要标注，不把只有估算的行显示成 `0 credits`。
@@ -291,7 +297,7 @@ usage est --source trae-cn --group-by day,model
 
 | 指标 | 基线（v0.6.0） | 目标 | 统计口径 / 证据 |
 |---|---|---|---|
-| 外部源覆盖 | 10 个：claude / codex / opencode / kilo / cline / antigravity / codearts / minimax / qoder / trae-cn | 保持 10 个可用；新增源不破坏现有源 | `usage doctor`；`tests/test_collectors.py` |
+| 外部源覆盖 | 11 个：claude / codex / opencode / kilo / cline / antigravity / codearts / minimax / codebuddy / qoder / trae-cn | 保持 11 个可用；新增源不破坏现有源 | `usage doctor`；`tests/test_collectors.py` |
 | 回归测试 | 159 tests OK | 全绿；新增行为必须有测试 | `python3 -m unittest discover -s tests -t .` |
 | 读写一致 | `report` 与 `--stateless report` 同范围同结果 | 保持一致 | `tests/test_cli.py::CliConsistencyTest` |
 | 数据丢失窗口 | 每小时增量 + 每日全量（设计目标 ≤1h） | 安装 launchd 后实测 ≤1h | `usage schedule install`；待真实运行验证 |
@@ -341,7 +347,7 @@ usage est --source trae-cn --group-by day,model
 | R12 | While reading Trae CN credentials, the system shall read them only in-process, never persist/log/embed them in HTML, reject symlinked or group/world-writable (`mode & 0o022`) credential files, and redact auth/API errors. Credential precedence shall be `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`. | `StorageCredentialTest`、`test_rejects_symlinked_file`、`test_rejects_world_writable_file`、`test_storage_info_is_secret_free`、`test_remote_sync_failure_is_redacted`、`test_html_refresh_error_and_cli_errors_are_redacted`、`tests/test_trae_credits.py::JwtTest` |
 | R13 | When Trae CN hooks are installed and events are recorded, the system shall record only event/session/project basename/tool/char counts/optional model/timestamp (never prompt, tool input/output, or assistant text), replay them into `trae-cn.est` as a weak estimate, and never add them to credits or token truth. | `tests/test_trae_hooks.py::HookInstallTest`、`HookScriptTest.test_capture_is_private_and_counts_chars`、`tests/test_trae_collector.py::TraeReplayTest.test_design_example`、`test_env_factor_overhead_and_window`、`test_capture_replays_through_collector` |
 
-### 5.4 Cline、Antigravity、MiniMax Code、HTML 与调度
+### 5.4 Cline、Antigravity、MiniMax Code、CodeBuddy、HTML 与调度
 
 | ID | 需求（EARS） | 验收 / 测试映射 |
 |---|---|---|
@@ -349,6 +355,7 @@ usage est --source trae-cn --group-by day,model
 | R46 | When Antigravity data is present under `~/.gemini/antigravity` (IDE / hub) or `~/.gemini/antigravity-cli` (CLI), the system shall read `brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` from both roots (plus `chunks/transcript_full/*.jsonl` mirrors), emit one token record per step whose `source` is `MODEL` and which carries `input_tokens` or `output_tokens`, map `input_tokens` / `cache_read_tokens` / `output_tokens` to `input` / `cache_read` / `output` with `cache_write = 0` and `reasoning = 0`, attribute it to the local day of `created_at`, deduplicate by `step_index` within a conversation (a later copy carrying token fields wins over an earlier token-less copy) and key records `antigravity:<app_data_dir>:<conversationId>:<step_index>`, set `Record.agent` to `ide` or `cli`, take the project from the matching root's `conversation_summaries.db` `workspace_uris` basename with `default-cli-project` as fallback, parse transcripts with a streaming JSON decoder that resyncs past orphan fragments and drops objects whose `step_index` is not an integer, silently skip `MODEL` steps without token fields, degrade when one root is missing, and expose the merged rows under the single source `antigravity`. | `tests/test_collectors.py::AntigravityTest`、`AntigravitySignatureTest`、`tests/test_cli.py::AntigravityCliTest.test_backfill_and_report_match_stateless`、`test_backfill_is_idempotent`、`test_report_merges_ide_and_cli_into_one_source`、`test_doctor_reports_antigravity` |
 | R47 | When MiniMax Code session data is present under `~/.minimax/v2/sessions`, the system shall read each session's `messages.jsonl`, emit one token record per assistant message whose `message.usage` is present, map `usage.input` / `usage.output` / `usage.cacheRead` / `usage.cacheWrite` to `input` / `output` / `cache_read` / `cache_write` with `reasoning = 0`, attribute it to the local day of `message.timestamp` (milliseconds), deduplicate by `message_id` within a session and key records `minimax:<session_id>:<message_id>`, take the model from `message.model`, take the project from the matching `local_runtime_sessions.workspace_dir` basename in the runtime state database (falling back to `project_workspace_dir`, and to no project when that database cannot be read), resolve `session_id` from the session's `manifest.json` and fall back to base64url-decoding the session directory name, skip assistant messages without `usage` or with zero token counts without fabricating 0, skip unparsable lines while counting them instead of failing the run, degrade gracefully when the sessions directory or the runtime database is missing, and expose the rows under the single source `minimax`. | `tests/test_collectors.py::MiniMaxCollectorTest`、`MiniMaxSignatureTest`、`tests/test_cli.py::MiniMaxCliTest.test_backfill_and_report_match_stateless`、`test_backfill_is_idempotent`、`test_doctor_reports_minimax` |
 | R48 | When CodeArts (码道) session data is present under `~/.codeartsdoer/codearts-data/opencode.db`, the system shall read each `message` row whose `data.role` is `assistant` via the shared legacy-OpenCode adapter, map `data.tokens.input` / `output` / `cache.read` / `cache.write` / `reasoning` to `input` / `output` / `cache_read` / `cache_write` / `reasoning` without reading `tokens.total`, attribute each record to the local day of `time_created` (milliseconds), deduplicate by `message.id` and key records `codearts:<message.id>`, take the model from `data.modelID` and the provider from `data.providerID`, take the project from `data.path.cwd` basename (no project when absent), skip assistant messages without tokens or with zero token counts without fabricating 0, skip rows whose `data` JSON is unparsable while counting them instead of failing the run, degrade gracefully when the database is missing or unreadable, and expose the rows under the single source `codearts`. | `tests/test_collectors.py::CodeArtsCollectorTest`、`CodeArtsSignatureTest`、`tests/test_cli.py::CodeArtsCliTest`、`tests/test_html.py::HtmlRenderTest.test_codearts_is_classified_as_token` |
+| R49 | When CodeBuddy CN logs are present under `~/Library/Application Support/CodeBuddy CN/logs/**/Tencent-Cloud.coding-copilot/*.log` or `~/Library/Application Support/CodeBuddyExtension/Logs/CodeBuddyIDE/**/*.log`, the system shall read lines carrying `[AgentReporter] [<traceId>] Step execution metrics: step=<n>, duration=<ms>, usage=<json>` from both roots, ignore duplicate summary lines without `usage=`, emit one token record per `(traceId, step)` with key `codebuddy:<traceId>:<step>` (mirrored events deduplicated across roots), map `cachedMissTokens` (equivalently `inputTokens − cacheTokens`) to `input`, `cacheTokens` to `cache_read`, `outputTokens` to `output`, `cachedWriteTokens` to `cache_write`, and `reasoning = 0` without using `inputTokens` / `totalTokens` / `lastTokens` (which include cache read) or `credit` (measured 0), attribute each record to the local day of the log timestamp in both supported formats, take the model from the `Preparing model: <name> (<modelId>)` line of the same trace (fallback `unknown`), the session from the `onAgentStart` `conversationId` of the same trace (fallback traceId), and the project from the basename of the workspace decoded from the `genie-history` directory whose `current.json` carries that conversationId, restoring vendor naming where base64 padding `=` is written as `_` and an extra `__` may be appended (no project when unmapped), skip lines with non-integer step, unparsable `usage` JSON, or all-zero token counts while counting them instead of failing, degrade gracefully when either root is missing and mark the source unavailable when neither exists, keep the source offline with no network calls, and expose the rows under the single source `codebuddy`. | `tests/test_collectors.py::CodeBuddyCollectorTest`、`CodeBuddySignatureTest`、`tests/test_cli.py::CodeBuddyCliTest`、`tests/test_html.py::HtmlRenderTest.test_codebuddy_is_classified_as_token` |
 | R15 | When `usage html` runs, the system shall generate a single-file offline page with inline CSS/JS/SVG and CSP `default-src 'none'`, support agent multi-select and per-unit separate summaries (tokens / credits / est), and label all estimation/credits/activity boundaries. | `tests/test_html.py::HtmlRenderTest.test_payload_escaped_and_offline`、`AgentSelectionTest`、`SourceAwareCreditsTest`、`TraeStatusCopyTest`、`HtmlCommandTest`、`QoderHtmlTest` |
 | R16 | When `usage schedule install` runs, the system shall install launchd jobs for hourly incremental sync, daily full rescan at 00:15, and daily prune at 00:20 with `--keep-days 90`; `--dry-run` shall write nothing. | `tests/test_scheduler.py::SchedulerTest.test_plists_have_calendar_and_environment`、`test_dry_run_writes_nothing` |
 
@@ -470,7 +477,10 @@ usage est --source trae-cn --group-by day,model
 | CHG-0016 | 接入 Google Antigravity 用量（IDE / agy 双目录合并） | 已验证 | [CHG-0016](../changes/CHG-0016-antigravity-usage-source.md) |
 | CHG-0017 | 接入 MiniMax Code 用量（会话 messages.jsonl + 运行库项目映射） | 已验证 | [CHG-0017](../changes/CHG-0017-minimax-usage-source.md) |
 | CHG-0018 | 接入 CodeArts（码道）用量（复用 SQLite agent adapter） | 已验证 | [CHG-0018](../changes/CHG-0018-codearts-usage-source.md) |
+| CHG-0019 | 接入腾讯 CodeBuddy CN 用量（双目录日志镜像去重） | 已验证 | [CHG-0019](../changes/CHG-0019-codebuddy-usage-source.md) |
 
+> 2026-11-20：CHG-0019 新增 R49 并修改 §3.2 数据源契约（CodeBuddy 双目录日志镜像、按 `(traceId, step)` 去重、非重叠 token 口径、额度不采集、genie-history 目录名 padding quirk）：340 tests / 0 skip、覆盖率 92.8%、AC map 49 criteria / 154 identifiers；本机实测 88 文件 / 117 条唯一记录 / 16,034,512 tokens，读写一致，doctor / html 正常；PR #12 修复项目映射解码后 20/20 目录正确解出。
+>
 > 2026-11-20：CHG-0018 新增 R48 并修改 §3.2 数据源契约（CodeArts 复用 legacy-OpenCode adapter、额度不采集）：325 tests / 0 skip、覆盖率 93.4%、AC map 48 criteria / 139 identifiers；本机冻结快照实测 28 assistant 行（1 条全 0 跳过）、input 277,622 / output 6,522 / cache_read 1,329,152 / reasoning 5,732，与探针逐项一致。
 
 > 2026-11-20：CHG-0016 新增 R46 并修改 §3.2 数据源契约（Antigravity 双目录、额度不采集）：299 tests / 0 skip、覆盖率 93.3%、AC map 46 criteria / 113 identifiers；本机实测 17 records / 308,611 tokens 与探针一致。
