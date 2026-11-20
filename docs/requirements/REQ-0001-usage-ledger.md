@@ -139,6 +139,11 @@ usage est --source trae-cn --group-by day,model
   - 提取：只处理 assistant 消息的 `metrics`；`input = inputTokens − cacheReadTokens − cacheWriteTokens`，`output = outputTokens`（含推理 token，不单列）；模型取 `modelInfo.id`，缺失回退元数据 `model`；项目取 `workspace_root` / `cwd` 的 basename。
   - 去重：`cline:<message.id>`；无 id 时回退 `cline:<session>:<ts>:<index>`。
   - 边界：无 `metrics` 的消息（中断 / 失败）跳过并计数，不伪造 0；VS Code 扩展旧版 `tasks/*/ui_messages.json` 未接入。
+- **antigravity** — `~/.gemini/antigravity` 与 `~/.gemini/antigravity-cli` 两个 app data dir，各自读 `brain/<会话>/.system_generated/logs/transcript_full.jsonl`（以及内容相同的 `chunks/transcript_full/*.jsonl` 镜像）。
+  - 背景：Antigravity IDE 的 `google.google-antigravity` 扩展拉起 `agy --hub --app_data_dir=antigravity`，独立 `agy` CLI 默认 `--cli_dir_name=antigravity-cli`；两者**不共用目录**，但落盘格式一致，因此合成单一源 `antigravity`，用 `Record.agent`（`ide` / `cli`）保留拆分能力。
+  - 提取：只取 `source=MODEL` 且带 `input_tokens` 的 step；`input = input_tokens`、`cache_read = cache_read_tokens`（实测两者不重叠）、`output = output_tokens`、`cache_write` 与 `reasoning` 记 0（源未提供）；模型取 `model`，项目取对应 root 的 `conversation_summaries.db.workspace_uris` basename，缺失回退 `default-cli-project`。
+  - 去重：`antigravity:<app_data_dir>:<会话>:<step_index>`；同一会话内先按 `step_index` 去重，使 chunks 镜像不重复计数。
+  - 边界：转录**不是严格 JSONL**（实测有独立成行的 `}]}` 片段），用流式 `JSONDecoder.raw_decode` 并在失败处重同步，形状异常（`step_index` 非整数）丢弃；无 token 的 `MODEL` step 静默跳过（实测占 99.9%）；两个 root 任一缺失只降级不报错；额度本地无落盘，不采集。
 - **qoder（历史 token）** — `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db`（只读打开）。
   - 提取：`chat_message` 中 `role=assistant` 且 `token_info` 非空的行；`input = prompt_tokens − cached_tokens`，`output = completion_tokens`，`cache_read = cached_tokens`；模型取 `model_info.model_key` 或会话首选模型；项目取 `project_name` 或 `project_uri` 的 basename。
   - 去重：`qoder:<message.id>`；本机历史覆盖 2026-06-01 ~ 2026-09-16。
@@ -175,9 +180,10 @@ usage est --source trae-cn --group-by day,model
 #### 明确未接入
 
 - **ChatGPT 桌面端**：无本地 token 数据，只存在配额；报表中不出现该源，不显示为 0。
-- **WorkBuddy**：当前 7 个采集源不包含；未实现前 `doctor` / 报表都不会出现该源。
+- **WorkBuddy**：当前 8 个采集源不包含；未实现前 `doctor` / 报表都不会出现该源。
 - **Qoder 新客户端 token**：2026-09-16 后不再写 token；只能看 credits 与 est。
 - **Trae CN 本地加密库**：SQLCipher 不可读；不尝试解密，credits 走同源 API，token 只有 hook 弱估算。
+- **Antigravity 额度（credits）**：本地不落盘，只能实时向随机端口的本机语言服务器请求（20% 粒度），不采集；token 真值与额度不相加。
 
 ### 3.3 CLI 命令参考
 
@@ -326,11 +332,12 @@ usage est --source trae-cn --group-by day,model
 | R12 | While reading Trae CN credentials, the system shall read them only in-process, never persist/log/embed them in HTML, reject symlinked or group/world-writable (`mode & 0o022`) credential files, and redact auth/API errors. Credential precedence shall be `--jwt-file` > `TRAE_CN_JWT` > `TRAE_CN_JWT_FILE` > `storage.json`. | `StorageCredentialTest`、`test_rejects_symlinked_file`、`test_rejects_world_writable_file`、`test_storage_info_is_secret_free`、`test_remote_sync_failure_is_redacted`、`test_html_refresh_error_and_cli_errors_are_redacted`、`tests/test_trae_credits.py::JwtTest` |
 | R13 | When Trae CN hooks are installed and events are recorded, the system shall record only event/session/project basename/tool/char counts/optional model/timestamp (never prompt, tool input/output, or assistant text), replay them into `trae-cn.est` as a weak estimate, and never add them to credits or token truth. | `tests/test_trae_hooks.py::HookInstallTest`、`HookScriptTest.test_capture_is_private_and_counts_chars`、`tests/test_trae_collector.py::TraeReplayTest.test_design_example`、`test_env_factor_overhead_and_window`、`test_capture_replays_through_collector` |
 
-### 5.4 Cline、HTML 与调度
+### 5.4 Cline、Antigravity、HTML 与调度
 
 | ID | 需求（EARS） | 验收 / 测试映射 |
 |---|---|---|
 | R14 | When Cline session files are present, the system shall extract assistant `metrics` as token truth, subtract cache read/write from `inputTokens`, use `cline:<message.id>` as the dedup key, and skip messages without metrics without fabricating 0. | `tests/test_collectors.py::ClineTest`、`tests/test_cli.py::ClineCliTest.test_backfill_and_report_match_stateless`、`test_metrics_mapping_and_fallbacks`、`test_broken_session_file_is_isolated` |
+| R46 | When Antigravity data is present under `~/.gemini/antigravity` (IDE / hub) or `~/.gemini/antigravity-cli` (CLI), the system shall read `brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` from both roots (plus `chunks/transcript_full/*.jsonl` mirrors), emit one token record per step whose `source` is `MODEL` and which carries `input_tokens` or `output_tokens`, map `input_tokens` / `cache_read_tokens` / `output_tokens` to `input` / `cache_read` / `output` with `cache_write = 0` and `reasoning = 0`, attribute it to the local day of `created_at`, deduplicate by `step_index` within a conversation (a later copy carrying token fields wins over an earlier token-less copy) and key records `antigravity:<app_data_dir>:<conversationId>:<step_index>`, set `Record.agent` to `ide` or `cli`, take the project from the matching root's `conversation_summaries.db` `workspace_uris` basename with `default-cli-project` as fallback, parse transcripts with a streaming JSON decoder that resyncs past orphan fragments and drops objects whose `step_index` is not an integer, silently skip `MODEL` steps without token fields, degrade when one root is missing, and expose the merged rows under the single source `antigravity`. | `tests/test_collectors.py::AntigravityTest`、`AntigravitySignatureTest`、`tests/test_cli.py::AntigravityCliTest.test_backfill_and_report_match_stateless`、`test_backfill_is_idempotent`、`test_report_merges_ide_and_cli_into_one_source`、`test_doctor_reports_antigravity` |
 | R15 | When `usage html` runs, the system shall generate a single-file offline page with inline CSS/JS/SVG and CSP `default-src 'none'`, support agent multi-select and per-unit separate summaries (tokens / credits / est), and label all estimation/credits/activity boundaries. | `tests/test_html.py::HtmlRenderTest.test_payload_escaped_and_offline`、`AgentSelectionTest`、`SourceAwareCreditsTest`、`TraeStatusCopyTest`、`HtmlCommandTest`、`QoderHtmlTest` |
 | R16 | When `usage schedule install` runs, the system shall install launchd jobs for hourly incremental sync, daily full rescan at 00:15, and daily prune at 00:20 with `--keep-days 90`; `--dry-run` shall write nothing. | `tests/test_scheduler.py::SchedulerTest.test_plists_have_calendar_and_environment`、`test_dry_run_writes_nothing` |
 
@@ -449,7 +456,10 @@ usage est --source trae-cn --group-by day,model
 | CHG-0013 | 明细合计的来源专用列显示 | 已验证 | [CHG-0013](../changes/CHG-0013-html-total-source-columns.md) |
 | CHG-0014 | 审计清理：重复键、死代码与过期文档引用 | 已验证 | [CHG-0014](../changes/CHG-0014-audit-cleanup.md) |
 | CHG-0015 | 审计清理（二）：死代码、过期注释与测试文档校准 | 已验证 | [CHG-0015](../changes/CHG-0015-audit-cleanup-2.md) |
+| CHG-0016 | 接入 Google Antigravity 用量（IDE / agy 双目录合并） | 已验证 | [CHG-0016](../changes/CHG-0016-antigravity-usage-source.md) |
 
+> 2026-11-20：CHG-0016 新增 R46 并修改 §3.2 数据源契约（Antigravity 双目录、额度不采集）：299 tests / 0 skip、覆盖率 93.3%、AC map 46 criteria / 113 identifiers；本机实测 17 records / 308,611 tokens 与探针一致。
+>
 > REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
 > 2026-11-16：CHG-0004（R19–R26、R39，commit `530d311`）与 CHG-0005（R27–R38、R40，commit `ebc48fe`）均已实现并验证；AC 同步写入 §5.6 / §5.7 与 `tests/ac_map.json`。

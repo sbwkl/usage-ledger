@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 from src.usage_ledger.cli import main
 from src.usage_ledger.store import SqliteStore
+from tests.antigravity_helpers import (CLI_APP, IDE_APP, model_step,
+                                       write_summaries, write_transcript)
 from tests.qoder_helpers import (activity_path, create_activity_db, create_token_db,
                                  log_path, quota_line, token_path, transcript_path,
                                  write_jsonl, write_quota_log)
@@ -522,6 +524,80 @@ class ClineCliTest(unittest.TestCase):
         self.assertIn("auto-sync", err)
         rows = json.loads(out)
         self.assertEqual(sum(row["input"] for row in rows), 520)
+
+
+class AntigravityCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        write_transcript(self.home, IDE_APP, "conv-ide", [
+            model_step(0, input_tokens=100, output_tokens=20),
+            model_step(1, input_tokens=30, output_tokens=5, cache_read_tokens=900,
+                       created_at="2026-11-20T01:01:00Z"),
+        ])
+        write_summaries(self.home, IDE_APP,
+                        [("conv-ide", '["file:///Users/wayne/workspace/alpha"]')])
+        write_transcript(self.home, CLI_APP, "conv-cli", [
+            model_step(0, model="gemini-3.8-flash-low", input_tokens=11,
+                       output_tokens=2, created_at="2026-11-20T02:00:00Z"),
+        ])
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_backfill_and_report_match_stateless(self):
+        code, _, err = self.run_cli(["backfill"])
+        self.assertEqual(code, 0, err)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 3)
+        store.close()
+
+        code, db_json, _ = self.run_cli(
+            ["report", "--source", "antigravity", "--format", "json"])
+        self.assertEqual(code, 0)
+        code, source_json, _ = self.run_cli(
+            ["--stateless", "report", "--source", "antigravity", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(db_json), json.loads(source_json))
+
+        rows = json.loads(db_json)
+        self.assertEqual(sum(row["input"] for row in rows), 141)
+        self.assertEqual(sum(row["output"] for row in rows), 27)
+        self.assertEqual(sum(row["cache_read"] for row in rows), 900)
+
+    def test_backfill_is_idempotent(self):
+        self.run_cli(["backfill"])
+        self.run_cli(["backfill"])
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 3)
+        store.close()
+
+    def test_report_merges_ide_and_cli_into_one_source(self):
+        self.run_cli(["backfill"])
+        code, out, _ = self.run_cli(
+            ["report", "--source", "antigravity", "--group-by", "source",
+             "--format", "json"])
+        self.assertEqual(code, 0)
+        rows = json.loads(out)
+        self.assertEqual({row["source"] for row in rows}, {"antigravity"})
+
+    def test_doctor_reports_antigravity(self):
+        code, out, _ = self.run_cli(["doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("antigravity", out)
 
 
 if __name__ == "__main__":

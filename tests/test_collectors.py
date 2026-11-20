@@ -6,12 +6,15 @@ import tempfile
 import unittest
 from datetime import date, datetime, timedelta
 
-from src.usage_ledger.collectors import (scan_claude, scan_cline, scan_codex,
-                                       scan_qoder_activity,
+from src.usage_ledger.collectors import (scan_antigravity, scan_claude, scan_cline,
+                                       scan_codex, scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
                                        scan_qoder_tokens, scan_qoder_transcripts,
                                        scan_qoder_turn_credits,
                                        scan_sqlite_agent, source_signatures)
+from tests.antigravity_helpers import (CLI_APP, IDE_APP, app_dir, logs_dir,
+                                       model_step, user_step, write_raw,
+                                       write_summaries, write_transcript)
 from tests.qoder_helpers import (activity_path, create_activity_db,
                                  create_token_db, create_turn_credit_db,
                                  log_path, quota_line, token_path, transcript_path,
@@ -672,6 +675,251 @@ class QoderSignatureTest(unittest.TestCase):
             self.assertEqual(second["qoder"], first["qoder"])
             self.assertGreater(second["qoder.activity"], first["qoder.activity"])
             self.assertGreater(second["qoder.credits"], first["qoder.credits"])
+
+
+class AntigravityTest(unittest.TestCase):
+    def build_home(self):
+        """一个 IDE 会话 + 一个 CLI 会话，含游离片段与 chunks 镜像。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+
+        steps = [
+            user_step(0),
+            model_step(1, input_tokens=100, output_tokens=20, cache_read_tokens=0),
+            model_step(2, input_tokens=30, output_tokens=5, cache_read_tokens=900,
+                       created_at="2026-11-20T01:01:00Z"),
+            # 没有 token 字段的 MODEL step：必须静默跳过，不能记为错误
+            {"step_index": 3, "source": "MODEL", "type": "PLANNER_RESPONSE",
+             "status": "DONE", "content": "no usage here",
+             "created_at": "2026-11-20T01:01:30Z"},
+            model_step(4, input_tokens=7, output_tokens=3,
+                       created_at="2026-11-20T01:02:00Z"),
+        ]
+        # 真实数据里出现过独立成行的 `}]}` 片段；chunks 与主转录内容一致
+        write_raw(home, IDE_APP, "conv-ide", [
+            json.dumps(s) for s in steps[:3]
+        ] + ["]]}"] + [
+            json.dumps(s) for s in steps[3:]
+        ])
+        chunk_dir = os.path.join(logs_dir(home, IDE_APP, "conv-ide"),
+                                 "chunks", "transcript_full")
+        os.makedirs(chunk_dir, exist_ok=True)
+        with open(os.path.join(chunk_dir, "00000000.jsonl"), "w",
+                  encoding="utf-8") as fh:
+            for step in steps:
+                fh.write(json.dumps(step) + "\n")
+        write_summaries(home, IDE_APP, [
+            ("conv-ide", '["file:///Users/wayne/workspace/alpha"]'),
+        ])
+
+        write_transcript(home, CLI_APP, "conv-cli", [
+            model_step(0, model="gemini-3.8-flash-low", input_tokens=11,
+                       output_tokens=2, created_at="2026-11-20T02:00:00Z"),
+        ])
+        # CLI 会话没有 summaries 记录 → 项目走默认兜底
+        return home
+
+    def test_maps_model_steps_and_skips_the_rest(self):
+        result = scan_antigravity(self.build_home())
+        self.assertTrue(result.healthy, result.errors)
+        self.assertEqual(result.errors, [])
+        # 游离片段只计数，不影响后续 step
+        self.assertEqual(result.key_kinds["orphan-fragment"] >= 1, True)
+        self.assertEqual(result.key_kinds["skipped:no-tokens"], 1)
+
+        by_key = {rec.key: rec for rec in result.records}
+        self.assertEqual(len(result.records), 4)
+
+        first = by_key["antigravity:antigravity:conv-ide:1"]
+        self.assertEqual((first.counts.input, first.counts.output,
+                          first.counts.cache_read, first.counts.cache_write),
+                         (100, 20, 0, 0))
+        self.assertEqual(first.model, "gemini-3.8-flash-high")
+        self.assertEqual(first.project, "alpha")
+        self.assertEqual(first.session, "conv-ide")
+        self.assertEqual(first.agent, "ide")
+
+        cached = by_key["antigravity:antigravity:conv-ide:2"]
+        self.assertEqual((cached.counts.input, cached.counts.cache_read), (30, 900))
+
+        cli = by_key["antigravity:antigravity-cli:conv-cli:0"]
+        self.assertEqual(cli.agent, "cli")
+        self.assertEqual(cli.project, "default-cli-project")
+        self.assertEqual(cli.model, "gemini-3.8-flash-low")
+
+        totals = [sum(getattr(rec.counts, field) for rec in result.records)
+                  for field in ("input", "output", "cache_read", "cache_write")]
+        self.assertEqual(totals, [148, 30, 900, 0])
+
+    def test_chunks_are_not_double_counted(self):
+        home = self.build_home()
+        with_chunks = scan_antigravity(home)
+        # 去掉 chunks 镜像后结果必须一致
+        shutil.rmtree(os.path.join(logs_dir(home, IDE_APP, "conv-ide"), "chunks"))
+        without_chunks = scan_antigravity(home)
+        self.assertEqual(len(without_chunks.records), len(with_chunks.records))
+        self.assertEqual(without_chunks.key_kinds["skipped:duplicate-step"], 0)
+        self.assertGreater(with_chunks.key_kinds["skipped:duplicate-step"], 0)
+
+    def test_orphan_fragment_keeps_later_steps(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_raw(home, IDE_APP, "conv-frag", [
+            json.dumps(model_step(0, input_tokens=5)),
+            "}]}",
+            json.dumps(model_step(1, input_tokens=6)),
+            "available at: file:///tmp/task-1.log",
+            json.dumps(model_step(2, input_tokens=7)),
+        ])
+        result = scan_antigravity(home)
+        self.assertEqual(result.errors, [])
+        self.assertEqual([rec.counts.input for rec in result.records], [5, 6, 7])
+
+    def test_non_integer_step_index_is_dropped(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_transcript(home, IDE_APP, "conv-bad", [
+            model_step(0, input_tokens=5),
+            {"source": "MODEL", "type": "PLANNER_RESPONSE", "step_index": "x",
+             "input_tokens": 9, "output_tokens": 9, "created_at": "2026-11-20T01:00:00Z"},
+        ])
+        result = scan_antigravity(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.key_kinds["skipped:bad-shape"], 1)
+
+    def test_missing_root_degrades(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_transcript(home, CLI_APP, "conv-cli", [
+            model_step(0, input_tokens=11),
+        ])
+        result = scan_antigravity(home)
+        self.assertTrue(result.available)
+        self.assertTrue(result.healthy)
+        self.assertEqual([rec.agent for rec in result.records], ["cli"])
+        self.assertTrue(any("antigravity" in note for note in result.notes))
+
+        empty = scan_antigravity(os.path.join(home, "nope"))
+        self.assertFalse(empty.available)
+        self.assertEqual(empty.records, [])
+
+    def test_zero_and_missing_timestamps_are_skipped(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_transcript(home, IDE_APP, "conv-zero", [
+            model_step(0, input_tokens=5, output_tokens=1, cache_read_tokens=0),
+            model_step(1, input_tokens=0, output_tokens=0, cache_read_tokens=0),
+            model_step(2, input_tokens=8, created_at="not-a-timestamp"),
+            model_step(3, input_tokens=9, created_at=""),
+        ])
+        result = scan_antigravity(home)
+        self.assertEqual(result.errors, [])
+        self.assertEqual([rec.counts.input for rec in result.records], [5])
+        self.assertEqual(result.key_kinds["zero-usage"], 1)
+        self.assertEqual(result.key_kinds["skipped:ts"], 2)
+
+    def test_malformed_summaries_degrade(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_transcript(home, IDE_APP, "conv-a", [model_step(0, input_tokens=5)])
+        write_transcript(home, IDE_APP, "conv-b", [model_step(0, input_tokens=7)])
+
+        # workspace_uris 是垃圾值 → 项目回退默认
+        db = os.path.join(app_dir(home, IDE_APP), "conversation_summaries.db")
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE conversation_summaries ("
+                     "conversation_id TEXT PRIMARY KEY, workspace_uris TEXT)")
+        conn.executemany("INSERT INTO conversation_summaries VALUES (?,?)", [
+            ("conv-a", ""),
+            ("conv-b", "not json"),
+        ])
+        conn.commit()
+        conn.close()
+        result = scan_antigravity(home)
+        self.assertEqual(result.errors, [])
+        projects = {rec.session: rec.project for rec in result.records}
+        self.assertEqual(projects["conv-a"], "default-cli-project")
+        self.assertEqual(projects["conv-b"], "default-cli-project")
+
+        # 摘要库损坏 → 记为错误，但不中断采集
+        with open(db, "w", encoding="utf-8") as fh:
+            fh.write("not a sqlite database")
+        broken = scan_antigravity(home)
+        self.assertEqual(len(broken.records), 2)
+        self.assertEqual(len(broken.errors), 1)
+        self.assertEqual(broken.errors[0][1].startswith("会话摘要读取失败"), True)
+
+    def test_tokenless_copy_does_not_shadow_later_token_copy(self):
+        """同一 step_index 先落无 token 形态、后补全时，必须取带 token 的副本。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_raw(home, IDE_APP, "conv-upgrade", [
+            json.dumps({"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE",
+                        "status": "RUNNING", "created_at": "2026-11-20T01:00:00Z"}),
+            json.dumps(model_step(1, input_tokens=42, output_tokens=7,
+                                  created_at="2026-11-20T01:00:05Z")),
+        ])
+        result = scan_antigravity(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].counts.input, 42)
+        self.assertEqual(result.key_kinds["skipped:no-tokens"], 1)
+
+    def test_duplicate_step_within_one_root_is_counted_once(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        step = model_step(0, input_tokens=5)
+        write_transcript(home, IDE_APP, "conv-dup", [step])
+        chunk_dir = os.path.join(logs_dir(home, IDE_APP, "conv-dup"),
+                                 "chunks", "transcript_full")
+        os.makedirs(chunk_dir, exist_ok=True)
+        with open(os.path.join(chunk_dir, "00000000.jsonl"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(json.dumps(step) + "\n")
+            fh.write(json.dumps(step) + "\n")
+        result = scan_antigravity(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].counts.input, 5)
+
+
+class AntigravitySignatureTest(unittest.TestCase):
+    def test_signature_tracks_both_roots(self):
+        with tempfile.TemporaryDirectory() as home:
+            first = source_signatures(home, ["antigravity"])
+            self.assertIsNone(first["antigravity"])
+
+            path = write_transcript(home, IDE_APP, "conv-ide", [model_step(0)])
+            second = source_signatures(home, ["antigravity"])
+            self.assertIsNotNone(second["antigravity"])
+
+            stat = os.stat(path)
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            third = source_signatures(home, ["antigravity"])
+            self.assertGreater(third["antigravity"], second["antigravity"])
+
+            cli_path = write_transcript(home, CLI_APP, "conv-cli", [model_step(0)])
+            stat = os.stat(cli_path)
+            os.utime(cli_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+            fourth = source_signatures(home, ["antigravity"])
+            self.assertGreater(fourth["antigravity"], third["antigravity"])
+
+    def test_signature_tracks_chunks_rotation(self):
+        """主转录不变、chunks 增长时签名仍要推进，否则增量同步会漏。"""
+        with tempfile.TemporaryDirectory() as home:
+            main = write_transcript(home, IDE_APP, "conv-rot", [model_step(0)])
+            first = source_signatures(home, ["antigravity"])
+
+            chunk_dir = os.path.join(logs_dir(home, IDE_APP, "conv-rot"),
+                                     "chunks", "transcript_full")
+            os.makedirs(chunk_dir, exist_ok=True)
+            chunk = os.path.join(chunk_dir, "00000000.jsonl")
+            with open(chunk, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(model_step(0)) + "\n")
+            stat = os.stat(chunk)
+            os.utime(chunk, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            os.utime(main, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+            second = source_signatures(home, ["antigravity"])
+            self.assertGreater(second["antigravity"], first["antigravity"])
 
 
 if __name__ == "__main__":
