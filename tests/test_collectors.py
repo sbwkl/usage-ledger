@@ -928,6 +928,9 @@ class AntigravitySignatureTest(unittest.TestCase):
 class MiniMaxCollectorTest(unittest.TestCase):
     """MiniMax Code（`~/.minimax/v2/sessions`）的 token 真值采集。"""
 
+    # 真实响应时间戳（毫秒）：2026-11-20T05:47:48Z
+    ASSISTANT_TS_MS = 1795153668789
+
     def build_home(self):
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
@@ -962,7 +965,11 @@ class MiniMaxCollectorTest(unittest.TestCase):
         self.assertEqual(first.provider, "minimax")
         self.assertEqual(first.project, "playground")
         self.assertEqual(first.session, DEFAULT_SESSION)
-        self.assertEqual(first.day, "2026-11-20")
+        # 归属本地日：按毫秒时间戳换算，断言对时区不敏感
+        self.assertAlmostEqual(first.ts, self.ASSISTANT_TS_MS / 1000.0, places=3)
+        self.assertEqual(first.day,
+                         datetime.fromtimestamp(self.ASSISTANT_TS_MS / 1000.0)
+                         .strftime("%Y-%m-%d"))
 
         cached = by_key["minimax:%s:msg-a2" % DEFAULT_SESSION]
         self.assertEqual((cached.counts.input, cached.counts.output,

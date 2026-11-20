@@ -195,6 +195,7 @@ python3 scripts/probe_minimax.py
 | 会话文件可能被压缩 / 轮转 | 历史丢失 | 每日全量重扫 + `mark_archived` 保留已删源的历史行（既有机制） |
 | 模型名是友好名（`MiniMax-M3.1-Flash`） | 价格表无此条目，`cost_equiv_usd` 为 unknown | 与 Antigravity 同类问题；本次不建别名表，`cost_source` 记 `unknown` |
 | `usage.cost` 恒为 0 | 不能据此算金额 | 明确不读成金额；额度轨本次不做 |
+| 既有测试在部分时区失败（`TZ=America/Los_Angeles` / `Pacific/Kiritimati` 下 Trae CN 的窗口与 HTML 用例） | 与本次改动无关 | 已在 main 上复现同样失败（**既有问题**）；CI 固定 `TZ=UTC` 不受影响，按 AGENTS.md 不在本次顺手修 |
 
 ## 8. 关联与证据
 
