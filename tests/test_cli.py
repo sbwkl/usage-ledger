@@ -13,6 +13,9 @@ from src.usage_ledger.cli import main
 from src.usage_ledger.store import SqliteStore
 from tests.antigravity_helpers import (CLI_APP, IDE_APP, model_step,
                                        write_summaries, write_transcript)
+from tests.codebuddy_helpers import (DEFAULT_TRACE, metric_line, model_line,
+                                     start_line, usage as cb_usage, write_genie,
+                                     write_log)
 from tests.minimax_helpers import (DEFAULT_SESSION, assistant_row, usage,
                                    write_messages, write_runtime_db)
 from tests.qoder_helpers import (activity_path, create_activity_db, create_token_db,
@@ -783,6 +786,92 @@ class MiniMaxCliTest(unittest.TestCase):
         code, out, _ = self.run_cli(["doctor"])
         self.assertEqual(code, 0)
         self.assertIn("minimax", out)
+
+
+class CodeBuddyCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        write_genie(self.home)
+        self.log_path = write_log(self.home, [
+            start_line(DEFAULT_TRACE),
+            model_line(DEFAULT_TRACE),
+            metric_line(DEFAULT_TRACE, 1, cb_usage()),
+            metric_line(DEFAULT_TRACE, 2, cb_usage(output_tokens=5,
+                                                   cache_tokens=900, cache_miss=100),
+                        timestamp="2026-11-20 15:28:13.226"),
+        ])
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_backfill_and_report_match_stateless(self):
+        code, _, err = self.run_cli(["backfill", "--source", "codebuddy"])
+        self.assertEqual(code, 0, err)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 2)
+        store.close()
+
+        code, db_json, _ = self.run_cli(
+            ["report", "--source", "codebuddy", "--format", "json"])
+        self.assertEqual(code, 0)
+        code, source_json, _ = self.run_cli(
+            ["--stateless", "report", "--source", "codebuddy", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(db_json), json.loads(source_json))
+
+        rows = json.loads(db_json)
+        self.assertEqual({row["source"] for row in rows}, {"codebuddy"})
+        self.assertEqual(sum(row["input"] for row in rows), 700)
+        self.assertEqual(sum(row["output"] for row in rows), 25)
+        self.assertEqual(sum(row["cache_read"] for row in rows), 1300)
+
+    def test_backfill_is_idempotent(self):
+        self.run_cli(["backfill", "--source", "codebuddy"])
+        self.run_cli(["backfill", "--source", "codebuddy"])
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 2)
+        store.close()
+
+    def test_report_auto_syncs_new_codebuddy_steps(self):
+        self.run_cli(["backfill", "--source", "codebuddy"])
+        write_log(self.home, [
+            start_line(DEFAULT_TRACE),
+            model_line(DEFAULT_TRACE),
+            metric_line(DEFAULT_TRACE, 1, cb_usage()),
+            metric_line(DEFAULT_TRACE, 2, cb_usage(output_tokens=5,
+                                                   cache_tokens=900, cache_miss=100),
+                        timestamp="2026-11-20 15:28:13.226"),
+            metric_line(DEFAULT_TRACE, 3, cb_usage(output_tokens=7,
+                                                   cache_tokens=1200, cache_miss=80),
+                        timestamp="2026-11-20 15:28:16.423"),
+        ])
+        stat = os.stat(self.log_path)
+        os.utime(self.log_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        code, out, err = self.run_cli(
+            ["report", "--source", "codebuddy", "--format", "json"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("auto-sync", err)
+        self.assertEqual(sum(row["input"] for row in json.loads(out)), 780)
+
+    def test_doctor_reports_codebuddy(self):
+        self.run_cli(["backfill", "--source", "codebuddy"])
+        code, out, _ = self.run_cli(["doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("codebuddy", out)
 
 
 if __name__ == "__main__":

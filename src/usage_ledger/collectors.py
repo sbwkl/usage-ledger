@@ -714,6 +714,188 @@ def scan_minimax(home: str | None = None,
     return result
 
 
+CODEBUDDY_SOURCE = "codebuddy"
+CODEBUDDY_CN_LOG_GLOB = os.path.join(
+    "Library", "Application Support", "CodeBuddy CN", "logs", "**",
+    "Tencent-Cloud.coding-copilot", "*.log")
+CODEBUDDY_IDE_LOG_GLOB = os.path.join(
+    "Library", "Application Support", "CodeBuddyExtension", "Logs",
+    "CodeBuddyIDE", "**", "*.log")
+CODEBUDDY_GENIE_REL = os.path.join(
+    "Library", "Application Support", "CodeBuddy CN", "User", "globalStorage",
+    "tencent-cloud.coding-copilot", "genie-history")
+_CODEBUDDY_METRIC_RE = re.compile(
+    r"\]\s+\[AgentReporter\]\s+\[([^\]]+)\]\s+Step execution metrics:\s*"
+    r"step=([^,]+),\s*duration=[^,]+,\s*usage=(\{.*\})\s*$")
+_CODEBUDDY_START_RE = re.compile(
+    r"\]\s+\[AgentReporter\]\s+\[([^\]]+)\]\s+onAgentStart:.*?"
+    r"conversationId=([0-9a-f]+)")
+_CODEBUDDY_MODEL_RE = re.compile(
+    r"\]\s+\[([^\]]+)\]\s+Preparing model:\s*.*?\s+\(([^)]+)\)\s*$")
+_CODEBUDDY_ISO_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
+_CODEBUDDY_BRACKET_TS_RE = re.compile(
+    r"^\[(\d{2})/(\d{2})/(\d{4}), (\d{1,2}:\d{2}:\d{2} [AP]M)\.(\d+)\]")
+
+
+def codebuddy_log_files(home: str | None = None) -> list[str]:
+    """两处镜像日志目录；签名与采集共用，mtime 推进即触发增量同步。"""
+    home = home or os.path.expanduser("~")
+    paths = []
+    for pattern in (CODEBUDDY_CN_LOG_GLOB, CODEBUDDY_IDE_LOG_GLOB):
+        paths.extend(glob.glob(os.path.join(home, pattern), recursive=True))
+    return sorted(paths)
+
+
+def codebuddy_genie_root(home: str | None = None) -> str:
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, CODEBUDDY_GENIE_REL)
+
+
+def _codebuddy_line_ts(line: str) -> tuple[float | None, str | None]:
+    """兼容 CodeBuddy CN 的 ISO 与 CodeBuddyIDE 的方括号两种本地时间戳。"""
+    m = _CODEBUDDY_ISO_TS_RE.match(line)
+    if m:
+        try:
+            dt = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S.%f")
+        except ValueError:
+            return None, None
+        return dt.timestamp(), dt.strftime("%Y-%m-%d")
+    m = _CODEBUDDY_BRACKET_TS_RE.match(line)
+    if m:
+        try:
+            base = datetime.strptime("%s/%s/%s, %s" % (m.group(1), m.group(2),
+                                                       m.group(3), m.group(4)),
+                                     "%m/%d/%Y, %I:%M:%S %p")
+            micros = int((m.group(5) + "000000")[:6])
+            dt = base.replace(microsecond=micros)
+        except ValueError:
+            return None, None
+        return dt.timestamp(), dt.strftime("%Y-%m-%d")
+    return None, None
+
+
+def _codebuddy_projects(home: str, result: SourceResult) -> dict[str, str]:
+    """conversationId → workspace basename；缺失只影响项目维度，不影响 token。"""
+    root = codebuddy_genie_root(home)
+    if not os.path.isdir(root):
+        result.complete = False
+        result.notes.append("genie-history 不存在：%s（项目维度不可用，token 不受影响）"
+                            % root)
+        return {}
+    projects: dict[str, str] = {}
+    for path in glob.glob(os.path.join(root, "**", "current.json"), recursive=True):
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                obj = json.load(fh)
+            if not isinstance(obj, dict):
+                raise ValueError("current.json 不是对象")
+            conversation = obj.get("conversationId")
+            encoded = os.path.basename(os.path.dirname(path))
+            workspace = base64.urlsafe_b64decode(
+                encoded + "=" * (-len(encoded) % 4)).decode("utf-8")
+        except (OSError, ValueError, TypeError, UnicodeDecodeError, AttributeError):
+            result.key_kinds["skipped:bad-genie"] += 1
+            continue
+        project = os.path.basename(workspace.rstrip("/"))
+        if isinstance(conversation, str) and conversation and project:
+            projects[conversation] = project
+    return projects
+
+
+def scan_codebuddy(home: str | None = None,
+                   result: SourceResult | None = None) -> SourceResult:
+    """腾讯 CodeBuddy CN：两处镜像日志的逐 step token 真值。
+
+    实测 `inputTokens == cacheTokens + cachedMissTokens`，即 `inputTokens` 已含
+    cache read；`outputTokens` 逐 step 独立，`credit` 恒 0 不是计费真值。
+    """
+    home = home or os.path.expanduser("~")
+    if result is None:
+        result = SourceResult(CODEBUDDY_SOURCE)
+    paths = codebuddy_log_files(home)
+    if not paths:
+        result.available = False
+        result.notes.append("两处 CodeBuddy 日志目录都不存在：%s" % home)
+        return result
+    result.files = len(paths)
+    projects = _codebuddy_projects(home, result)
+
+    starts: dict[str, str] = {}
+    models: dict[str, str] = {}
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    m = _CODEBUDDY_START_RE.search(line)
+                    if m:
+                        starts[m.group(1)] = m.group(2)
+                    m = _CODEBUDDY_MODEL_RE.search(line)
+                    if m:
+                        models[m.group(1)] = m.group(2)
+        except OSError as exc:
+            result.errors.append((path, str(exc)))
+
+    for path in paths:
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError as exc:
+            result.errors.append((path, str(exc)))
+            continue
+        with fh:
+            for line in fh:
+                if "Step execution metrics:" not in line or "[AgentReporter]" not in line:
+                    continue
+                m = _CODEBUDDY_METRIC_RE.search(line)
+                if m is None:
+                    if "usage=" not in line:
+                        result.key_kinds["skipped:no-usage"] += 1
+                    else:
+                        result.key_kinds["skipped:bad-usage"] += 1
+                    continue
+                trace, raw_step, raw_usage = m.groups()
+                try:
+                    step = int(raw_step)
+                except ValueError:
+                    result.key_kinds["skipped:bad-step"] += 1
+                    continue
+                try:
+                    usage = json.loads(raw_usage)
+                except ValueError:
+                    result.key_kinds["skipped:bad-usage"] += 1
+                    continue
+                if not isinstance(usage, dict):
+                    result.key_kinds["skipped:bad-usage"] += 1
+                    continue
+                ts, day = _codebuddy_line_ts(line)
+                if ts is None or day is None:
+                    result.key_kinds["skipped:ts"] += 1
+                    continue
+                counts = Counts(
+                    input=_as_int(usage.get("cachedMissTokens")),
+                    output=_as_int(usage.get("outputTokens")),
+                    cache_read=_as_int(usage.get("cacheTokens")),
+                    cache_write=_as_int(usage.get("cachedWriteTokens")),
+                )
+                if not counts.total():
+                    result.key_kinds["zero-usage"] += 1
+                    continue
+                conversation = starts.get(trace)
+                model = models.get(trace)
+                result.key_kinds["step"] += 1
+                result.add(Record(
+                    source=CODEBUDDY_SOURCE,
+                    day=day,
+                    model=model or "unknown",
+                    model_raw=model,
+                    project=projects.get(conversation) if conversation else None,
+                    session=conversation or trace,
+                    key="%s:%s:%d" % (CODEBUDDY_SOURCE, trace, step),
+                    counts=counts,
+                    ts=ts,
+                ))
+    return result
+
+
 def scan_cline(root: str | None = None, home: str | None = None,
                result: SourceResult | None = None) -> SourceResult:
     root = root or cline_sessions_root(home)
@@ -1678,7 +1860,8 @@ def source_signatures(home: str | None = None,
                       sources: list[str] | None = None) -> dict[str, int | None]:
     home = home or os.path.expanduser("~")
     wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                              "cline", "antigravity", "codearts", MINIMAX_SOURCE))
+                              "cline", "antigravity", "codearts", MINIMAX_SOURCE,
+                              CODEBUDDY_SOURCE))
     signatures = {}
     for source in wanted:
         if source == "claude":
@@ -1739,6 +1922,8 @@ def source_signatures(home: str | None = None,
         elif source == MINIMAX_SOURCE:
             signatures[source] = _latest_mtime_us(
                 _minimax_session_files(minimax_sessions_root(home)))
+        elif source == CODEBUDDY_SOURCE:
+            signatures[source] = _latest_mtime_us(codebuddy_log_files(home))
     return signatures
 
 
@@ -1749,7 +1934,8 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
                 known_credit_request_ids: set[str] | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
     wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                             "cline", "antigravity", "codearts", MINIMAX_SOURCE])
+                             "cline", "antigravity", "codearts", MINIMAX_SOURCE,
+                             CODEBUDDY_SOURCE])
     results = []
     if "claude" in wanted:
         results.append(scan_claude(os.path.join(home, ".claude", "projects")))
@@ -1784,4 +1970,6 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
         results.append(scan_codearts(home=home))
     if MINIMAX_SOURCE in wanted:
         results.append(scan_minimax(home=home))
+    if CODEBUDDY_SOURCE in wanted:
+        results.append(scan_codebuddy(home=home))
     return results

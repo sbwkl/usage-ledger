@@ -89,6 +89,12 @@ class HtmlRenderTest(unittest.TestCase):
         html = render_html(payload)
         self.assertIn("MiniMax", html)
 
+    def test_codebuddy_is_classified_as_token(self):
+        payload = build_payload([], ("day", "source", "model", "project"), None, None, [])
+        self.assertEqual(payload["agents"]["codebuddy"], "token")
+        html = render_html(payload)
+        self.assertIn("CodeBuddy", html)
+
 
 class AgentSelectionTest(unittest.TestCase):
     @classmethod

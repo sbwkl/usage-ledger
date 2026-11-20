@@ -236,6 +236,21 @@
         "tests.test_cli.CodeArtsCliTest.test_report_auto_syncs_new_codearts_messages",
         "tests.test_cli.CodeArtsCliTest.test_doctor_reports_codearts",
         "tests.test_html.HtmlRenderTest.test_codearts_is_classified_as_token"
+      ],
+      "R49": [
+        "tests.test_collectors.CodeBuddyCollectorTest.test_maps_step_usage_and_metadata",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_input_tokens_including_cache_are_not_used",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_mirrored_roots_are_deduplicated",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_bad_lines_and_zero_usage_are_counted_not_fatal",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_metadata_fallbacks_when_logs_lack_context",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_bad_genie_entry_is_counted_not_fatal",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_missing_roots_is_unavailable",
+        "tests.test_collectors.CodeBuddySignatureTest.test_signature_tracks_both_roots",
+        "tests.test_cli.CodeBuddyCliTest.test_backfill_and_report_match_stateless",
+        "tests.test_cli.CodeBuddyCliTest.test_backfill_is_idempotent",
+        "tests.test_cli.CodeBuddyCliTest.test_report_auto_syncs_new_codebuddy_steps",
+        "tests.test_cli.CodeBuddyCliTest.test_doctor_reports_codebuddy",
+        "tests.test_html.HtmlRenderTest.test_codebuddy_is_classified_as_token"
       ]
 
     }
