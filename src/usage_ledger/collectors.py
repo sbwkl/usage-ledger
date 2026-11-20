@@ -294,6 +294,204 @@ def cline_sessions_root(home: str | None = None) -> str:
     return os.path.join(home, ".cline", "data", "sessions")
 
 
+ANTIGRAVITY_TRANSCRIPT = "transcript_full.jsonl"
+# IDE / hub 与独立 agy CLI 默认写两个互不复用的 app data dir，格式一致
+ANTIGRAVITY_AGENTS = (("antigravity", "ide"), ("antigravity-cli", "cli"))
+ANTIGRAVITY_DEFAULT_PROJECT = "default-cli-project"
+
+
+def _antigravity_conv_id(path: str) -> str:
+    # .../brain/<convId>/.system_generated/logs/transcript_full.jsonl
+    return os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(path))))
+
+
+def _read_json_stream(path: str) -> tuple[list, int]:
+    """流式读 JSON 序列，返回 (对象列表, 游离片段数)。
+
+    转录不是严格 JSONL：实测 129 个文件里有 4 个文件在写入时留下独立成行的
+    片段（形如 `}]}`），按行 `json.loads` 会把后续 step 一起带坏。这里用
+    `raw_decode` 扫描，失败时从下一个 `{` 重新同步。
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        text = fh.read()
+    decoder = json.JSONDecoder()
+    items: list = []
+    fragments = 0
+    i, n = 0, len(text)
+    while i < n:
+        while i < n and text[i] in " \t\r\n":
+            i += 1
+        if i >= n:
+            break
+        try:
+            obj, end = decoder.raw_decode(text, i)
+        except ValueError:
+            fragments += 1
+            nxt = text.find("{", i + 1)
+            if nxt < 0:
+                break
+            i = nxt
+            continue
+        items.append(obj)
+        i = end
+    return items, fragments
+
+
+def _antigravity_transcript_files(path: str) -> list[str]:
+    """主转录 + chunks/ 镜像；两者内容一致，靠 step_index 去重。"""
+    files = [path]
+    chunks_dir = os.path.join(os.path.dirname(path), "chunks", "transcript_full")
+    if os.path.isdir(chunks_dir):
+        for name in sorted(os.listdir(chunks_dir)):
+            if name.endswith(".jsonl"):
+                files.append(os.path.join(chunks_dir, name))
+    return files
+
+
+def _antigravity_projects(db_path: str, result: SourceResult) -> dict[str, str]:
+    if not os.path.exists(db_path):
+        return {}
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT conversation_id, workspace_uris FROM conversation_summaries"
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        result.errors.append((db_path, "会话摘要读取失败：%s" % exc))
+        return {}
+    projects: dict[str, str] = {}
+    for conv_id, uris in rows:
+        project = _antigravity_workspace_project(uris)
+        if project:
+            projects[conv_id] = project
+    return projects
+
+
+def _antigravity_workspace_project(raw) -> str | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        uris = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(uris, list):
+        return None
+    for uri in uris:
+        if not isinstance(uri, str):
+            continue
+        path = uri.split("://", 1)[-1] if "://" in uri else uri
+        path = path.rstrip("/")
+        if path:
+            return os.path.basename(path)
+    return None
+
+
+def _antigravity_transcripts(root: str) -> list[str]:
+    """用 os.walk 而不是 glob：`.system_generated` 是隐藏目录，glob 的 `*` 不匹配。"""
+    found: list[str] = []
+    if not os.path.isdir(root):
+        return found
+    for dirpath, _dirnames, filenames in os.walk(root):
+        if ANTIGRAVITY_TRANSCRIPT in filenames:
+            found.append(os.path.join(dirpath, ANTIGRAVITY_TRANSCRIPT))
+    found.sort()
+    return found
+
+
+def _scan_antigravity_root(root: str, app: str, agent: str,
+                           result: SourceResult) -> None:
+    projects = _antigravity_projects(
+        os.path.join(root, "conversation_summaries.db"), result)
+    transcripts = _antigravity_transcripts(os.path.join(root, "brain"))
+    if not transcripts:
+        result.notes.append("%s 无转录文件：%s" % (agent, root))
+        return
+
+    for path in transcripts:
+        conv = _antigravity_conv_id(path)
+        result.files += 1
+        seen: set = set()
+        for item_path in _antigravity_transcript_files(path):
+            try:
+                steps, fragments = _read_json_stream(item_path)
+            except OSError as exc:
+                result.errors.append((item_path, str(exc)))
+                continue
+            if fragments:
+                result.key_kinds["orphan-fragment"] += fragments
+            for step in steps:
+                if not isinstance(step, dict) or isinstance(step.get("step_index"), bool) \
+                        or not isinstance(step.get("step_index"), int):
+                    result.key_kinds["skipped:bad-shape"] += 1
+                    continue
+                idx = step["step_index"]
+                if idx in seen:
+                    result.key_kinds["skipped:duplicate-step"] += 1
+                    continue
+                seen.add(idx)
+                if step.get("source") != "MODEL":
+                    continue
+                if "input_tokens" not in step and "output_tokens" not in step:
+                    result.key_kinds["skipped:no-tokens"] += 1
+                    continue
+                counts = Counts(
+                    input=_as_int(step.get("input_tokens")),
+                    output=_as_int(step.get("output_tokens")),
+                    cache_read=_as_int(step.get("cache_read_tokens")),
+                )
+                if not counts.total():
+                    result.key_kinds["zero-usage"] += 1
+                    continue
+                raw_ts = step.get("created_at")
+                if not isinstance(raw_ts, str) or not raw_ts:
+                    result.key_kinds["skipped:ts"] += 1
+                    continue
+                try:
+                    ts = parse_iso(raw_ts)
+                except ValueError:
+                    result.key_kinds["skipped:ts"] += 1
+                    continue
+                model = step.get("model")
+                result.key_kinds["model-step"] += 1
+                result.add(Record(
+                    source="antigravity",
+                    day=local_day(ts),
+                    model=str(model or "unknown"),
+                    model_raw=str(model) if model else None,
+                    project=projects.get(conv) or ANTIGRAVITY_DEFAULT_PROJECT,
+                    session=conv,
+                    key="antigravity:%s:%s:%s" % (app, conv, idx),
+                    counts=counts,
+                    ts=ts,
+                    agent=agent,
+                ))
+
+
+def scan_antigravity(home: str | None = None,
+                     result: SourceResult | None = None) -> SourceResult:
+    home = home or os.path.expanduser("~")
+    if result is None:
+        result = SourceResult("antigravity")
+    present = 0
+    for app, agent in ANTIGRAVITY_AGENTS:
+        root = os.path.join(home, ".gemini", app)
+        if not os.path.isdir(root):
+            result.notes.append("%s 目录不存在：%s" % (agent, root))
+            continue
+        present += 1
+        _scan_antigravity_root(root, app, agent, result)
+    if not present:
+        result.available = False
+        result.notes.append("两个 app data dir 都不存在：%s"
+                            % os.path.join(home, ".gemini"))
+    elif not result.records:
+        result.notes.append("两个 app data dir 均无带 token 的 step（记账可能尚未上线）")
+    return result
+
+
 def scan_cline(root: str | None = None, home: str | None = None,
                result: SourceResult | None = None) -> SourceResult:
     root = root or cline_sessions_root(home)
@@ -1257,7 +1455,8 @@ def scan_qoder_credit_sources(home: str | None = None,
 def source_signatures(home: str | None = None,
                       sources: list[str] | None = None) -> dict[str, int | None]:
     home = home or os.path.expanduser("~")
-    wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn", "cline"))
+    wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
+                              "cline", "antigravity"))
     signatures = {}
     for source in wanted:
         if source == "claude":
@@ -1310,6 +1509,11 @@ def source_signatures(home: str | None = None,
                                               os.path.basename(session_dir) + ".json"))
             paths.extend(glob.glob(os.path.join(root, "*", "*.messages.json")))
             signatures[source] = _latest_mtime_us(paths)
+        elif source == "antigravity":
+            paths = []
+            for app, _agent in ANTIGRAVITY_AGENTS:
+                paths.extend(_antigravity_transcripts(os.path.join(home, ".gemini", app)))
+            signatures[source] = _latest_mtime_us(paths)
     return signatures
 
 
@@ -1320,7 +1524,7 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
                 known_credit_request_ids: set[str] | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
     wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                             "cline"])
+                             "cline", "antigravity"])
     results = []
     if "claude" in wanted:
         results.append(scan_claude(os.path.join(home, ".claude", "projects")))
@@ -1349,4 +1553,6 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
         results.append(scan_trae_cn_est(home=home))
     if "cline" in wanted:
         results.append(scan_cline(home=home))
+    if "antigravity" in wanted:
+        results.append(scan_antigravity(home=home))
     return results

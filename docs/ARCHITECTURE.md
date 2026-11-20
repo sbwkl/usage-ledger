@@ -13,7 +13,7 @@
 ## 0. 结论摘要
 
 - 系统是一个**拉取式、单机、默认离线**的用量台账：只读各 AI 编码工具自己落盘的日志/库，归一成统一记录，归档进本地 SQLite，再聚合成 CLI 表格与单文件 HTML。唯一联网例外是 Trae CN credits 的两条前台刷新路径。
-- 对外是 **7 个源**（claude / codex / opencode / kilo / cline / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
+- 对外是 **8 个源**（claude / codex / opencode / kilo / cline / antigravity / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
 - **源是唯一事实来源**；数据库只承担三件事：抗删除归档、聚合索引、同步状态。`--stateless` 完全绕过数据库。
 - 唯一持久状态：`~/.local/share/usage-ledger/usage.db`（可用环境变量覆盖）。无常驻进程、默认无网络、零第三方依赖；Trae CN 登录凭证只在 credit 刷新进程内读取。
 - 当前最需要审核的四个现状问题（详见 §11）：
@@ -162,9 +162,9 @@ scripts/probe.py → （独立，不 import 包）
 
 ## 4. 运行时数据流
 
-### 4.1 九个采集结果
+### 4.1 十个采集结果
 
-`collect_all()` 返回 9 个 `SourceResult`，但对外只暴露 7 个源：
+`collect_all()` 返回 10 个 `SourceResult`，但对外只暴露 8 个源：
 
 | `SourceResult.name` | 对外源 | 产出 | 落库目标 |
 |---|---|---|---|
@@ -173,6 +173,7 @@ scripts/probe.py → （独立，不 import 包）
 | `opencode` | opencode | `Record` | `usage_turn` |
 | `kilo` | kilo | `Record` | `usage_turn` |
 | `cline` | cline | `Record` | `usage_turn` |
+| `antigravity` | antigravity | `Record` | `usage_turn` |
 | `qoder` | qoder | `Record`（历史 token） | `usage_turn` |
 | `qoder.activity` | qoder | `Activity` | `usage_activity` |
 | `qoder.credits` | qoder | `Credit` + `QuotaSnapshot` + `Estimate` | `usage_credit` / `usage_quota` / `usage_est` |

@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.6.0。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。7 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。284 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.7.0。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。8 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。295 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -28,7 +28,8 @@
 | Cline（CLI + Desktop） | ✅ | 读 `~/.cline/data/sessions/**/<id>.messages.json` 中 assistant 的 `metrics`（input/output/cache read/write）；`inputTokens` 已含缓存，采集时扣除 |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（转录逐请求 + 新客户端桌面端 turn_credits，合并去重）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
-| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 7 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
+| Antigravity（IDE + agy CLI） | ✅ token | 单源 `antigravity` 合并 `~/.gemini/antigravity`（IDE / hub）与 `~/.gemini/antigravity-cli`（CLI）两个**不共用**的 app data dir，读 `brain/<会话>/.system_generated/logs/transcript_full.jsonl` 里 `source=MODEL` 的 `input_tokens` / `cache_read_tokens` / `output_tokens`，用 `agent` 字段区分 `ide` / `cli`。实测两者不重叠的 `input` / `cache_read` 可直接映射；**额度本地不落盘**，不采集。只有 2026-11-20 起的会话带 token，之前的用量本地不可得 |
+| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 8 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
 | Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
