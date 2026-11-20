@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import glob
 import json
 import os
+import re
 import sqlite3
 from datetime import date, datetime, time, timedelta
 from urllib.parse import quote
@@ -511,6 +513,193 @@ def scan_antigravity(home: str | None = None,
                             % os.path.join(home, ".gemini"))
     elif not result.records:
         result.notes.append("两个 app data dir 均无带 token 的 step（记账可能尚未上线）")
+    return result
+
+
+MINIMAX_SOURCE = "minimax"
+MINIMAX_SESSIONS_REL = os.path.join(".minimax", "v2", "sessions")
+MINIMAX_RUNTIME_DB_REL = os.path.join(".minimax", "v2", "sqlite",
+                                      "runtime-state.sqlite")
+MINIMAX_MESSAGES = "messages.jsonl"
+MINIMAX_MANIFEST = "manifest.json"
+# 会话目录名形如 05-47-46-783-session_<base64url(sessionId)>
+_MINIMAX_B64_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def minimax_sessions_root(home: str | None = None) -> str:
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, MINIMAX_SESSIONS_REL)
+
+
+def minimax_runtime_db(home: str | None = None) -> str:
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, MINIMAX_RUNTIME_DB_REL)
+
+
+def _minimax_session_files(root: str) -> list[str]:
+    """会话目录按日期分层（YYYY/MM/DD），递归找 messages.jsonl。"""
+    if not os.path.isdir(root):
+        return []
+    return sorted(glob.glob(os.path.join(root, "**", MINIMAX_MESSAGES),
+                            recursive=True))
+
+
+def _minimax_session_id(session_dir: str) -> str:
+    """manifest.json 的 sessionId 是权威来源；缺失时回退目录名 base64url 解码。"""
+    manifest = os.path.join(session_dir, MINIMAX_MANIFEST)
+    try:
+        with open(manifest, "r", encoding="utf-8", errors="replace") as fh:
+            loaded = json.load(fh)
+        if isinstance(loaded, dict):
+            sid = loaded.get("sessionId")
+            if isinstance(sid, str) and sid.strip():
+                return sid
+    except (OSError, ValueError):
+        pass
+    name = os.path.basename(session_dir)
+    marker = "-session_"
+    if marker in name:
+        tail = name.rsplit(marker, 1)[1]
+        if tail and _MINIMAX_B64_RE.match(tail):
+            padded = tail + "=" * (-len(tail) % 4)
+            try:
+                decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                decoded = ""
+            if decoded and decoded.isprintable():
+                return decoded
+    return name
+
+
+def _minimax_project_name(path) -> str | None:
+    if not isinstance(path, str) or not path.strip():
+        return None
+    cleaned = path.rstrip("/")
+    if not cleaned:
+        return None
+    return os.path.basename(cleaned) or None
+
+
+def _minimax_projects(db_path: str, result: SourceResult) -> dict[str, str]:
+    """运行库里的 session_id -> 项目 basename 映射。
+
+    运行库只提供**项目维度**；读不到时降级为无项目，token 真值不受影响，
+    但必须让状态可见（complete=False → doctor 显示 partial）。
+    """
+    if not os.path.exists(db_path):
+        result.complete = False
+        result.notes.append("运行库不存在：%s（项目维度不可用，token 不受影响）"
+                            % db_path)
+        return {}
+    conn = None
+    try:
+        conn = _open_ro(db_path)
+        rows = conn.execute(
+            "SELECT session_id, workspace_dir, project_workspace_dir "
+            "FROM local_runtime_sessions").fetchall()
+    except sqlite3.Error as exc:
+        result.complete = False
+        result.notes.append("运行库读取失败（项目维度不可用，token 不受影响）：%s"
+                            % exc)
+        return {}
+    finally:
+        if conn is not None:
+            conn.close()
+    projects: dict[str, str] = {}
+    for session_id, workspace, project_workspace in rows:
+        name = (_minimax_project_name(workspace)
+                or _minimax_project_name(project_workspace))
+        if name and session_id:
+            projects[str(session_id)] = name
+    return projects
+
+
+def scan_minimax(home: str | None = None,
+                 result: SourceResult | None = None) -> SourceResult:
+    """MiniMax Code：读会话 messages.jsonl 里的 assistant usage。
+
+    实测口径：`totalTokens == input + output + cacheRead`，即 `input` 已排除
+    cache read，与 Claude / Codex 的非重叠口径一致，可直接相加。
+    """
+    home = home or os.path.expanduser("~")
+    if result is None:
+        result = SourceResult(MINIMAX_SOURCE)
+    root = minimax_sessions_root(home)
+    if not os.path.isdir(root):
+        result.available = False
+        result.notes.append("会话目录不存在：%s" % root)
+        return result
+    files = _minimax_session_files(root)
+    if not files:
+        result.notes.append("会话目录为空：%s" % root)
+        return result
+
+    projects = _minimax_projects(minimax_runtime_db(home), result)
+    for path in files:
+        session_dir = os.path.dirname(path)
+        session = _minimax_session_id(session_dir)
+        project = projects.get(session)
+        result.files += 1
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError as exc:
+            result.errors.append((path, str(exc)))
+            continue
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    # 写入过程中截断的末行：只计数，不中断
+                    result.key_kinds["skipped:bad-line"] += 1
+                    continue
+                if not isinstance(obj, dict):
+                    result.key_kinds["skipped:bad-line"] += 1
+                    continue
+                msg = obj.get("message")
+                if not isinstance(msg, dict) or msg.get("role") != "assistant":
+                    continue
+                usage = msg.get("usage")
+                if not isinstance(usage, dict):
+                    result.key_kinds["skipped:no-usage"] += 1
+                    continue
+                counts = Counts(
+                    input=_as_int(usage.get("input")),
+                    output=_as_int(usage.get("output")),
+                    cache_read=_as_int(usage.get("cacheRead")),
+                    cache_write=_as_int(usage.get("cacheWrite")),
+                )
+                if not counts.total():
+                    result.key_kinds["zero-usage"] += 1
+                    continue
+                timestamp = msg.get("timestamp")
+                if (not isinstance(timestamp, (int, float))
+                        or isinstance(timestamp, bool)):
+                    result.key_kinds["skipped:ts"] += 1
+                    continue
+                msg_id = obj.get("message_id")
+                if not isinstance(msg_id, str) or not msg_id:
+                    result.key_kinds["skipped:no-id"] += 1
+                    continue
+                ts = float(timestamp) / 1000.0
+                model = msg.get("model")
+                provider = msg.get("provider")
+                result.key_kinds["assistant"] += 1
+                result.add(Record(
+                    source=MINIMAX_SOURCE,
+                    day=local_day(ts),
+                    model=str(model) if model else "unknown",
+                    model_raw=str(model) if model else None,
+                    project=project,
+                    session=session,
+                    key="minimax:%s:%s" % (session, msg_id),
+                    counts=counts,
+                    ts=ts,
+                    provider=str(provider) if provider else None,
+                ))
     return result
 
 
@@ -1478,7 +1667,7 @@ def source_signatures(home: str | None = None,
                       sources: list[str] | None = None) -> dict[str, int | None]:
     home = home or os.path.expanduser("~")
     wanted = list(sources or ("claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                              "cline", "antigravity"))
+                              "cline", "antigravity", MINIMAX_SOURCE))
     signatures = {}
     for source in wanted:
         if source == "claude":
@@ -1533,6 +1722,9 @@ def source_signatures(home: str | None = None,
             signatures[source] = _latest_mtime_us(paths)
         elif source == "antigravity":
             signatures[source] = _latest_mtime_us(_antigravity_signature_paths(home))
+        elif source == MINIMAX_SOURCE:
+            signatures[source] = _latest_mtime_us(
+                _minimax_session_files(minimax_sessions_root(home)))
     return signatures
 
 
@@ -1543,7 +1735,7 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
                 known_credit_request_ids: set[str] | None = None) -> list[SourceResult]:
     home = home or os.path.expanduser("~")
     wanted = set(sources or ["claude", "codex", "opencode", "kilo", "qoder", "trae-cn",
-                             "cline", "antigravity"])
+                             "cline", "antigravity", MINIMAX_SOURCE])
     results = []
     if "claude" in wanted:
         results.append(scan_claude(os.path.join(home, ".claude", "projects")))
@@ -1574,4 +1766,6 @@ def collect_all(home: str | None = None, sources: list[str] | None = None,
         results.append(scan_cline(home=home))
     if "antigravity" in wanted:
         results.append(scan_antigravity(home=home))
+    if MINIMAX_SOURCE in wanted:
+        results.append(scan_minimax(home=home))
     return results

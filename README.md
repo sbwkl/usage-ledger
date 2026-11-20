@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.7.0。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。8 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。297 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.8.0。在 v0.7 基础上新增 MiniMax Code 采集——单源 `minimax` 读会话 `messages.jsonl` 里 assistant 的 `usage`（实测 `input` 已排除 cache read，与其它源非重叠口径一致），项目维度取运行库 `local_runtime_sessions.workspace_dir`；额度本地不落盘故不采集。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。9 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录、MiniMax Code）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。314 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、MiniMax Code、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 
@@ -29,7 +29,8 @@
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
 | Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（转录逐请求 + 新客户端桌面端 turn_credits，合并去重）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
 | Antigravity（IDE + agy CLI） | ✅ token | 单源 `antigravity` 合并 `~/.gemini/antigravity`（IDE / hub）与 `~/.gemini/antigravity-cli`（CLI）两个**不共用**的 app data dir，读 `brain/<会话>/.system_generated/logs/transcript_full.jsonl` 里 `source=MODEL` 的 `input_tokens` / `cache_read_tokens` / `output_tokens`，用 `agent` 字段区分 `ide` / `cli`。实测两者不重叠的 `input` / `cache_read` 可直接映射；**额度本地不落盘**，不采集。只有 2026-11-20 起的会话带 token，之前的用量本地不可得 |
-| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 8 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
+| MiniMax Code（`mcode`） | ✅ token | 读 `~/.minimax/v2/sessions/<YYYY>/<MM>/<DD>/<会话>/messages.jsonl` 里 assistant 的 `usage`（`input` / `output` / `cacheRead` / `cacheWrite`）；实测 `totalTokens == input + output + cacheRead`，即 **`input` 已排除 cache read**，与 Claude / Codex 的非重叠口径一致。项目维度取运行库 `local_runtime_sessions.workspace_dir` 的 basename；`session_id` 优先读 `manifest.json`，缺失回退会话目录名后缀的 base64url 解码。**额度本地不落盘**，不采集；本机接入前的用量本地不可得 |
+| WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 9 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
 | Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
@@ -63,7 +64,7 @@ usage-ledger/
 │   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
 │   │   └── REQ-0002-testing.md       功能卡（测试体系）
 │   ├── changes/
-│   │   └── CHG-0001 ~ CHG-0015      变更记录（均已验证，状态以各 CHG 首部为准）
+│   │   └── CHG-0001 ~ CHG-0017      变更记录（均已验证，状态以各 CHG 首部为准）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
@@ -80,7 +81,7 @@ usage-ledger/
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   7 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算）
+│   ├── collectors.py   9 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算/Antigravity/MiniMax Code）
 │   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
 │   ├── trae_credits.py Trae CN 同源 usage API 客户端、JWT 读取、分块/分页与幂等同步
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
@@ -96,11 +97,11 @@ usage-ledger/
 ## 需求、变更与决策
 
 - 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
-- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0015，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
+- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0017，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
 - 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0016`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0018`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
@@ -228,6 +229,31 @@ usage report --source cline --group-by day,model --format json
   `.messages.json` 的历史会由每日全量 sync 标记 `archived=1` 保留，不会重复计入。
 - **边界**：当前只接入 Cline CLI/Desktop 的会话文件；VS Code 扩展旧版
   `saoudrizwan.claude-dev/tasks/*/ui_messages.json` 形态尚无本机样本，未接入。
+
+---
+
+## MiniMax Code（mcode）
+
+MiniMax Code 把每次模型响应落盘在自己的会话目录里，assistant 消息自带 `usage`，可直接作为 token 真值：
+
+```bash
+usage report --source minimax
+usage report --source minimax --group-by project,model
+usage doctor --probe minimax
+```
+
+- **路径**：`~/.minimax/v2/sessions/<YYYY>/<MM>/<DD>/<会话>/messages.jsonl`，外层是
+  `{message_id, turn_id, message}`，`message` 内含 `role` / `model` / `provider` / `usage` / `timestamp`。
+- **口径**：实测 `totalTokens == input + output + cacheRead`（83/83 条成立），即 **`input` 已排除
+  cache read**，与 Claude / Codex 的非重叠口径一致，可直接相加；`cacheWrite` 实测恒为 0（源未提供）。
+- **去重**：`minimax:<session_id>:<message_id>`；`session_id` 优先读会话目录的 `manifest.json`，
+  缺失时回退会话目录名后缀的 base64url 解码。
+- **项目维度**：会话文件不含 cwd，取运行库 `~/.minimax/v2/sqlite/runtime-state.sqlite` 的
+  `local_runtime_sessions.workspace_dir` basename（回退 `project_workspace_dir`）。运行库读不到时
+  降级为无项目并把源状态标为 `partial`，**token 真值不受影响**。
+- **边界**：`usage.cost` 恒为 0（客户端未计价），不据此算金额；额度只在服务端，本地不可得，不采集。
+  无 `usage` 或零 token 的 assistant 消息跳过并计数，不伪造 0；坏行只计数不中断。
+- **缺口**：本机 2026-11-20 接入前的用量本地不可得。
 
 ---
 
