@@ -203,7 +203,9 @@
         "tests.test_cli.AntigravityCliTest.test_report_merges_ide_and_cli_into_one_source",
         "tests.test_cli.AntigravityCliTest.test_doctor_reports_antigravity",
         "tests.test_collectors.AntigravityTest.test_zero_and_missing_timestamps_are_skipped",
-        "tests.test_collectors.AntigravityTest.test_malformed_summaries_degrade"
+        "tests.test_collectors.AntigravityTest.test_malformed_summaries_degrade",
+        "tests.test_collectors.AntigravityTest.test_tokenless_copy_does_not_shadow_later_token_copy",
+        "tests.test_collectors.AntigravitySignatureTest.test_signature_tracks_chunks_rotation"
       ]
     }
   }

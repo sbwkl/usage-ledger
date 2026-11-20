@@ -93,6 +93,8 @@ Antigravity 上的 token 消耗在报表里完全缺失；用户无法回答"Ant
 
 ## 4. 影响范围与非目标
 
+只读契约：`_antigravity_projects` 走既有 `_open_ro`（`mode=ro` + `query_only=ON` + 2s 超时），与其它 SQLite 采集器一致，不写回主库。注意 WAL 模式库即使只读打开，SQLite 仍会在源目录创建空的 `-shm` / `-wal` 边文件（实测 `-wal` 0 字节、`-shm` 32KB，主库 mtime 不变）；这是既有 Qoder 采集同样的行为，不算写库。
+
 受影响：
 
 - `src/usage_ledger/collectors.py`：新增 `scan_antigravity`，注册进 `collect_all` 与 `source_signatures`。
@@ -118,14 +120,14 @@ python3 scripts/probe_antigravity.py
 
 自动化测试（已执行）：
 
-- `AntigravityTest`（8 例）：字段映射、`input` 不含 cache、无 `cache_write` 记 0、`source != MODEL` 跳过、无 token 的 MODEL step 静默跳过、游离片段后仍能读到后续 step、`step_index` 非整数丢弃、`chunks/` 不重复计数、两个 root 合并去重、缺失 root 降级、零 token 与非法时间戳跳过、摘要库损坏降级。
-- `AntigravitySignatureTest`：任一 root 的 `transcript_full.jsonl` mtime 变化会推进 `antigravity` 签名。
+- `AntigravityTest`（10 例）：字段映射、`input` 不含 cache、无 `cache_write` 记 0、`source != MODEL` 跳过、无 token 的 MODEL step 静默跳过、游离片段后仍能读到后续 step、`step_index` 非整数丢弃、`chunks/` 不重复计数、两个 root 合并去重、缺失 root 降级、零 token 与非法时间戳跳过、摘要库损坏降级。
+- `AntigravitySignatureTest`（2 例）：任一 root 的 `transcript_full.jsonl` 或 `chunks/*.jsonl` mtime 变化会推进 `antigravity` 签名。
 - `AntigravityCliTest`（4 例）：`backfill` → `report` 与 `--stateless` 一致；重复 `backfill` 幂等；IDE 与 CLI 合成单一 `antigravity` 源；`doctor` 报告该源。
 
 结果：
 
-- `python3 -m unittest discover -s tests -t .` → **297 tests / 0 failures / 0 errors / 0 skips**（基线 284）。
-- `scripts/check_test_policy.py` 通过；`scripts/check_ac_map.py` → 46 criteria / 111 mapped identifiers；覆盖率 **93.3%**（collectors 94.7%）。
+- `python3 -m unittest discover -s tests -t .` → **299 tests / 0 failures / 0 errors / 0 skips**（基线 284）。
+- `scripts/check_test_policy.py` 通过；`scripts/check_ac_map.py` → 46 criteria / 113 mapped identifiers；覆盖率 **93.3%**（collectors 94.7%）。
 
 手工验证（本机实测，2026-11-20）：
 
@@ -174,4 +176,5 @@ python3 scripts/probe_antigravity.py
 |---|---|---|
 | 提议 | wayne | 本 CHG + 探针脚本；等待评审（含 §7 两个未决问题） |
 | 就绪 | wayne | 2026-11-20 评审通过：单源 + `Record.agent`，`default-cli-project` 兜底 |
-| 已验证 | wayne | 297 tests / 0 failures；覆盖率 93.3%；本机实测 17 records / 308,611 tokens 与探针一致；commit 见 PR |
+| 已验证 | wayne | 299 tests / 0 failures；覆盖率 93.3%；本机实测 17 records / 308,611 tokens 与探针一致；commit 见 PR |
+| 已验证 | wayne | 评审修复：`_antigravity_projects` 改用 `_open_ro`（只读契约）、README 单测数校正、R46 措辞校正、`step_index` 原地补全与 chunks 签名两个缺口；299 tests / 0 failures、覆盖率 93.3%、AC map 46/113 |

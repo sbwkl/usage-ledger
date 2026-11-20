@@ -4,7 +4,7 @@
 
 一个默认离线、只读本地日志、只写本地 SQLite 的用量工具；仅 Trae CN credits 的两条前台刷新路径会显式联网。
 
-**状态**：v0.7.0。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。8 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。295 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
+**状态**：v0.7.0。在 v0.6 基础上新增 Antigravity 采集——单源 `antigravity` 合并 IDE / hub 与 `agy` CLI 两个**不共用**的 app data dir，用 `Record.agent` 区分 `ide` / `cli`；逐 turn token 来自 `transcript_full.jsonl`，额度本地不落盘故不采集。在 v0.5 基础上新增 Trae CN credits 同步与报告改造——`trae-cn` 改为 credits 主指标（服务端会话级真值），hook 字符弱估算保留为 token 影子；`usage html` 默认刷新最新 credits，`--offline` 可跳过。Qoder credits 同时读取转录逐请求 `usage.credits` 与桌面端 `turn_credits`（2026-11-13 起新客户端来源），合并去重后写入同一轨。8 个源采集（含 Qoder 四轨、Trae CN credits + 弱估算、Cline、Antigravity 双目录）、SQLite 归档、`sync/backfill/report/activity/credits/est/top/doctor/live/prune/export/html/hooks`、`--stateless` 一致性、查看命令自动增量刷新、launchd 调度管理。297 个单测覆盖采集规则、Qoder 四轨、Trae CN credits/hooks、Cline、Antigravity 双目录、HTML 报表与刷新回退。计价与 WorkBuddy 采集按 PROBE 建议推后。
 
 ---
 

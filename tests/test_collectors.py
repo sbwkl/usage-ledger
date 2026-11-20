@@ -849,6 +849,21 @@ class AntigravityTest(unittest.TestCase):
         self.assertEqual(len(broken.errors), 1)
         self.assertEqual(broken.errors[0][1].startswith("会话摘要读取失败"), True)
 
+    def test_tokenless_copy_does_not_shadow_later_token_copy(self):
+        """同一 step_index 先落无 token 形态、后补全时，必须取带 token 的副本。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_raw(home, IDE_APP, "conv-upgrade", [
+            json.dumps({"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE",
+                        "status": "RUNNING", "created_at": "2026-11-20T01:00:00Z"}),
+            json.dumps(model_step(1, input_tokens=42, output_tokens=7,
+                                  created_at="2026-11-20T01:00:05Z")),
+        ])
+        result = scan_antigravity(home)
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].counts.input, 42)
+        self.assertEqual(result.key_kinds["skipped:no-tokens"], 1)
+
     def test_duplicate_step_within_one_root_is_counted_once(self):
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)
@@ -886,6 +901,25 @@ class AntigravitySignatureTest(unittest.TestCase):
             os.utime(cli_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
             fourth = source_signatures(home, ["antigravity"])
             self.assertGreater(fourth["antigravity"], third["antigravity"])
+
+    def test_signature_tracks_chunks_rotation(self):
+        """主转录不变、chunks 增长时签名仍要推进，否则增量同步会漏。"""
+        with tempfile.TemporaryDirectory() as home:
+            main = write_transcript(home, IDE_APP, "conv-rot", [model_step(0)])
+            first = source_signatures(home, ["antigravity"])
+
+            chunk_dir = os.path.join(logs_dir(home, IDE_APP, "conv-rot"),
+                                     "chunks", "transcript_full")
+            os.makedirs(chunk_dir, exist_ok=True)
+            chunk = os.path.join(chunk_dir, "00000000.jsonl")
+            with open(chunk, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(model_step(0)) + "\n")
+            stat = os.stat(chunk)
+            os.utime(chunk, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            os.utime(main, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+            second = source_signatures(home, ["antigravity"])
+            self.assertGreater(second["antigravity"], first["antigravity"])
 
 
 if __name__ == "__main__":

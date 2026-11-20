@@ -352,7 +352,7 @@ def _antigravity_projects(db_path: str, result: SourceResult) -> dict[str, str]:
     if not os.path.exists(db_path):
         return {}
     try:
-        conn = sqlite3.connect(db_path)
+        conn = _open_ro(db_path)
         try:
             rows = conn.execute(
                 "SELECT conversation_id, workspace_uris FROM conversation_summaries"
@@ -401,6 +401,22 @@ def _antigravity_transcripts(root: str) -> list[str]:
     return found
 
 
+def _antigravity_signature_paths(home: str) -> list[str]:
+    """主转录 + chunks 镜像都要进签名，否则主文件不变而 chunks 增长时增量同步会漏。"""
+    paths: list[str] = []
+    for app, _agent in ANTIGRAVITY_AGENTS:
+        root = os.path.join(home, ".gemini", app)
+        if not os.path.isdir(root):
+            continue
+        paths.extend(_antigravity_transcripts(root))
+        for dirpath, _dirnames, filenames in os.walk(root):
+            if (os.path.basename(dirpath) == "transcript_full"
+                    and os.path.basename(os.path.dirname(dirpath)) == "chunks"):
+                paths.extend(os.path.join(dirpath, name) for name in filenames
+                             if name.endswith(".jsonl"))
+    return paths
+
+
 def _scan_antigravity_root(root: str, app: str, agent: str,
                            result: SourceResult) -> None:
     projects = _antigravity_projects(
@@ -413,7 +429,9 @@ def _scan_antigravity_root(root: str, app: str, agent: str,
     for path in transcripts:
         conv = _antigravity_conv_id(path)
         result.files += 1
-        seen: set = set()
+        # step_index -> 是否已产出记录。同一 step 可能先以无 token 的形态落盘、
+        # 之后补全，因此只记「已产出」的索引，让带 token 的副本仍能覆盖。
+        seen: dict[int, bool] = {}
         for item_path in _antigravity_transcript_files(path):
             try:
                 steps, fragments = _read_json_stream(item_path)
@@ -428,14 +446,17 @@ def _scan_antigravity_root(root: str, app: str, agent: str,
                     result.key_kinds["skipped:bad-shape"] += 1
                     continue
                 idx = step["step_index"]
-                if idx in seen:
+                if seen.get(idx):
                     result.key_kinds["skipped:duplicate-step"] += 1
                     continue
-                seen.add(idx)
                 if step.get("source") != "MODEL":
                     continue
                 if "input_tokens" not in step and "output_tokens" not in step:
-                    result.key_kinds["skipped:no-tokens"] += 1
+                    if idx in seen:
+                        result.key_kinds["skipped:duplicate-step"] += 1
+                    else:
+                        seen[idx] = False
+                        result.key_kinds["skipped:no-tokens"] += 1
                     continue
                 counts = Counts(
                     input=_as_int(step.get("input_tokens")),
@@ -468,6 +489,7 @@ def _scan_antigravity_root(root: str, app: str, agent: str,
                     ts=ts,
                     agent=agent,
                 ))
+                seen[idx] = True
 
 
 def scan_antigravity(home: str | None = None,
@@ -1510,10 +1532,7 @@ def source_signatures(home: str | None = None,
             paths.extend(glob.glob(os.path.join(root, "*", "*.messages.json")))
             signatures[source] = _latest_mtime_us(paths)
         elif source == "antigravity":
-            paths = []
-            for app, _agent in ANTIGRAVITY_AGENTS:
-                paths.extend(_antigravity_transcripts(os.path.join(home, ".gemini", app)))
-            signatures[source] = _latest_mtime_us(paths)
+            signatures[source] = _latest_mtime_us(_antigravity_signature_paths(home))
     return signatures
 
 
