@@ -155,6 +155,8 @@ offline with no network calls, and expose the rows under the single source `code
     `scripts/check_ac_map.py` → **49 criteria / 152 mapped identifiers**（基线 48 / 139）。
   - `scripts/check_coverage.py` 通过：总覆盖率 **92.9%**（collectors 93.2%、
     cli 93.6%、store 96.7%、scheduler 98.2%），高于阈值且相对基线 80.9% 只升不降。
+  - 临时集成分支 `tmp/integration-codebuddy`（从 `main` 以 `--no-ff` 合入特性分支）
+    上重跑全量单测、测试策略、AC 映射与覆盖率门禁均通过；分支已删除、未推送。
   - 探针 `python3 scripts/probe_codebuddy.py`：cn=129 / ide=110 行（镜像），唯一
     `(traceId, step)` 129 个、冲突 0；`inputTokens == cacheTokens + cachedMissTokens`
     129/129；`totalTokens == inputTokens + outputTokens` 129/129；`credit` 全 0；
