@@ -130,7 +130,7 @@
 | 文件 | 行数 | 关键符号 | 说明 |
 |---|---:|---|---|
 | `src/usage_ledger/models.py` | 143 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
-| `src/usage_ledger/collectors.py` | 1354 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
+| `src/usage_ledger/collectors.py` | 1352 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
 | `src/usage_ledger/trae_auth.py` | 362 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
 | `src/usage_ledger/trae_credits.py` | 517 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
@@ -141,7 +141,7 @@
 | `src/usage_ledger/scheduler.py` | 135 | `JOBS` `build_plist` `install` `uninstall` `status` | 3 个 launchd 任务 |
 | `src/usage_ledger/cli.py` | 1963 | `main` `build_parser` `_sync_into` `_refresh_*_if_stale` `cmd_*` | 全部命令与读写路径编排；Trae refresh 只在 sync --remote / html |
 | `src/usage_ledger/html_report.py` | 4064 | `build_payload` `render_html` `TEMPLATE`、`AGENT_KINDS` | 内联 CSS/JS/SVG；payload 占位符替换；多 source credits 分组；报表布局与交互状态 |
-| `scripts/probe.py` | 521 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
+| `scripts/probe.py` | 520 | `scan_*` `aggregate` `main` | 独立只读探针，标准库 only |
 
 依赖方向（无环）：
 
@@ -614,20 +614,23 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 
 ## 9. 测试体系
 
-282 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
+284 个测试，全部标准库 `unittest`（HTML 内联 JS 行为用可选 `node` 做提取式断言）：
 
 | 文件 | 数量 | 覆盖 |
 |---|---:|---|
 | `tests/test_collectors.py` | 28 | Claude 中间态/子代理、Codex 累计差分与归档副本去重、Cline metrics 映射/回退/坏文件隔离、签名、OpenCode 新旧 schema、Qoder token 回退/去重、活动指标与增量、credits/est/日志、桌面 turn credits 合并/去重、子源签名独立 |
-| `tests/test_store.py` | 9 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state、credit source 分列与旧库迁移 |
+| `tests/test_collectors_edges.py` | 18 | 采集器边界与异常：辅助函数、坏行/零用量隔离、空根、会话形态回退、打开/查询失败、旧 schema、token 缺 id/时间戳、活动失败与 schema drift、转录续读、额度日志坏行 |
+| `tests/test_store.py` | 14 | upsert 幂等、archived 标记/恢复、prune 汇总与保留、活动按天替换、credits/quota/est、source_state、credit source 分列与旧库迁移 |
 | `tests/test_cli.py` | 16 | backfill 幂等、report 与 stateless 一致、stateless 不写库、分组过滤、自动刷新、单源刷新、Cline 回填与自动刷新、doctor 缺口、源不可用时不归档、Qoder 四轨落库、增量 turn credits 去重、token mtime 跳过、活动单独刷新、doctor 双台账 |
+| `tests/test_cli_output.py` | 38 | CLI 输出层：report/export/top/pricing/prune/schedule/hooks/html/sync dry-run、live、activity/credits/est 各格式、格式化与状态辅助、范围解析、覆盖与脚注、open_store、`-m` 入口 |
 | `tests/test_cli_trae.py` | 19 | Trae CN hook 安装/状态/同步、est 查询、credits 远程同步、html 默认/offline/stateless 刷新、max-age 复用、失败回退与 strict 退出、credits 按 source 展示、doctor 凭证来源与 dry-run 未登录提示、错误脱敏、宽权限告警 |
 | `tests/test_trae_auth.py` | 18 | storage.json tc v5 解密（含 NIST AES 向量、完整性/格式/过期/缺 token）、符号链接与过宽权限拒绝、路径覆盖、元数据不泄漏凭证且只 stat 不解密、group/world 可读告警 |
 | `tests/test_trae_credits.py` | 33 | 凭证优先级/权限/不泄漏、storage.json 默认与过期、窗口不取未来、分页（短页未达 total 继续）/重试/401、响应归一、重复会话、超限拆分、幂等同步、项目映射、coverage/max-age/stale |
 | `tests/test_trae_collector.py` | 12 | Trae CN 事件重放、上下文累加、去重、坏行隔离、参数覆盖 |
 | `tests/test_trae_hooks.py` | 9 | hook 配置合并/卸载、事件文件、脚本与隐私边界 |
-| `tests/test_html.py` | 17 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案、credits KPI 对齐与估算开关、明细表宽度分配、布尔状态往返、筛选后页脚 / Top 8 同步、来源专用合计列 |
-| `tests/test_scheduler.py` | 2 | plist 日历/环境、dry-run 不写 |
+| `tests/test_html.py` | 49 | payload 转义/离线、空页、活动归一、命令写文件、空源、输出目录/区间校验、Qoder/Trae Agent 页、source 过滤、零 credits Top 过滤、credits/est 聚合、刷新失败缓存状态文案、credits KPI 对齐与估算开关、明细表宽度分配、布尔状态往返、筛选后页脚 / Top 8 同步、来源专用合计列 |
+| `tests/test_scheduler.py` | 13 | plist 日历/环境、dry-run 不写、安装/卸载/状态与错误路径 |
+| `tests/test_aggregation.py` | 13 | 周期标签、维度/过滤、成本口径、Qoder 显示名过滤、源覆盖、缺失日期 |
 | `tests/test_qoder_models.py` | 2 | Qoder 内部模型键 → 显示名映射 |
 | `tests/test_pricing.py` | 2 | ALIASES 字面量无重复键（AST 护栏）、free 别名归一 |
 
@@ -694,14 +697,14 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | ID | 问题 | 说明 |
 |---|---|---|
 | P2-1 | `archived=1` 明细永不压缩 | 与 DESIGN §7.3 不同；长期体积增长，但保全更强 |
-| P2-2 | `price_override` 表、`open_store()`、`max_ts` 为死代码 | 需清理或补齐 |
+| P2-2 | `price_override` 表、`open_store()` 为死代码 | 需清理或补齐；其中 `max_ts` 已由 CHG-0015 删除（2026-11-20） |
 | P2-3 | `export --format json` 被强制改 csv | `cmd_export` 直接覆盖 `args.format`，参数无效 |
 | P2-4 | `top` 不支持 `--range` / `--source` / `--model` | 只有 `--since/--until`；与 report 能力不一致 |
 | P2-5 | `activity --source claude` 返回空 | `cmd_activity` 只处理 qoder；其他源静默空结果 |
 | P2-6 | `usage_daily.cost_source = MAX(cost_source)` | 文本列取最大值，语义不明确；当前成本全 unknown 暂不暴露 |
 | P2-7 | `_refresh_if_stale` 用 `signature > stored` | mtime 回退（文件恢复/时钟回拨）不会触发刷新；其他刷新函数用 `!=`，三套判定不一致 |
 | P2-8 | `build/lib/` 落后于 `src/` | 本地构建缓存，已 gitignore；排查问题时易误读 |
-| P2-9 | 未提交改动 | 已由 `feat/trae-cn-credits` 分支统一提交与验证；后续改动仍应走分支流程 |
+| P2-9 | 未提交改动 | 已由 `feat/trae-cn-credits` 与 `feat/audit-cleanup-2` 分支统一提交与验证；后续改动仍应走分支流程 |
 | P2-10 | `scan_sqlite_agent` 行循环无逐行错误隔离 | 查询段有 try/except，但行处理循环在其外；一条坏行（如非字符串 `cwd`）会中断整个 OpenCode/Kilo 扫描且不关闭连接。其他采集器均逐行隔离（2026-11-17 审计） |
 | P2-11 | turn credits 同批 `request_set_id` 未进去重集合 | `seen` 只含转录/库中 request ID；同批两条 turn 行共享一个 `request_set_id` 时都会计入。CHG-0006 样本未见此形态，属边界加固（2026-11-17 审计） |
 | P2-12 | `upsert_records` ON CONFLICT 不更新 `agent`/`provider` | 插入含这两列，冲突更新遗漏；重采集不会刷新旧值。影响低（取值基本不变）（2026-11-17 审计） |

@@ -972,7 +972,6 @@ def scan_qoder_transcripts(root: str | None = None,
     result.files = len(files)
     credits: dict[str, Credit] = {}
     estimates: dict[str, Estimate] = {}
-    max_ts = None
 
     for path in files:
         try:
@@ -1076,7 +1075,6 @@ def scan_qoder_transcripts(root: str | None = None,
                             "chars_out": chars_out, "chars_in": pending_in,
                             "usage": msg.get("usage") if isinstance(msg.get("usage"), dict) else None}
                     pending_in = 0
-                max_ts = ts if max_ts is None or ts > max_ts else max_ts
             emit(resp)
         new_state[path] = {"offset": offset, "size": st.st_size,
                            "mtime_ns": st.st_mtime_ns, "cwd": last_cwd,

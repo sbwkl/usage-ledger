@@ -214,8 +214,7 @@ def scan_codex(res: SourceResult):
     for path in roots:
         res.files += 1
         stem = os.path.basename(path).split(".")[0]
-        events = []          # (ts, cum, last)
-        models = []          # 与 events 同序的模型（由 turn_context 决定）
+        events = []          # (ts, cum, last, model)
         current_model = None
         session = None
         project = None

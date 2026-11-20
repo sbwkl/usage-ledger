@@ -291,7 +291,7 @@ def load_storage_credential(path: str | None = None, *, env: dict | None = None,
     if not target:
         raise TraeAuthError(
             "未找到 Trae CN 登录凭证：storage.json 不存在；请登录 Trae CN，或用 --jwt-file/TRAE_CN_JWT 指定")
-    info = _check_storage_file(target)
+    _check_storage_file(target)
     data = _read_storage_entries(target)
     values = _auth_values(data)
     if not values:

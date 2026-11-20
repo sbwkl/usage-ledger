@@ -1,6 +1,5 @@
 import json
 import os
-import stat
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
@@ -11,7 +10,7 @@ from src.usage_ledger.store import SqliteStore
 from src.usage_ledger.trae_credits import (API_URL, PAGE_SIZE, STALE_AFTER,
                                            TraeCreditsClient, TraeCreditsError,
                                            TraeFetchResult, TraeSessionUsage,
-                                           WindowTooLarge, can_reuse_last_sync,
+                                           can_reuse_last_sync,
                                            chunk_windows, credits_coverage,
                                            jwt_file_info, local_day,
                                            normalize_session, report_window,
