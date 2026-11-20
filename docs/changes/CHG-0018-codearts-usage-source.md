@@ -7,12 +7,13 @@ Owner：wayne
 功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
 关联：探针脚本 [scripts/probe_codearts.py](../../scripts/probe_codearts.py)
 
-> ID 说明：CHG-0017 / R47 已被尚未合入 main 的 `feat/minimax-usage-source`（CHG-0017）占用，
-> 本变更按递增取 CHG-0018 / R48，避免合并冲突。
+> ID 说明：CHG-0017 / R47 已由 CHG-0017（MiniMax Code，已合入 main）占用，
+> 本变更按递增取 CHG-0018 / R48。分支基于 pre-minimax 的 main（`505ef0b`）开发，
+> 2026-11-20 已 merge 最新 main（`07224fd`）并解决全部 12 处冲突（见 §7）。
 
 ## 1. 摘要
 
-把 CodeArts（码道，华为云 CodeArts Agent）接成第 9 个采集源。CodeArts 把会话数据落盘在
+把 CodeArts（码道，华为云 CodeArts Agent）接成第 10 个采集源。CodeArts 把会话数据落盘在
 `~/.codeartsdoer/codearts-data/opencode.db`，是 **OpenCode 旧版（legacy）schema**：
 `message` 表的 `data` JSON 里带 `role` / `modelID` / `providerID` / `tokens` / `path.cwd`。
 该形状与既有共享 adapter `scan_sqlite_agent` 的 legacy 分支完全一致，因此本 CHG 复用该
@@ -101,7 +102,7 @@ CodeArts 的 token 消耗在报表里完全缺失；用户无法回答"码道花
 ## 3. 行为 / AC delta
 
 - 新增：**R48**（见下）。
-- 修改：**R1** 的源清单由 8 个增至 9 个，增加 `codearts`。
+- 修改：**R1** 的源清单由 9 个增至 10 个，增加 `codearts`。
 - 删除：无。
 
 **R48**：When CodeArts (码道) session data is present under
@@ -141,8 +142,8 @@ single source `codearts`.
 - `src/usage_ledger/html_report.py`：`AGENT_KINDS` 把 `codearts` 归为 token 轨，补颜色 /
   顺序 / 显示名 `CodeArts（码道）`。
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.9.0`
-  （main 上 `pyproject=0.7.0` 与 `__init__=0.6.0` 漂移，`usage --version` 会报旧版本；
-  0.8.0 预留给待合入的 CHG-0017，本次一并落 `__version__` 与 pyproject 对齐到 0.9.0）。
+  （`0.8.0` 已被已合入 main 的 CHG-0017（minimax）占用；main 上 `pyproject=0.8.0` 与
+  `__init__` 的历史漂移随本次一并对齐到 0.9.0）。
 - `README.md` 覆盖能力表与状态行、`docs/ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与
   §5.4、`docs/README.md` 可用 ID 行。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
@@ -175,9 +176,9 @@ python3 scripts/probe_codearts.py
 
 结果：
 
-- `python3 -m unittest discover -s tests -t .` → **310 tests / 0 failures / 0 errors / 0 skips**（基线 299）。
-- `scripts/check_test_policy.py` 通过（310 tests，fast suite 1.88s / 预算 5.0s）。
-- `scripts/check_ac_map.py` → **47 criteria / 124 mapped identifiers**（基线 46 / 113）。
+- `python3 -m unittest discover -s tests -t .` → **325 tests / 0 failures / 0 errors / 0 skips**（merge main 后基线 314）。
+- `scripts/check_test_policy.py` 通过（325 tests，fast suite 1.91s / 预算 5.0s）。
+- `scripts/check_ac_map.py` → **48 criteria / 139 mapped identifiers**（merge main 后基线 47 / 124）。
 - `scripts/check_coverage.py` 通过 → 总覆盖率 **93.4%**（collectors 95.3%、cli 93.6%、
   store 96.7%、scheduler 98.2%），均高于阈值且相对基线 80.9% 只升不降。
 
@@ -217,7 +218,7 @@ python3 scripts/probe_codearts.py
 | CodeArts 升级换用新版 `session_message` schema | 采集不到新消息 | adapter 已兼容新版 schema（opencode 同款），升级后无需改代码；跟踪项记录在 ARCHITECTURE 已知问题 |
 | `tokens.total` 与互斥字段口径不同 | 若误读 total 会重复计 cache | 明确不读 total（§2.3），沿用 opencode 口径 |
 | 模型名 `glm-5.3-flash` 无价格条目 | `cost_equiv_usd` 为 unknown | 与 Antigravity 同类问题；本次不建别名表，`cost_source` 记 `unknown` |
-| 与 CHG-0017（minimax）合并时注册点冲突 | `SOURCES` / `collect_all` / `source_signatures` / `AGENT_KINDS` 各一行 | 纯追加行，机械合并即可 |
+| 与 CHG-0017（minimax）的合并 | **实际发生 12 个文件冲突**（README、ARCHITECTURE、REQ-0001、pyproject、`__init__`、cli、collectors、html_report、ac_map、test_cli、test_collectors、docs/README），本 CHG 初版"纯追加行，机械合并即可"的判断不成立 | 已在特性分支 merge main（`07224fd`）逐一取并集解决（源注册 / KNOWN_ORDER / R47+R48 / 测试类共存 / 版本 0.9.0），并按 post-minimax 世界重算全部计数后重跑四门禁 |
 
 ## 8. 关联与证据
 
@@ -226,7 +227,7 @@ python3 scripts/probe_codearts.py
   `total == input + output + cache.read + reasoning`；重复 `message.id` 0 处；
   汇总 input 277,622 / output 6,522 / cache_read 1,329,152 / cache_write 0 /
   reasoning 5,732；项目 `playground`（cwd 28/28）。
-- 基线：main `505ef0b`。
+- 开发基线：main `505ef0b`；已 merge 最新 main `07224fd`（含 CHG-0017 minimax）。
 - issue / PR：无。
 
 ## 9. 变更记录
@@ -235,4 +236,4 @@ python3 scripts/probe_codearts.py
 |---|---|---|
 | 提议 | wayne | 本 CHG + 探针脚本 |
 | 就绪 | wayne | 2026-11-20 实现完成：单源 `codearts`、token 真值轨、复用 `scan_sqlite_agent` |
-| 已验证 | wayne | 310 tests / 0 failures；覆盖率 93.4%；AC map 47/124；本机冻结快照实测与探针逐项一致，实时目录 80 records / 5,830,738 tokens，读库与 `--stateless` 输出一致 |
+| 已验证 | wayne | merge main 后 325 tests / 0 failures；覆盖率 93.4%；AC map 48/139；本机冻结快照实测与探针逐项一致，实时目录 80 records / 5,830,738 tokens，读库与 `--stateless` 输出一致 |

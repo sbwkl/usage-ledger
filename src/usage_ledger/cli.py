@@ -30,7 +30,7 @@ from .trae_credits import (TRAE_CREDITS_SOURCE, can_reuse_last_sync,
                            sync_trae_credits)
 
 SOURCES = ("claude", "codex", "opencode", "kilo", "cline", "qoder", "trae-cn",
-           "antigravity", "codearts")
+           "antigravity", "codearts", "minimax")
 CREDIT_SOURCES = ("qoder", "trae-cn")
 EST_SOURCES = {"qoder": "qoder.est", "trae-cn": TRAE_EST_SOURCE}
 TRAE_REMOTE_DAYS = 30

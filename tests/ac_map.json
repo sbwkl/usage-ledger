@@ -207,6 +207,23 @@
         "tests.test_collectors.AntigravityTest.test_tokenless_copy_does_not_shadow_later_token_copy",
         "tests.test_collectors.AntigravitySignatureTest.test_signature_tracks_chunks_rotation"
       ],
+      "R47": [
+        "tests.test_collectors.MiniMaxCollectorTest.test_maps_assistant_usage_and_skips_the_rest",
+        "tests.test_collectors.MiniMaxCollectorTest.test_input_excludes_cache_read",
+        "tests.test_collectors.MiniMaxCollectorTest.test_broken_line_is_counted_not_fatal",
+        "tests.test_collectors.MiniMaxCollectorTest.test_duplicate_message_id_counted_once",
+        "tests.test_collectors.MiniMaxCollectorTest.test_session_id_falls_back_to_directory_name",
+        "tests.test_collectors.MiniMaxCollectorTest.test_project_falls_back_to_project_workspace_dir",
+        "tests.test_collectors.MiniMaxCollectorTest.test_missing_runtime_db_degrades_to_no_project",
+        "tests.test_collectors.MiniMaxCollectorTest.test_broken_runtime_db_does_not_break_collection",
+        "tests.test_collectors.MiniMaxCollectorTest.test_missing_sessions_dir_is_unavailable",
+        "tests.test_collectors.MiniMaxSignatureTest.test_signature_tracks_messages_mtime",
+        "tests.test_cli.MiniMaxCliTest.test_backfill_and_report_match_stateless",
+        "tests.test_cli.MiniMaxCliTest.test_backfill_is_idempotent",
+        "tests.test_cli.MiniMaxCliTest.test_report_auto_syncs_new_minimax_messages",
+        "tests.test_cli.MiniMaxCliTest.test_doctor_reports_minimax",
+        "tests.test_html.HtmlRenderTest.test_minimax_is_classified_as_token"
+      ],
       "R48": [
         "tests.test_collectors.CodeArtsCollectorTest.test_maps_fields_and_key",
         "tests.test_collectors.CodeArtsCollectorTest.test_day_is_local_day_of_time_created",
@@ -220,6 +237,7 @@
         "tests.test_cli.CodeArtsCliTest.test_doctor_reports_codearts",
         "tests.test_html.HtmlRenderTest.test_codearts_is_classified_as_token"
       ]
+
     }
   }
 }

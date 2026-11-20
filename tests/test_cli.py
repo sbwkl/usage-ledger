@@ -13,6 +13,8 @@ from src.usage_ledger.cli import main
 from src.usage_ledger.store import SqliteStore
 from tests.antigravity_helpers import (CLI_APP, IDE_APP, model_step,
                                        write_summaries, write_transcript)
+from tests.minimax_helpers import (DEFAULT_SESSION, assistant_row, usage,
+                                   write_messages, write_runtime_db)
 from tests.qoder_helpers import (activity_path, create_activity_db, create_token_db,
                                  log_path, quota_line, token_path, transcript_path,
                                  write_jsonl, write_quota_log)
@@ -699,6 +701,88 @@ class CodeArtsCliTest(unittest.TestCase):
         code, out, _ = self.run_cli(["doctor"])
         self.assertEqual(code, 0)
         self.assertIn("codearts", out)
+
+
+class MiniMaxCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        write_messages(self.home, [
+            assistant_row("msg-a1", usage_value=usage(100, 20, 0, 0)),
+            assistant_row("msg-a2", usage_value=usage(30, 5, 900, 0),
+                          timestamp_ms=1795153671502),
+        ])
+        write_runtime_db(self.home, [
+            (DEFAULT_SESSION, "/Users/wayne/workspace/playground", None),
+        ])
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_backfill_and_report_match_stateless(self):
+        code, _, err = self.run_cli(["backfill", "--source", "minimax"])
+        self.assertEqual(code, 0, err)
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 2)
+        store.close()
+
+        code, db_json, _ = self.run_cli(
+            ["report", "--source", "minimax", "--format", "json"])
+        self.assertEqual(code, 0)
+        code, source_json, _ = self.run_cli(
+            ["--stateless", "report", "--source", "minimax", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(db_json), json.loads(source_json))
+
+        rows = json.loads(db_json)
+        self.assertEqual({row["source"] for row in rows}, {"minimax"})
+        self.assertEqual(sum(row["input"] for row in rows), 130)
+        self.assertEqual(sum(row["output"] for row in rows), 25)
+        self.assertEqual(sum(row["cache_read"] for row in rows), 900)
+
+    def test_backfill_is_idempotent(self):
+        self.run_cli(["backfill", "--source", "minimax"])
+        self.run_cli(["backfill", "--source", "minimax"])
+        store = SqliteStore(self.db_path)
+        self.assertEqual(store.turn_count(), 2)
+        store.close()
+
+    def test_report_auto_syncs_new_minimax_messages(self):
+        self.run_cli(["backfill", "--source", "minimax"])
+        path = write_messages(self.home, [
+            assistant_row("msg-a1", usage_value=usage(100, 20, 0, 0)),
+            assistant_row("msg-a2", usage_value=usage(30, 5, 900, 0),
+                          timestamp_ms=1795153671502),
+            assistant_row("msg-a3", usage_value=usage(70, 7, 0, 0),
+                          timestamp_ms=1795153672502),
+        ])
+        os.utime(path, ns=(os.stat(path).st_atime_ns,
+                           os.stat(path).st_mtime_ns + 1_000_000_000))
+        code, out, err = self.run_cli(
+            ["report", "--source", "minimax", "--format", "json"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("auto-sync", err)
+        rows = json.loads(out)
+        self.assertEqual(sum(row["input"] for row in rows), 200)
+
+    def test_doctor_reports_minimax(self):
+        self.run_cli(["backfill", "--source", "minimax"])
+        code, out, _ = self.run_cli(["doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("minimax", out)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@
 ## 0. 结论摘要
 
 - 系统是一个**拉取式、单机、默认离线**的用量台账：只读各 AI 编码工具自己落盘的日志/库，归一成统一记录，归档进本地 SQLite，再聚合成 CLI 表格与单文件 HTML。唯一联网例外是 Trae CN credits 的两条前台刷新路径。
-- 对外是 **9 个源**（claude / codex / opencode / kilo / cline / antigravity / codearts / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
+- 对外是 **10 个源**（claude / codex / opencode / kilo / cline / antigravity / codearts / minimax / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
 - **源是唯一事实来源**；数据库只承担三件事：抗删除归档、聚合索引、同步状态。`--stateless` 完全绕过数据库。
 - 唯一持久状态：`~/.local/share/usage-ledger/usage.db`（可用环境变量覆盖）。无常驻进程、默认无网络、零第三方依赖；Trae CN 登录凭证只在 credit 刷新进程内读取。
 - 当前最需要审核的四个现状问题（详见 §11）：
@@ -82,9 +82,9 @@
                                     │  · glob / sqlite mode=ro / query_only
                                     │  · 逐文件错误隔离、行级去重、mtime/offset 跳过
                                     ▼
-                SourceResult × 10 + TraeCreditsClient（统一中间模型）
-    claude │ codex │ opencode │ kilo │ cline │ codearts │ qoder │ qoder.activity │ qoder.credits
-    │ trae-cn.est │ trae-cn.credits
+                SourceResult × 12 + TraeCreditsClient（统一中间模型）
+    claude │ codex │ opencode │ kilo │ cline │ antigravity │ codearts │ minimax
+    │ qoder │ qoder.activity │ qoder.credits │ trae-cn.est（trae-cn.credits 走 TraeCreditsClient）
                                     │
               ┌─────────────────────┼──────────────────────────┐
               │                     │                          │
@@ -130,7 +130,7 @@
 | 文件 | 行数 | 关键符号 | 说明 |
 |---|---:|---|---|
 | `src/usage_ledger/models.py` | 143 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
-| `src/usage_ledger/collectors.py` | 1352 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
+| `src/usage_ledger/collectors.py` | 1352 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_codearts` `scan_cline` `scan_minimax` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 10 个公开源、12 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
 | `src/usage_ledger/trae_auth.py` | 362 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
 | `src/usage_ledger/trae_credits.py` | 517 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
@@ -175,6 +175,7 @@ scripts/probe.py → （独立，不 import 包）
 | `cline` | cline | `Record` | `usage_turn` |
 | `antigravity` | antigravity | `Record` | `usage_turn` |
 | `codearts` | codearts | `Record` | `usage_turn` |
+| `minimax` | minimax | `Record` | `usage_turn` |
 | `qoder` | qoder | `Record`（历史 token） | `usage_turn` |
 | `qoder.activity` | qoder | `Activity` | `usage_activity` |
 | `qoder.credits` | qoder | `Credit` + `QuotaSnapshot` + `Estimate` | `usage_credit` / `usage_quota` / `usage_est` |
