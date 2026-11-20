@@ -83,7 +83,7 @@ usage-ledger/
 ├── scripts/
 │   └── probe.py        只读探针：全量扫 4 源，产出 token 表（0.72s，标准库 only）
 ├── src/usage_ledger/
-│   ├── collectors.py   11 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算/Antigravity/MiniMax Code/CodeBuddy）
+│   ├── collectors.py   11 源采集（Claude/Codex/OpenCode/Kilo/Cline/Qoder 双轨/Trae CN 弱估算/Antigravity/CodeArts/MiniMax Code/CodeBuddy）
 │   ├── trae_hooks.py   Trae CN hook 脚本生成、安装/合并/卸载、事件日志
 │   ├── trae_credits.py Trae CN 同源 usage API 客户端、JWT 读取、分块/分页与幂等同步
 │   ├── store.py        SQLite 归档、去重、prune、usage_daily / usage_activity 汇总
@@ -272,7 +272,7 @@ usage doctor --probe codebuddy
 - **两处镜像目录**：`~/Library/Application Support/CodeBuddy CN/logs/**/Tencent-Cloud.coding-copilot/*.log`（ISO 时间戳）与 `~/Library/Application Support/CodeBuddyExtension/Logs/CodeBuddyIDE/**/*.log`（方括号时间戳）。两个目录写同一批事件，按 `(traceId, step)` 去重，不会翻倍。
 - **识别**：`[AgentReporter] [<traceId>] Step execution metrics: step=<n>, duration=<ms>, usage=<json>`；同内容不带 `usage=` 的摘要行与终端命令回显都不算用量。
 - **口径**：实测 `inputTokens == cacheTokens + cachedMissTokens`，即 `inputTokens` 已含 cache read；取 `input = cachedMissTokens`、`cache_read = cacheTokens`、`output = outputTokens`、`cache_write = cachedWriteTokens`、`reasoning = 0`（`thinkingTokens` 已含在 output 中）。不采含 cache read 的 `inputTokens` / `totalTokens` / `lastTokens`。
-- **元数据**：模型取同 trace 的 `Preparing model: <显示名> (<modelId>)`，缺失记 `unknown`；会话取同 trace 的 `onAgentStart` `conversationId`，缺失回退 traceId；项目取 `genie-history/<base64url(cwd)>/current.json` 的 conversationId → workspace basename，映射不到则无项目。
+- **元数据**：模型取同 trace 的 `Preparing model: <显示名> (<modelId>)`，缺失记 `unknown`；会话取同 trace 的 `onAgentStart` `conversationId`，缺失回退 traceId；项目取 `genie-history/<base64url(cwd)>/current.json` 的 conversationId → workspace basename，映射不到则无项目。厂商把目录名的 base64 padding `=` 写成 `_`、部分目录还追加 `__`，解码时先剥尾部 `_` 再补 padding（本机 20/20 目录验证通过）。
 - **额度**：`usage.credit` 实测恒为 0，不是服务端计费真值；订阅额度本地不可得，**不采集**。
 - **边界**：本机接入前（2026-11-20 之前）的日志不带 usage 字段，之前的用量本地不可得；step 非整数 / usage 坏 JSON / 全零行只计数不中断；任一目录缺失只降级，都不存在则源不可用。
 

@@ -244,6 +244,8 @@
         "tests.test_collectors.CodeBuddyCollectorTest.test_bad_lines_and_zero_usage_are_counted_not_fatal",
         "tests.test_collectors.CodeBuddyCollectorTest.test_metadata_fallbacks_when_logs_lack_context",
         "tests.test_collectors.CodeBuddyCollectorTest.test_bad_genie_entry_is_counted_not_fatal",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_genie_padding_underscore_is_restored",
+        "tests.test_collectors.CodeBuddyCollectorTest.test_genie_appended_suffix_is_restored",
         "tests.test_collectors.CodeBuddyCollectorTest.test_missing_roots_is_unavailable",
         "tests.test_collectors.CodeBuddySignatureTest.test_signature_tracks_both_roots",
         "tests.test_cli.CodeBuddyCliTest.test_backfill_and_report_match_stateless",

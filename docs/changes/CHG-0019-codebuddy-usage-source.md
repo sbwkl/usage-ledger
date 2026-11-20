@@ -75,6 +75,12 @@ input(=cachedMissTokens) 120,588 / output 22,624 / cache_read 2,934,400 / cache_
 - 会话：同 traceId 的 `onAgentStart: ... conversationId=<id>`，缺失时回退 traceId。
 - 项目：把 `genie-history/<base64url(cwd)>/current.json` 的 `conversationId` 映射到 cwd 的 basename；
   映射不到时无项目，不伪造。
+- 厂商命名 quirk（PR #12 评审 #1 修复）：目录名把 base64 padding 的 `=` 写成 `_`，
+  部分无 padding 的目录还追加 `__`；解码前先剥尾部 `_` 再补 padding。实测本机 20/20
+  目录正确解出（`tongxing-air?` → `tongxing-air`，时间戳目录 `…OQ__` →
+  `/Users/wayne/CodeBuddy/20260928133809`），真实扫描 `skipped:bad-genie=0`。
+  边界：若真实路径的 base64 数据位本身以 `_` 结尾，厂商编码与 padding 写法不可区分，
+  本实现按 padding 解释；需在带该特征的工作区开一次会话验证（见 §7）。
 
 ### 2.4 不做的后果
 
@@ -100,7 +106,8 @@ both supported timestamp formats, take the model from the `Preparing model: <nam
 line of the same trace (fallback `unknown`), the session from the `onAgentStart`
 `conversationId` of the same trace (fallback traceId), and the project from the basename of the
 workspace path decoded from the `genie-history` directory whose `current.json` carries that
-conversationId (no project when unmapped), skip lines with non-integer step, unparsable `usage`
+conversationId, restoring vendor naming where base64 padding `=` is written as `_` and an extra
+`__` may be appended (no project when unmapped), skip lines with non-integer step, unparsable `usage`
 JSON, or all-zero token counts while counting them instead of failing, degrade gracefully when
 either root is missing and mark the source unavailable when neither exists, keep the source
 offline with no network calls, and expose the rows under the single source `codebuddy`.
@@ -149,14 +156,19 @@ offline with no network calls, and expose the rows under the single source `code
   `usage --stateless report --source codebuddy` 输出一致；`usage doctor` 显示该源；
   `usage html --offline` 的 `agents` 中 `codebuddy=token`。
 - 结果与证据（2026-11-20，本机；环境 macOS 27.0.1 / Python 3.12.13 / Node 24.16.0 / 基线 commit `50a73a0`）：
-  - `python3 -m unittest discover -s tests -t .` → **338 tests / 0 failures /
-    0 errors / 0 skips**（基线 325）。
-  - `scripts/check_test_policy.py` 通过：fast suite 3.027s（预算 5.0s）；
-    `scripts/check_ac_map.py` → **49 criteria / 152 mapped identifiers**（基线 48 / 139）。
-  - `scripts/check_coverage.py` 通过：总覆盖率 **92.9%**（collectors 93.2%、
+  - `python3 -m unittest discover -s tests -t .` → **340 tests / 0 failures /
+    0 errors / 0 skips**（基线 325；PR #12 评审修复新增 2 例）。
+  - `scripts/check_test_policy.py` 通过：fast suite 2.209s（预算 5.0s）；
+    `scripts/check_ac_map.py` → **49 criteria / 154 mapped identifiers**（基线 48 / 139）。
+  - `scripts/check_coverage.py` 通过：总覆盖率 **92.8%**（collectors 92.9%、
     cli 93.6%、store 96.7%、scheduler 98.2%），高于阈值且相对基线 80.9% 只升不降。
   - 临时集成分支 `tmp/integration-codebuddy`（从 `main` 以 `--no-ff` 合入特性分支）
     上重跑全量单测、测试策略、AC 映射与覆盖率门禁均通过；分支已删除、未推送。
+    评审修复后新增用例再次按同流程集成验证，结果见 PR #12 更新。
+  - PR #12 评审 #1（MAJOR）修复：`_codebuddy_decode_workspace()` 与探针统一先
+    `rstrip("_")` 再补 padding；本机 genie-history **20/20 目录正确解码**，
+    真实扫描 `skipped:bad-genie=0`（修复前 17/20 失败、1 个解成 `tongxing-air?`）。
+    评审 #2（MINOR）同步校准 `ARCHITECTURE.md` 行数 / 签名数与 README 源列表。
   - 探针 `python3 scripts/probe_codebuddy.py`：cn=129 / ide=110 行（镜像），唯一
     `(traceId, step)` 129 个、冲突 0；`inputTokens == cacheTokens + cachedMissTokens`
     129/129；`totalTokens == inputTokens + outputTokens` 129/129；`credit` 全 0；
@@ -188,6 +200,8 @@ offline with no network calls, and expose the rows under the single source `code
 | 日志里会回显终端命令（含正则 / `usage=` 字样） | 误判为用量行 | 只接受 `[AgentReporter] [<traceId>] Step execution metrics:` 前缀 + 合法 JSON 的 usage |
 | `inputTokens` 含 cache read，`totalTokens` 不是互斥口径 | 误采会重复计 cache | 只采 `cachedMissTokens` / `cacheTokens` / `outputTokens` / `cachedWriteTokens`，reasoning 不另计 |
 | `credit` 恒为 0 | 无法判断真实计费 | 不采集，文档说明不是 credits 真值 |
+| genie-history 目录名把 padding `=` 写成 `_`，厂商也可能追加 `__` | 项目维度失真（修复前 17/20 解码失败、1 个错解） | 解码前剥尾部 `_` 再补 padding，collector 与探针同修；本机 20/20 验证通过 |
+| 真实路径的 base64 数据位本身以 `_` 结尾时与 padding 写法不可区分 | 该路径项目名可能被剥掉一字符 | 按 padding 解释（厂商信息不足以区分）；需在带该特征的工作区开一次会话验证后再调整 |
 | CodeBuddy 升级改日志格式 / 换字段 | 采集不到新事件 | 逐行跳过 + 计数；探针与测试覆盖当前两种时间戳；升级后按需新增 CHG |
 
 ## 8. 关联与证据
@@ -204,4 +218,5 @@ offline with no network calls, and expose the rows under the single source `code
 | 提议 | wayne | 本 CHG + 只读探针实测（2026-11-20） |
 | 就绪 | wayne | REQ-0001 R49 + 正常 / 异常 / 边界 AC 已登记；探针证据已附 |
 | 开发中 | wayne | TDD：先写 13 个新增测试（红灯），再实现 `scan_codebuddy` 与四处注册（绿灯） |
-| 已验证 | wayne | 338 tests / 0 skip；覆盖率 92.9%；AC map 49/152；真实日志 117 记录 / 16,034,512 tokens，读写一致、doctor / html 均正常 |
+| 已验证 | wayne | 340 tests / 0 skip；覆盖率 92.8%；AC map 49/154；真实日志 117 记录 / 16,034,512 tokens，读写一致、doctor / html 均正常 |
+| 评审修复 | wayne | PR #12 review #1：genie 目录名 padding 还原 + 探针同修 + 2 例回归；#2：三处文档数字校准 |

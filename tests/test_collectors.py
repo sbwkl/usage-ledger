@@ -1330,6 +1330,30 @@ class CodeBuddyCollectorTest(unittest.TestCase):
         self.assertEqual(result.records[0].project, "playground")
         self.assertGreaterEqual(result.key_kinds["skipped:bad-genie"], 1)
 
+    def test_genie_padding_underscore_is_restored(self):
+        """厂商把 base64 padding '=' 写成 '_'：tongxing-air 不能解成 'tongxing-air?'。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        workspace = "/Users/wayne/workspace/tongxing-air"
+        write_genie(home, workspace=workspace)
+        write_log(home, [start_line(DEFAULT_TRACE),
+                         metric_line(DEFAULT_TRACE, 1, cb_usage())])
+        result = scan_codebuddy(home)
+        self.assertEqual(result.records[0].project, "tongxing-air")
+        self.assertEqual(result.key_kinds["skipped:bad-genie"], 0)
+
+    def test_genie_appended_suffix_is_restored(self):
+        """无 padding 的时间戳工作区目录名尾部追加 '__'。"""
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        write_genie(home, workspace="/Users/wayne/CodeBuddy/20260928133809",
+                    suffix="__")
+        write_log(home, [start_line(DEFAULT_TRACE),
+                         metric_line(DEFAULT_TRACE, 1, cb_usage())])
+        result = scan_codebuddy(home)
+        self.assertEqual(result.records[0].project, "20260928133809")
+        self.assertEqual(result.key_kinds["skipped:bad-genie"], 0)
+
     def test_missing_roots_is_unavailable(self):
         home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, home, True)

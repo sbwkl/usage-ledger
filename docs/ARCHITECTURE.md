@@ -130,7 +130,7 @@
 | 文件 | 行数 | 关键符号 | 说明 |
 |---|---:|---|---|
 | `src/usage_ledger/models.py` | 143 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
-| `src/usage_ledger/collectors.py` | 1352 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_codearts` `scan_cline` `scan_minimax` `scan_codebuddy` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 11 个公开源、13 个本地 `SourceResult` |
+| `src/usage_ledger/collectors.py` | 1995 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_codearts` `scan_cline` `scan_minimax` `scan_codebuddy` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 11 个公开源、13 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
 | `src/usage_ledger/trae_auth.py` | 362 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
 | `src/usage_ledger/trae_credits.py` | 517 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
@@ -464,7 +464,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 路径：两处镜像日志目录——`~/Library/Application Support/CodeBuddy CN/logs/**/Tencent-Cloud.coding-copilot/*.log`（ISO 时间戳）与 `~/Library/Application Support/CodeBuddyExtension/Logs/CodeBuddyIDE/**/*.log`（方括号时间戳）。只读逐行解析。
 - 识别：`[AgentReporter] [<traceId>] Step execution metrics: step=<n>, duration=<ms>, usage=<json>`；不带 `usage=` 的同内容摘要行忽略，终端命令回显不匹配前缀。
 - 映射：`input = cachedMissTokens`（= `inputTokens − cacheTokens`）、`cache_read = cacheTokens`、`output = outputTokens`、`cache_write = cachedWriteTokens`、`reasoning = 0`；不采含 cache read 的 `inputTokens` / `totalTokens` / `lastTokens`，不采实测恒 0 的 `credit`。
-- 元数据：模型取同 trace 的 `Preparing model: <name> (<id>)`（缺则 `unknown`）；会话取同 trace 的 `onAgentStart` `conversationId`（缺则 traceId）；项目取 `genie-history/<base64url(cwd)>/current.json` 的 conversationId → workspace basename（映射不到则无项目）。
+- 元数据：模型取同 trace 的 `Preparing model: <name> (<id>)`（缺则 `unknown`）；会话取同 trace 的 `onAgentStart` `conversationId`（缺则 traceId）；项目取 `genie-history/<base64url(cwd)>/current.json` 的 conversationId → workspace basename（目录名 padding `=` 写成 `_`、可能追加 `__`，先剥尾部 `_` 再补 padding；映射不到则无项目）。
 - 去重键：`codebuddy:<traceId>:<step>`；两目录镜像只计一次；源签名为两 root 匹配日志最大 mtime。
 - 边界：step 非整数 / usage JSON 坏 / 全零行计数跳过；任一 root 缺失降级，都不存在则不可用；接入前日志无 usage 字段，报表不伪造历史；额度本地不可得，不采集；默认离线。
 - 探针：`scripts/probe_codebuddy.py`。实测（2026-11-20）：两 root 39 / 26 行，唯一键 39、冲突 0；`inputTokens == cacheTokens + cachedMissTokens` 39/39；合计 input 120,588 / output 22,624 / cache_read 2,934,400；项目 `playground`，模型 `hy4flash-free`。
@@ -775,7 +775,7 @@ usage report --since 7d --group-by day,model --format json
   ├─ _load_records
   │    ├─ DB 存在 → SqliteStore
   │    ├─ _refresh_if_stale(store, None)
-  │    │    ├─ source_signatures() 取 11 个签名
+  │    │    ├─ source_signatures() 取 15 个签名（11 源 + qoder 3 轨 + trae-cn est）
   │    │    ├─ 与 source_state.last_file_mtime 比较
   │    │    └─ 有变化 → _sync_into(public sources, quiet=True)
   │    ├─ fetch_records(since, until, source/model/project filters)

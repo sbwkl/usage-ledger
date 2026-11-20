@@ -774,6 +774,24 @@ def _codebuddy_line_ts(line: str) -> tuple[float | None, str | None]:
     return None, None
 
 
+def _codebuddy_decode_workspace(encoded: str) -> str | None:
+    """解码 genie-history 目录名。
+
+    厂商把 padding 的 `=` 写成 `_`，部分目录还追加 `__`；先剥尾部下划线再补回
+    padding。边界：若真实路径的 base64 数据位本身以 `_` 结尾，厂商编码与 padding
+    写法不可区分，按 padding 解释（见 CHG-0019 的 Needs human verification）。
+    """
+    candidate = encoded.rstrip("_")
+    if not candidate:
+        return None
+    try:
+        workspace = base64.urlsafe_b64decode(
+            candidate + "=" * (-len(candidate) % 4)).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return workspace if workspace.startswith("/") else None
+
+
 def _codebuddy_projects(home: str, result: SourceResult) -> dict[str, str]:
     """conversationId → workspace basename；缺失只影响项目维度，不影响 token。"""
     root = codebuddy_genie_root(home)
@@ -791,9 +809,11 @@ def _codebuddy_projects(home: str, result: SourceResult) -> dict[str, str]:
                 raise ValueError("current.json 不是对象")
             conversation = obj.get("conversationId")
             encoded = os.path.basename(os.path.dirname(path))
-            workspace = base64.urlsafe_b64decode(
-                encoded + "=" * (-len(encoded) % 4)).decode("utf-8")
-        except (OSError, ValueError, TypeError, UnicodeDecodeError, AttributeError):
+            workspace = _codebuddy_decode_workspace(encoded)
+        except (OSError, ValueError, TypeError, AttributeError):
+            result.key_kinds["skipped:bad-genie"] += 1
+            continue
+        if workspace is None:
             result.key_kinds["skipped:bad-genie"] += 1
             continue
         project = os.path.basename(workspace.rstrip("/"))

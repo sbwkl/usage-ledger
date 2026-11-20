@@ -98,10 +98,16 @@ def write_log(home, lines, root="cn", name="腾讯云代码助手.log"):
     return path
 
 
-def write_genie(home, conversation=DEFAULT_CONVERSATION,
-                workspace=DEFAULT_WORKSPACE, name="current.json"):
+def encoded_workspace(workspace, suffix=""):
+    """厂商命名：padding 的 '=' 写成 '_'；部分无 padding 目录还追加 '__'。"""
     encoded = base64.urlsafe_b64encode(workspace.encode("utf-8")).decode("ascii")
-    directory = os.path.join(home, GENIE_REL, encoded.replace("=", "_"))
+    return encoded.replace("=", "_") + suffix
+
+
+def write_genie(home, conversation=DEFAULT_CONVERSATION,
+                workspace=DEFAULT_WORKSPACE, name="current.json", suffix=""):
+    directory = os.path.join(home, GENIE_REL,
+                             encoded_workspace(workspace, suffix))
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, name)
     with open(path, "w", encoding="utf-8") as fh:

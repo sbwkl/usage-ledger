@@ -77,6 +77,19 @@ def parse_line_ts(line: str) -> str | None:
     return None
 
 
+def decode_workspace(encoded: str) -> str | None:
+    """厂商把 padding '=' 写成 '_'，部分目录还追加 '__'；剥尾部下划线后补 padding。"""
+    candidate = encoded.rstrip("_")
+    if not candidate:
+        return None
+    try:
+        decoded = base64.urlsafe_b64decode(
+            candidate + "=" * (-len(candidate) % 4)).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return decoded if decoded.startswith("/") else None
+
+
 def genie_workspaces(home: str) -> dict[str, str]:
     base = os.path.join(home, "Library", "Application Support", "CodeBuddy CN",
                         "User", "globalStorage", "tencent-cloud.coding-copilot",
@@ -86,9 +99,10 @@ def genie_workspaces(home: str) -> dict[str, str]:
         try:
             conversation_id = json.load(open(path, encoding="utf-8"))["conversationId"]
             encoded = os.path.basename(os.path.dirname(path))
-            decoded = base64.urlsafe_b64decode(
-                encoded + "=" * (-len(encoded) % 4)).decode("utf-8")
+            decoded = decode_workspace(encoded)
         except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if decoded is None:
             continue
         result[conversation_id] = os.path.basename(decoded.rstrip("/"))
     return result
