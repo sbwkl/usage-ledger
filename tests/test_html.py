@@ -65,6 +65,10 @@ class HtmlRenderTest(unittest.TestCase):
         self.assertEqual(parsed["coverage"], {})
         self.assertIsNone(parsed["range"]["since"])
 
+    def test_codearts_is_classified_as_token(self):
+        payload = build_payload([], ("day", "source", "model", "project"), None, None, [])
+        self.assertEqual(payload["agents"]["codearts"], "token")
+
     def test_payload_activity_normalized_as_qoder(self):
         activity = [Activity(day="2026-10-30", project="proj", sessions=2, prompts=3,
                              assistant_calls=3, assistant_with_metrics=2, turns=5,

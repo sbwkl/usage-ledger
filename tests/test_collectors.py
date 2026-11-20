@@ -4,10 +4,11 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-from src.usage_ledger.collectors import (scan_antigravity, scan_claude, scan_cline,
-                                       scan_codex, scan_minimax, scan_qoder_activity,
+from src.usage_ledger.collectors import (codearts_db, scan_antigravity, scan_claude,
+                                       scan_cline, scan_codearts, scan_codex,
+                                       scan_minimax, scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
                                        scan_qoder_tokens, scan_qoder_transcripts,
                                        scan_qoder_turn_credits,
@@ -264,6 +265,131 @@ class SqliteAgentTest(unittest.TestCase):
         result = scan_sqlite_agent("/nonexistent/x.db", "kilo")
         self.assertFalse(result.available)
         self.assertFalse(result.healthy)
+
+
+def write_codearts_db(path, rows):
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, "
+                 "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, "
+                 "data TEXT NOT NULL)")
+    stamp = int(datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    for mid, data, offset in rows:
+        conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                     (mid, "s1", stamp + offset, stamp + offset, json.dumps(data)))
+    conn.commit()
+    conn.close()
+
+
+def codearts_message(modelID="glm-5.3-flash", providerID="inferhub-provider",
+                     cwd="/Users/wayne/workspace/proj-x", **tokens):
+    data = {"role": "assistant", "modelID": modelID, "providerID": providerID,
+            "path": {"cwd": cwd},
+            "time": {"created": 1795000000000}}
+    if tokens:
+        data["tokens"] = tokens
+    return data
+
+
+class CodeArtsCollectorTest(unittest.TestCase):
+    def test_maps_fields_and_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, ".codeartsdoer", "codearts-data", "opencode.db")
+            os.makedirs(os.path.dirname(db))
+            write_codearts_db(db, [
+                ("m1", codearts_message(input=100, output=20, reasoning=7,
+                                        cache={"read": 900, "write": 5}), 0),
+                ("m2", codearts_message(modelID="kimi-k2", input=10, output=1), 1000),
+            ])
+            result = scan_codearts(home=tmp)
+            self.assertTrue(result.healthy)
+            self.assertEqual(len(result.records), 2)
+            rec = result.records[0]
+            self.assertEqual((rec.counts.input, rec.counts.output, rec.counts.reasoning,
+                              rec.counts.cache_read, rec.counts.cache_write),
+                             (100, 20, 7, 900, 5))
+            self.assertEqual(rec.key, "codearts:m1")
+            self.assertEqual(rec.model, "glm-5.3-flash")
+            self.assertEqual(rec.provider, "inferhub-provider")
+            self.assertEqual(rec.project, "proj-x")
+            self.assertEqual(rec.source, "codearts")
+            rec2 = result.records[1]
+            self.assertEqual(rec2.model, "kimi-k2")
+            self.assertEqual(rec2.project, "proj-x")
+
+    def test_day_is_local_day_of_time_created(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = codearts_db(tmp)
+            os.makedirs(os.path.dirname(db))
+            data = codearts_message(input=1)
+            data["time"] = {"created": 1795154953135}
+            conn = sqlite3.connect(db)
+            conn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, "
+                         "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, "
+                         "data TEXT NOT NULL)")
+            conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                         ("m1", "s1", 1795154953135, 1795154953135, json.dumps(data)))
+            conn.commit()
+            conn.close()
+            result = scan_codearts(home=tmp)
+            rec = result.records[0]
+            self.assertEqual(rec.day, datetime.fromtimestamp(
+                1795154953135 / 1000).strftime("%Y-%m-%d"))
+            self.assertEqual(rec.ts, 1795154953135 / 1000)
+
+    def test_skips_tokenless_and_zero_usage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = codearts_db(tmp)
+            os.makedirs(os.path.dirname(db))
+            write_codearts_db(db, [
+                ("m1", codearts_message(input=5), 0),
+                ("m2", codearts_message(), 1000),
+                ("m3", {"role": "user", "tokens": {"input": 9}}, 2000),
+                ("m4", codearts_message(input=0, output=0, reasoning=0,
+                                        cache={"read": 0, "write": 0}), 3000),
+            ])
+            result = scan_codearts(home=tmp)
+            self.assertEqual([rec.key for rec in result.records], ["codearts:m1"])
+            # m2 无 tokens 字段：静默跳过；m4 全 0：计 zero-usage
+            self.assertEqual(result.key_kinds.get("zero-usage"), 1)
+
+    def test_broken_data_json_is_counted_not_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = codearts_db(tmp)
+            os.makedirs(os.path.dirname(db))
+            conn = sqlite3.connect(db)
+            conn.execute("CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, "
+                         "time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, "
+                         "data TEXT NOT NULL)")
+            conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
+                         ("bad", "s1", 1795000000000, 1795000000000, "{not json"))
+            conn.commit()
+            conn.close()
+            result = scan_codearts(home=tmp)
+            self.assertFalse(result.healthy)
+            self.assertEqual(result.records, [])
+            self.assertEqual(len(result.errors), 1)
+
+    def test_missing_db_is_unavailable(self):
+        result = scan_codearts(home="/nonexistent-home")
+        self.assertFalse(result.available)
+        self.assertFalse(result.healthy)
+
+
+class CodeArtsSignatureTest(unittest.TestCase):
+    def test_signature_tracks_db_and_wal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(source_signatures(tmp, ["codearts"])["codearts"])
+            db = codearts_db(tmp)
+            os.makedirs(os.path.dirname(db))
+            write_codearts_db(db, [("m1", codearts_message(input=1), 0)])
+            first = source_signatures(tmp, ["codearts"])["codearts"]
+            self.assertIsNotNone(first)
+            wal = db + "-wal"
+            with open(wal, "w", encoding="utf-8") as fh:
+                fh.write("wal")
+            bumped = (first + 1_000_000) * 1000
+            os.utime(wal, ns=(bumped, bumped))
+            self.assertGreater(source_signatures(tmp, ["codearts"])["codearts"], first)
 
 
 class QoderTokenTest(unittest.TestCase):

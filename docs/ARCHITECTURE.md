@@ -13,7 +13,7 @@
 ## 0. 结论摘要
 
 - 系统是一个**拉取式、单机、默认离线**的用量台账：只读各 AI 编码工具自己落盘的日志/库，归一成统一记录，归档进本地 SQLite，再聚合成 CLI 表格与单文件 HTML。唯一联网例外是 Trae CN credits 的两条前台刷新路径。
-- 对外是 **9 个源**（claude / codex / opencode / kilo / cline / antigravity / minimax / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
+- 对外是 **10 个源**（claude / codex / opencode / kilo / cline / antigravity / codearts / minimax / qoder / trae-cn）；Qoder 在内部拆成 **4 条互不相加的轨道**（token 历史真值 / 活动 / credits / 估算 token），Trae CN 拆成 **credits 真值 + hook 弱估算** 两条互不相加的轨道。
 - **源是唯一事实来源**；数据库只承担三件事：抗删除归档、聚合索引、同步状态。`--stateless` 完全绕过数据库。
 - 唯一持久状态：`~/.local/share/usage-ledger/usage.db`（可用环境变量覆盖）。无常驻进程、默认无网络、零第三方依赖；Trae CN 登录凭证只在 credit 刷新进程内读取。
 - 当前最需要审核的四个现状问题（详见 §11）：
@@ -82,9 +82,9 @@
                                     │  · glob / sqlite mode=ro / query_only
                                     │  · 逐文件错误隔离、行级去重、mtime/offset 跳过
                                     ▼
-                SourceResult × 9 + TraeCreditsClient（统一中间模型）
-   claude │ codex │ opencode │ kilo │ cline │ qoder │ qoder.activity │ qoder.credits
-   │ trae-cn.est │ trae-cn.credits
+                SourceResult × 12 + TraeCreditsClient（统一中间模型）
+    claude │ codex │ opencode │ kilo │ cline │ antigravity │ codearts │ minimax
+    │ qoder │ qoder.activity │ qoder.credits │ trae-cn.est（trae-cn.credits 走 TraeCreditsClient）
                                     │
               ┌─────────────────────┼──────────────────────────┐
               │                     │                          │
@@ -130,7 +130,7 @@
 | 文件 | 行数 | 关键符号 | 说明 |
 |---|---:|---|---|
 | `src/usage_ledger/models.py` | 143 | `Counts` `Record` `Activity` `Credit` `QuotaSnapshot` `Estimate` `SourceResult` | 唯一中间模型；`Credit.source` 区分 qoder / trae-cn；`SourceResult.add()` 内置按 key 去重（同 key 保留 token 总量更大者） |
-| `src/usage_ledger/collectors.py` | 1352 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_cline` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 7 个公开源、9 个本地 `SourceResult` |
+| `src/usage_ledger/collectors.py` | 1352 | `scan_claude` `scan_codex` `scan_sqlite_agent` `scan_codearts` `scan_cline` `scan_minimax` `scan_qoder_*` `scan_trae_cn_est` `source_signatures` `collect_all` | 10 个公开源、12 个本地 `SourceResult` |
 | `src/usage_ledger/trae_hooks.py` | 326 | `install` `uninstall` `status` `event_files` `trae_event_dir` | Trae CN hook 脚本与事件文件管理；不解析源库 |
 | `src/usage_ledger/trae_auth.py` | 362 | `load_storage_credential` `storage_info` `decrypt_tc_blob` `aes128_cbc_decrypt` | `storage.json` 定位与 tc v5 本地解密；纯标准库 AES；token 不落盘 |
 | `src/usage_ledger/trae_credits.py` | 517 | `TraeCreditsClient` `resolve_jwt` `sync_trae_credits` `credits_coverage` | Trae CN credits 定向刷新；凭证只在内存；错误脱敏；幂等 upsert |
@@ -174,6 +174,7 @@ scripts/probe.py → （独立，不 import 包）
 | `kilo` | kilo | `Record` | `usage_turn` |
 | `cline` | cline | `Record` | `usage_turn` |
 | `antigravity` | antigravity | `Record` | `usage_turn` |
+| `codearts` | codearts | `Record` | `usage_turn` |
 | `minimax` | minimax | `Record` | `usage_turn` |
 | `qoder` | qoder | `Record`（历史 token） | `usage_turn` |
 | `qoder.activity` | qoder | `Activity` | `usage_activity` |
@@ -297,6 +298,7 @@ Cline 是真值 token 源（`cline`），没有附加轨道；其 `inputTokens` 
 | claude | `claude:<message.id 或 uuid>` | 同一 `message.id` 的中间态行被 `"iterations" in usage` 过滤掉 |
 | codex | `codex:<文件名 stem>:<累计 total_tokens>` | 累计值在文件内单调；归档副本同 stem 同累计值 → 只计一次 |
 | opencode / kilo | `<source>:<message.id>` | 两个 DB（`opencode.db`、`opencode-stable.db`）共用此键 |
+| codearts | `codearts:<message.id>` | 与 opencode 共用 adapter；CodeArts 只有一个 DB |
 | cline | `cline:<message.id>`；缺失时 `cline:<session>:<ts>:<index>` | `.compaction.json` 是 `.messages.json` 的子集，不读取，避免重复 |
 | qoder token | `qoder:<chat_message.id>` | 一行 assistant 消息 = 一次模型调用 |
 | qoder activity | `(source='qoder.activity', day, project)` | 整日 DELETE 后重建，天然幂等 |
@@ -445,6 +447,16 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - **窗口/新鲜度**：`trae_credits_last_window` + `trae_credits_last_attempt` 写入 meta；`can_reuse_last_sync()` 同时检查 `--max-age` 与窗口覆盖；`credits_coverage()` 输出 `last_sync_at` / `refresh_mode` / `refresh_error` / `stale`。
 - 详见 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 与 [PROBE.md](PROBE.md) §6.9。
 
+### 6.10 CodeArts / 码道（`codearts`）
+
+- 路径：`~/.codeartsdoer/codearts-data/opencode.db`；只读 URI。CodeArts（华为云 CodeArts Agent，码道）的 app data 目录，SQLite WAL 活库。
+- schema 是 **OpenCode 旧版**（`message` 表，`role` / `tokens` 在 `data` JSON 内，无 `session_message` 表）；与 opencode / kilo 共用 `scan_sqlite_agent` 的 legacy 分支，CodeArts 升级到新版 schema 后无需改代码。
+- 映射：`tokens.input/output/reasoning`、`tokens.cache.read/write`；不采 `tokens.total`（已含 cache 与 reasoning，口径不同）；`model←data.modelID`，`provider←data.providerID`，`project←basename(data.path.cwd)`（legacy 行不 JOIN session 表，与 opencode legacy 行为一致）；`ts←time_created`（毫秒）。
+- 去重键：`codearts:<message.id>`；中断 / 失败的 assistant 行字段全 0，按 zero-usage 跳过不伪造。
+- 额度：本地不落盘（订阅制在服务端），不采集；归 token 真值轨，HTML 显示名 `CodeArts（码道）`。
+- 探针：`scripts/probe_codearts.py`（活库建议先 `sqlite3 .backup` 做一致性快照再探，裸 `cp` 复制 WAL 活库可能得到打不开的文件）。
+- 实测（2026-11-20 冻结快照）：28 条 assistant（1 条全 0）；input 277,622 / output 6,522 / cache_read 1,329,152 / cache_write 0 / reasoning 5,732；2 会话，项目 `playground`。
+
 ---
 
 ## 7. 查询与输出契约
@@ -513,7 +525,8 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
   "generated_at": "...",
   "range": {"since": "...", "until": "..."},
   "agents": {"claude":"token","codex":"token","opencode":"token","kilo":"token",
-             "cline":"token","qoder":"credits","trae-cn":"credits"},
+             "cline":"token","antigravity":"token","codearts":"token",
+             "qoder":"credits","trae-cn":"credits"},
   "rows": [{"day":"...","source":"...","model":"...","project":"...",
             "input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0,
             "total":0,"turns":0,"cost_equiv_usd":null,"cost_source":"unknown"}],
@@ -586,6 +599,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 | claude 采集 | 214ms | — |
 | codex 采集 | 306ms | — |
 | opencode + kilo 采集 | 含在全量内 | — |
+| codearts 采集 | 含在全量内 | — |
 | Qoder token 全表 | 1,724ms | ≤3s |
 | Qoder 活动全量 | 446ms | ≤2s |
 | Qoder credits/est/quota | 1,509ms | — |
