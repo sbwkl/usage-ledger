@@ -144,8 +144,8 @@ single source `codearts`.
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.9.0`
   （`0.8.0` 已被已合入 main 的 CHG-0017（minimax）占用；main 上 `pyproject=0.8.0` 与
   `__init__` 的历史漂移随本次一并对齐到 0.9.0）。
-- `README.md` 覆盖能力表与状态行、`docs/ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与
-  §5.4、`docs/README.md` 可用 ID 行。
+- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与
+  §5.4、`docs/design-docs/index.md` 可用 ID 行。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
   `tests/ac_map.json` 增加 R48 映射；新增探针 `scripts/probe_codearts.py`。
 

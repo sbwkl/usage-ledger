@@ -6,12 +6,12 @@
 | 类型 | 功能卡 |
 | 状态 | 活跃 |
 | Owner | wayne |
-| 关联 | [CHG-0001](../changes/CHG-0001-docs-alignment.md)、[CHG-0003](../changes/CHG-0003-docs-status.md)、[ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../ARCHITECTURE.md) |
+| 关联 | [CHG-0001](../changes/CHG-0001-docs-alignment.md)、[CHG-0003](../changes/CHG-0003-docs-status.md)、[ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | 代码基线 | usage-ledger v0.6.0（main `820a6f2`，2026-11-15） |
 | 平台 | macOS（Apple Silicon），单机、单用户、本地 |
 | 最后更新 | 2026-11-16 |
 
-> 本文是**当前需求事实源**。设计沿革见 [DESIGN.md](../DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
+> 本文是**当前需求事实源**。设计沿革见 [DESIGN.md](../design-docs/DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
 
 ## 摘要
 
@@ -35,9 +35,9 @@ usage-ledger 是 macOS 上的本地 AI 编码工具用量台账，统一采集 C
 
 ### 1.3 证据
 
-- [RESEARCH.md](../RESEARCH.md)：ccusage / tokscale / TokenTracker 等竞品横评；结论是采集层不值得重写，报表层没有合口味的产品。
-- [PROBE.md](../PROBE.md)：2026-10-22 本机全量只读扫描 4 源、16,799 条记录、约 2.14B token；发现 9 处规格偏差。
-- [DISCUSSION.md](../DISCUSSION.md)：原始需求与决策链（不自研采集层；全平台在数据层不成立；不需要常驻进程）。
+- [RESEARCH.md](../references/RESEARCH.md)：ccusage / tokscale / TokenTracker 等竞品横评；结论是采集层不值得重写，报表层没有合口味的产品。
+- [PROBE.md](../references/PROBE.md)：2026-10-22 本机全量只读扫描 4 源、16,799 条记录、约 2.14B token；发现 9 处规格偏差。
+- [DISCUSSION.md](../design-docs/DISCUSSION.md)：原始需求与决策链（不自研采集层；全平台在数据层不成立；不需要常驻进程）。
 - 现实边界：Qoder 新客户端自 2026-09-16 起不再写 token 真值；Trae CN 本地库为 SQLCipher 加密；ChatGPT 桌面端无本地数据；Cline 1,806/1,821 条 assistant 消息带 `metrics`。详见 [README.md](../../README.md) 与各源设计文档。
 
 ### 1.4 不做的后果
@@ -410,11 +410,11 @@ usage est --source trae-cn --group-by day,model
 
 | 级别 | 问题 | 影响 | 证据 / 跟踪 |
 |---|---|---|---|
-| P0-1 | `prune` 后再次 `sync` 会重放旧记录，下一次 `prune` 把同一段数据重复累加进 `usage_daily`（100 → 200） | 报表数据错误；已用最小用例复现 | [ARCHITECTURE.md §11](../ARCHITECTURE.md) |
-| P1-1 | `usage live` 实测约 2.3s，未达 `<0.3s`；且扫描了不需要的 Qoder 轨 | 实时体验不达标 | [ARCHITECTURE.md §11](../ARCHITECTURE.md) |
-| P1-2 | 读命令降级行为不一致：`report` 库不存在时降级读源，`credits` / `est` 会静默新建空库 | 用户可能误以为已归档 | [ARCHITECTURE.md §11](../ARCHITECTURE.md) |
-| P1-3 | `report --live` 只合并 token，不合并活动/额度/估算 | 同一次 `html --live` 中四轨新鲜度不一致 | [ARCHITECTURE.md §11](../ARCHITECTURE.md) |
-| P2 | `archived=1` 明细不压缩、死代码、`export --format json` 被覆盖、`top` 过滤能力缺失、`activity --source` 静默空等 9 项 | 可维护性与一致性 | [ARCHITECTURE.md §11](../ARCHITECTURE.md) |
+| P0-1 | `prune` 后再次 `sync` 会重放旧记录，下一次 `prune` 把同一段数据重复累加进 `usage_daily`（100 → 200） | 报表数据错误；已用最小用例复现 | [ARCHITECTURE.md §11](../../ARCHITECTURE.md) |
+| P1-1 | `usage live` 实测约 2.3s，未达 `<0.3s`；且扫描了不需要的 Qoder 轨 | 实时体验不达标 | [ARCHITECTURE.md §11](../../ARCHITECTURE.md) |
+| P1-2 | 读命令降级行为不一致：`report` 库不存在时降级读源，`credits` / `est` 会静默新建空库 | 用户可能误以为已归档 | [ARCHITECTURE.md §11](../../ARCHITECTURE.md) |
+| P1-3 | `report --live` 只合并 token，不合并活动/额度/估算 | 同一次 `html --live` 中四轨新鲜度不一致 | [ARCHITECTURE.md §11](../../ARCHITECTURE.md) |
+| P2 | `archived=1` 明细不压缩、死代码、`export --format json` 被覆盖、`top` 过滤能力缺失、`activity --source` 静默空等 9 项 | 可维护性与一致性 | [ARCHITECTURE.md §11](../../ARCHITECTURE.md) |
 
 > 上述问题需要独立 CHG 修复，不在本次文档整理范围内；修复前不得在 README / 报告中宣称已解决。
 
@@ -450,9 +450,9 @@ usage est --source trae-cn --group-by day,model
 |---|---|---|
 | 事实源与存储 | 源是唯一事实来源；SQLite 只做归档 + 索引；`--stateless` 可完全绕过 DB | [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md) |
 | 采集模型 | 拉取式、无常驻进程；每小时增量 + 每日全量；`live` 直读源 | [ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md) |
-| 口径隔离 | token 真值 / credits / est / activity 分轨；任何两轨不相加；跨厂商 credits 不相加 | 本文 §2.2、[QODER-CREDITS-DESIGN.md](../QODER-CREDITS-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../TRAE-CN-CREDITS-DESIGN.md) |
-| 联网例外 | 仅 Trae CN credits 的两条前台刷新路径联网；其余默认离线 | 本文 R11、[TRAE-CN-CREDITS-DESIGN.md](../TRAE-CN-CREDITS-DESIGN.md) |
-| 技术选型 | Python ≥3.11、标准库 only、零第三方依赖、SQLite WAL、launchd | [pyproject.toml](../../pyproject.toml)、[ARCHITECTURE.md](../ARCHITECTURE.md) |
+| 口径隔离 | token 真值 / credits / est / activity 分轨；任何两轨不相加；跨厂商 credits 不相加 | 本文 §2.2、[QODER-CREDITS-DESIGN.md](../design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) |
+| 联网例外 | 仅 Trae CN credits 的两条前台刷新路径联网；其余默认离线 | 本文 R11、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) |
+| 技术选型 | Python ≥3.11、标准库 only、零第三方依赖、SQLite WAL、launchd | [pyproject.toml](../../pyproject.toml)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 
 ---
 
@@ -478,6 +478,7 @@ usage est --source trae-cn --group-by day,model
 | CHG-0017 | 接入 MiniMax Code 用量（会话 messages.jsonl + 运行库项目映射） | 已验证 | [CHG-0017](../changes/CHG-0017-minimax-usage-source.md) |
 | CHG-0018 | 接入 CodeArts（码道）用量（复用 SQLite agent adapter） | 已验证 | [CHG-0018](../changes/CHG-0018-codearts-usage-source.md) |
 | CHG-0019 | 接入腾讯 CodeBuddy CN 用量（双目录日志镜像去重） | 已验证 | [CHG-0019](../changes/CHG-0019-codebuddy-usage-source.md) |
+| CHG-0020 | 文档结构调整与开发流程入规 | 开发中 | [CHG-0020](../changes/CHG-0020-docs-structure-and-dev-process.md) |
 
 > 2026-11-20：CHG-0019 新增 R49 并修改 §3.2 数据源契约（CodeBuddy 双目录日志镜像、按 `(traceId, step)` 去重、非重叠 token 口径、额度不采集、genie-history 目录名 padding quirk）：340 tests / 0 skip、覆盖率 92.8%、AC map 49 criteria / 154 identifiers；本机实测 88 文件 / 117 条唯一记录 / 16,034,512 tokens，读写一致，doctor / html 正常；PR #12 修复项目映射解码后 20/20 目录正确解出。
 >
@@ -505,8 +506,8 @@ usage est --source trae-cn --group-by day,model
 
 ## 9. 链接
 
-- 当前实现：[ARCHITECTURE.md](../ARCHITECTURE.md)
-- 历史设计：[DESIGN.md](../DESIGN.md)、[QODER-DESIGN.md](../QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](../QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](../TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](../CLINE-DESIGN.md)
-- 调研 / 实测 / 讨论：[RESEARCH.md](../RESEARCH.md)、[PROBE.md](../PROBE.md)、[DISCUSSION.md](../DISCUSSION.md)
-- 文档索引：[docs/README.md](../README.md)
+- 当前实现：[ARCHITECTURE.md](../../ARCHITECTURE.md)
+- 历史设计：[DESIGN.md](../design-docs/DESIGN.md)、[QODER-DESIGN.md](../design-docs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](../design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](../design-docs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](../design-docs/CLINE-DESIGN.md)
+- 调研 / 实测 / 讨论：[RESEARCH.md](../references/RESEARCH.md)、[PROBE.md](../references/PROBE.md)、[DISCUSSION.md](../design-docs/DISCUSSION.md)
+- 文档索引：[docs/design-docs/index.md](../../README.md)
 - 使用说明：[README.md](../../README.md)

@@ -3,13 +3,13 @@
 类型：CHG
 状态：已验证
 Owner：wayne
-所属模块/入口：`src/usage_ledger/collectors.py`、`src/usage_ledger/trae_auth.py`、`scripts/probe.py`、`tests/test_collectors.py`、`tests/test_trae_credits.py`、`README.md`、`docs/ARCHITECTURE.md`
+所属模块/入口：`src/usage_ledger/collectors.py`、`src/usage_ledger/trae_auth.py`、`scripts/probe.py`、`tests/test_collectors.py`、`tests/test_trae_credits.py`、`README.md`、`ARCHITECTURE.md`
 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md)（无 AC 变更）
-关联：CHG-0014（同主题前序清理）、[ARCHITECTURE.md](../ARCHITECTURE.md) §11 P2-9
+关联：CHG-0014（同主题前序清理）、[ARCHITECTURE.md](../../ARCHITECTURE.md) §11 P2-9
 
 ## 1. 摘要
 
-CHG-0014 完成审计清理后，复核仍发现 4 处零行为影响的死代码 / 未用导入 / 过期注释，且 `docs/ARCHITECTURE.md` §9 测试表自 CHG-0002 起未随测试增长更新；本变更清除这些残留并把文档校准到实测值，不改变任何运行时行为、数据口径或 AC。
+CHG-0014 完成审计清理后，复核仍发现 4 处零行为影响的死代码 / 未用导入 / 过期注释，且 `ARCHITECTURE.md` §9 测试表自 CHG-0002 起未随测试增长更新；本变更清除这些残留并把文档校准到实测值，不改变任何运行时行为、数据口径或 AC。
 
 ## 2. 变更理由与证据
 
@@ -20,7 +20,7 @@ CHG-0014 完成审计清理后，复核仍发现 4 处零行为影响的死代�
   2. `scripts/probe.py` `scan_codex`：`models = []` 从未 `append`，且被 `aggregate` 内同名局部变量遮蔽；注释 `(ts, cum, last)` 与元组实际 4 位（含 `model`）不符。
   3. `src/usage_ledger/trae_auth.py` `load_storage_credential`：`info = _check_storage_file(target)` 的返回值未被使用。
   4. 未用导入：`tests/test_collectors.py` 的 `time`、`patch`；`tests/test_trae_credits.py` 的 `stat`、`WindowTooLarge`（该类仅在 `trae_credits.py` 内部使用）。
-  5. 文档漂移：`README.md` 状态行仍写 282 tests（CHG-0014 正文已写 284）；`docs/ARCHITECTURE.md` §3 的 `collectors.py` / `probe.py` 行数、§9 测试表（缺 `test_collectors_edges.py` / `test_cli_output.py` / `test_aggregation.py`，且 `test_store` / `test_html` / `test_scheduler` 计数过期，总数 282）与实测不一致。
+  5. 文档漂移：`README.md` 状态行仍写 282 tests（CHG-0014 正文已写 284）；`ARCHITECTURE.md` §3 的 `collectors.py` / `probe.py` 行数、§9 测试表（缺 `test_collectors_edges.py` / `test_cli_output.py` / `test_aggregation.py`，且 `test_store` / `test_html` / `test_scheduler` 计数过期，总数 282）与实测不一致。
 - 不做的后果：死代码与未用导入长期误导排障；文档测试计数失真，降低审计基线可信度。
 
 ## 3. 行为 / AC delta

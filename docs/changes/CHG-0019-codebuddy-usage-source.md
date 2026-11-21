@@ -132,8 +132,8 @@ offline with no network calls, and expose the rows under the single source `code
 - `src/usage_ledger/cli.py`：`SOURCES` 增加 `codebuddy`。
 - `src/usage_ledger/html_report.py`：`AGENT_KINDS` 增加 `codebuddy`，补颜色 / 顺序 / 显示名。
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.10.0`。
-- `README.md` 覆盖能力表与状态行、`docs/ARCHITECTURE.md` 数据源契约 / 去重键 / 源详解、
-  `REQ-0001` §3.2 / §4 / §5.4 / §8、`docs/README.md` 可用 ID 行。
+- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约 / 去重键 / 源详解、
+  `REQ-0001` §3.2 / §4 / §5.4 / §8、`docs/design-docs/index.md` 可用 ID 行。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
   `tests/ac_map.json` 增加 R49 映射；新增探针 `scripts/probe_codebuddy.py`。
 

@@ -6,7 +6,7 @@
 | 类型 | 功能卡 |
 | 状态 | 探索 |
 | Owner | wayne |
-| 关联 | [REQ-0001](REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[ARCHITECTURE.md §11](../ARCHITECTURE.md)、`tests/` |
+| 关联 | [REQ-0001](REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[ARCHITECTURE.md §11](../../ARCHITECTURE.md)、`tests/` |
 | 代码基线 | usage-ledger v0.6.0（main `5b5f987`，2026-11-15） |
 | 平台 | macOS（Apple Silicon）；Python ≥3.11；Node 24（仅测试用） |
 | 最后更新 | 2026-11-16 |
@@ -45,7 +45,7 @@ usage-ledger 已有 159 个测试、0.8 秒内可跑完、AC 与测试名有映�
 | 测试规模 | 159 tests；0.74–0.88s；Python 3.11/3.12/3.14 OK | 速度快、隔离好，是强项 |
 | 分支覆盖 | 总体 81% | store 88%、collectors 83%、Trae 模块 85–89%、CLI 77%、aggregation 65%、scheduler 45%、`__main__` 0% |
 | AC 映射 | R1–R18 → 60 个测试名，60/60 存在 | 名字可追溯；但 R1、R5、R16 的测试深度不足 |
-| P0 回归 | 0 个针对性测试 | [ARCHITECTURE.md §11](../ARCHITECTURE.md) P0-1；我复现 `usage_daily` input 10 → 20 |
+| P0 回归 | 0 个针对性测试 | [ARCHITECTURE.md §11](../../ARCHITECTURE.md) P0-1；我复现 `usage_daily` input 10 → 20 |
 | P1 回归 | 0 个针对性测试 | P1-1 性能、P1-2 建库行为、P1-3 `--live` 合并范围均无自动护栏 |
 | HTML/JS | 2,828 行；276 行含 `function`；4 个 Node 行为测试 | 无 DOM/浏览器 E2E；图表、排序、分页、日期范围、主题、影子 est 未验证 |
 | CLI 展示层 | `live`/`pricing`/`schedule`/`export` 无直接 CLI 用例；`prune` 仅 store 级用例 | `_write_rows`、`_write_activity`、`_write_est_rows` 的表格分支大量未覆盖 |
@@ -316,7 +316,7 @@ E2E 是最接近真实使用的证据层，因此不按“抽样几条边界”�
 
 - 产品功能事实源：[REQ-0001](REQ-0001-usage-ledger.md)
 - 文档体系变更：[CHG-0001](../changes/CHG-0001-docs-alignment.md)
-- 当前实现与已知问题：[ARCHITECTURE.md](../ARCHITECTURE.md)（§11）
+- 当前实现与已知问题：[ARCHITECTURE.md](../../ARCHITECTURE.md)（§11）
 - 测试目录：`../../tests/`
 - 运行与分支约定：[README.md 的开发约定](../../README.md#开发约定)
 - 方法论参考（不绑定具体工具）：
