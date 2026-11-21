@@ -100,7 +100,7 @@ Antigravity 上的 token 消耗在报表里完全缺失；用户无法回答"Ant
 - `src/usage_ledger/collectors.py`：新增 `scan_antigravity`，注册进 `collect_all` 与 `source_signatures`。
 - `src/usage_ledger/cli.py`：`SOURCES` 增加 `antigravity`。
 - `src/usage_ledger/html_report.py`：`agentKind` 把 `antigravity` 归为 token 轨。
-- `README.md` 覆盖能力表、`docs/ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与 §5.1。
+- `README.md` 覆盖能力表、`ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与 §5.1。
 - 测试：`tests/test_collectors.py` 新增用例，`tests/ac_map.json` 增加 R46 映射。
 
 本次明确不做：

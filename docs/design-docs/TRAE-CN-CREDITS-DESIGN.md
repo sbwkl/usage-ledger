@@ -26,7 +26,7 @@
 - **静态快照边界**：HTML 是生成时快照；再次双击旧文件不会更新，必须重新运行 `usage html`。
 - **其余命令仍默认离线**：`usage report`、`usage credits`、`usage doctor`、`usage live`、自动同步不触发 Trae 远程调用；`usage sync --source trae-cn --remote` 继续用于手动/回填。
 - **安全边界不变**：登录凭证只在刷新进程内读取，不落库/日志/HTML；不保存 prompt/正文/`user_input_preview`；不读 Keychain/Cookie、不解密 SQLCipher 库。
-- **v3 凭证修正（2026-11-15）**：默认凭证从临时 token 改为 `storage.json` 的 tc v5 登录凭证；详见 [PROBE.md](PROBE.md) §6.10。
+- **v3 凭证修正（2026-11-15）**：默认凭证从临时 token 改为 `storage.json` 的 tc v5 登录凭证；详见 [PROBE.md](../references/PROBE.md) §6.10。
 
 ---
 
@@ -72,7 +72,7 @@
 
 用户要的是“Credits 准确”。但 Trae CN 的本机数据里没有逐会话/逐请求 credits：
 
-- 加密库拿不到（SQLCipher，Phase 0 已失败，见 `docs/PROBE.md` §6.6）。
+- 加密库拿不到（SQLCipher，Phase 0 已失败，见 `docs/references/PROBE.md` §6.6）。
 - `state.vscdb` / `storage.json` 只有权益和配置，没有 used/remaining（§6.7）。
 - 日志只有请求 URL + HTTP 200，没有响应体；本机当前日志也没有 `ICubeUsageService` 余额行（§6.7 复测）。
 - hooks 只有字符/事件元数据，没有 credits/token/quota（§6.8）。
@@ -193,7 +193,7 @@ README 原文：
 
 > “采集层用成熟做法，报表层自己做；不为缺失数据编造 token，不爬私有 API，无任何网络行为。”
 
-`docs/TRAE-CN-DESIGN.md` 原文：
+`docs/design-docs/TRAE-CN-DESIGN.md` 原文：
 
 > “不读取 `/Users/wayne/.trae-cn/trae-jwt-token`，不接触登录态。”
 > “不调用 `api.trae.cn` 的 `ide_user_ent_usage` / `web_user_ent_usage` / `query_user_usage_group_by_session` 等私有接口。”
@@ -826,10 +826,10 @@ Perch 的 `render_usage_report` 会调用 `usage html --output <cache>/usage-rep
 | 文件 | 更新 |
 |---|---|
 | `README.md` | 政策改为“默认离线；Trae credits 在 `sync --remote` 或 `usage html` 刷新时联网”；来源表 Trae 从“弱估算”改为“Credits + token 弱估算”；新增 `--offline`/`--strict-refresh`/静态快照说明 |
-| `docs/TRAE-CN-DESIGN.md` | 顶部加“历史文档”说明：credits 轴由本文取代；hook 弱估算设计继续有效 |
-| `docs/PROBE.md` | §6.9：客户端 usage 接口证据、临时 token 形态；§6.10：临时 token 401 → storage.json tc v5 凭证来源修正 |
-| `docs/ARCHITECTURE.md` | §7.4 更新：Trae 归入 credits；多 source credits 分列；不跨源合计 |
-| `docs/TRAE-CN-CREDITS-DESIGN.md` | 本文；审核通过后作为实现依据 |
+| `docs/design-docs/TRAE-CN-DESIGN.md` | 顶部加“历史文档”说明：credits 轴由本文取代；hook 弱估算设计继续有效 |
+| `docs/references/PROBE.md` | §6.9：客户端 usage 接口证据、临时 token 形态；§6.10：临时 token 401 → storage.json tc v5 凭证来源修正 |
+| `ARCHITECTURE.md` | §7.4 更新：Trae 归入 credits；多 source credits 分列；不跨源合计 |
+| `docs/design-docs/TRAE-CN-CREDITS-DESIGN.md` | 本文；审核通过后作为实现依据 |
 
 README 政策建议文案：
 

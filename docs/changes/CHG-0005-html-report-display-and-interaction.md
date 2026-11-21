@@ -80,7 +80,7 @@ Owner：wayne
 
 ## 4. 影响范围与非目标
 
-- 受影响：`src/usage_ledger/html_report.py` 的 CSS / 页面结构 / 前端状态；`tests/test_html.py` 的 Node 行为测试；实现后需同步 `docs/ARCHITECTURE.md` 的 HTML 前端说明（如涉及）。
+- 受影响：`src/usage_ledger/html_report.py` 的 CSS / 页面结构 / 前端状态；`tests/test_html.py` 的 Node 行为测试；实现后需同步 `ARCHITECTURE.md` 的 HTML 前端说明（如涉及）。
 - 非目标：
   - 默认范围由 CHG-0004 R39 调整为近 7 天；本 CHG 不进一步改变默认值、单表结构、token / credits / est / activity 分轨与“不相加”口径。
   - 不做单位 tab、不做每张图独立日期范围、不做跨厂商 credits 合计。

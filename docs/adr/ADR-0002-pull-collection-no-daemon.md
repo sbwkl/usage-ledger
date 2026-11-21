@@ -7,7 +7,7 @@
 | 状态 | 接受 |
 | 日期 | 2026-10-22（DESIGN v0.4）/ 2026-11-15 归档 |
 | Owner | wayne |
-| 关联 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[DESIGN.md](../DESIGN.md) §10、[ARCHITECTURE.md](../ARCHITECTURE.md) |
+| 关联 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[DESIGN.md](../design-docs/DESIGN.md) §10、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 
 ## 背景
 

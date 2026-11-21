@@ -1,6 +1,6 @@
 # Qoder 额度（credits）+ 估算 token 设计
 
-> 日期：2026-10-30 ｜ 关联文档：[QODER-DESIGN.md](./QODER-DESIGN.md)（双轨台账）、[RESEARCH.md](./RESEARCH.md)（竞品调研）
+> 日期：2026-10-30 ｜ 关联文档：[QODER-DESIGN.md](./QODER-DESIGN.md)（双轨台账）、[RESEARCH.md](../references/RESEARCH.md)（竞品调研）
 > 状态：已实现（v0.5.0，2026-10-31）
 
 ## 0. 决策背景
