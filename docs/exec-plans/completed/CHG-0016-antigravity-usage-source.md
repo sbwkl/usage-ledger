@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
 关联：探针脚本 [scripts/probe_antigravity.py](../../../scripts/probe_antigravity.py)
 
 ## 1. 摘要
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答"每个平台、每个模型的用量"）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答"每个平台、每个模型的用量"）。
 - 触发原因：用户 2026-11-20 要求接入 Antigravity，并先确认 IDE 与 `agy` 的用量是否共用存储。
 - 证据：以下全部来自本机实测，可用 `python3 scripts/probe_antigravity.py` 复现（只读，不联网）。
 
@@ -100,7 +100,7 @@ Antigravity 上的 token 消耗在报表里完全缺失；用户无法回答"Ant
 - `src/usage_ledger/collectors.py`：新增 `scan_antigravity`，注册进 `collect_all` 与 `source_signatures`。
 - `src/usage_ledger/cli.py`：`SOURCES` 增加 `antigravity`。
 - `src/usage_ledger/html_report.py`：`agentKind` 把 `antigravity` 归为 token 轨。
-- `README.md` 覆盖能力表、`ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与 §5.1。
+- `README.md` 覆盖能力表、`ARCHITECTURE.md` 数据源契约、`usage-ledger.md` §3.2 与 §5.1。
 - 测试：`tests/test_collectors.py` 新增用例，`tests/ac_map.json` 增加 R46 映射。
 
 本次明确不做：

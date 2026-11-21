@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 R37](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[usage-ledger.md R37](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ HTML 报表把 `shadow` / `focusRange` 以布尔值写入 URL，读回时只接�
 
 ## 2. 变更理由与证据
 
-- 对应功能卡：REQ-0001 R37（筛选状态 URL / localStorage 往返）。
+- 对应功能卡：usage-ledger.md R37（筛选状态 URL / localStorage 往返）。
 - 触发原因：2026-11-16 code review 发现 URLSearchParams 序列化为 `"true"`，恢复逻辑不识别。
 - 证据：`stateSnapshot()` 返回原生布尔；`persistState()` 使用 `URLSearchParams.set`，URL 中为 `shadow=true` / `focusRange=true`；`applyPersistedState()` 只接受 `true` 或 `"1"`。
 - 不做的后果：浏览器刷新或分享链接后，估算与聚焦范围被静默关闭，URL 与页面状态不一致。
@@ -53,7 +53,7 @@ HTML 报表把 `shadow` / `focusRange` 以布尔值写入 URL，读回时只接�
 
 ## 8. 关联与证据
 
-- 功能卡：REQ-0001 R37。
+- 功能卡：usage-ledger.md R37。
 - commit：`3a121d0`（实现 + 测试）。
 - 浏览器证据：`/tmp/review-fix-report.html`；验证输出见本次文档提交。
 

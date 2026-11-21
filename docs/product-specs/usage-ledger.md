@@ -1,17 +1,17 @@
-# REQ-0001 本地 AI 编码工具用量台账
+# 产品规格：usage-ledger 本地 AI 编码工具用量台账
 
 | 项 | 内容 |
 |---|---|
-| ID | REQ-0001 |
-| 类型 | 功能卡 |
-| 状态 | 活跃 |
-| Owner | wayne |
+| 原需求卡 | REQ-0001 |
+| 文档类型 | 产品规格 |
+| 当前版本 | v0.10.0 |
+| 适用范围 | 当前产品行为与验收规格 |
 | 关联 | [CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md)、[ADR-0001](../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../design-docs/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | 代码基线 | usage-ledger v0.6.0（main `820a6f2`，2026-11-15） |
 | 平台 | macOS（Apple Silicon），单机、单用户、本地 |
 | 最后更新 | 2026-11-16 |
 
-> 本文是**当前需求事实源**。设计沿革见 [DESIGN.md](../design-docs/DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
+> 本文是 **usage-ledger 的产品规格与验收事实源**。设计沿革见 [DESIGN.md](../design-docs/DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
 
 ## 摘要
 
@@ -313,7 +313,7 @@ usage est --source trae-cn --group-by day,model
 
 ---
 
-## 5. 当前需求与验收（EARS）
+## 5. 验收标准（EARS）
 
 > 每条 R 至少映射一个测试或验收步骤。测试命令统一为：
 > `python3 -m unittest discover -s tests -t .`
@@ -456,12 +456,12 @@ usage est --source trae-cn --group-by day,model
 
 ---
 
-## 8. 变更索引
+## 8. 变更追溯索引
 
 | CHG ID | 标题 | 状态 | 链接 |
 |---|---|---|---|
 | CHG-0001 | 需求 / 变更文档体系对齐 | 已验证 | [CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md) |
-| CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md) |
+| CHG-0003 | 修正 CHG-0001 / usage-ledger.md 的合并状态 | 已验证 | [CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md) |
 | CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../exec-plans/completed/CHG-0004-html-report-empty-state-and-filters.md) |
 | CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../exec-plans/completed/CHG-0005-html-report-display-and-interaction.md) |
 | CHG-0006 | 补齐 Qoder 桌面端 turn credits | 已验证 | [CHG-0006](../exec-plans/completed/CHG-0006-qoder-turn-credits.md) |
@@ -486,7 +486,7 @@ usage est --source trae-cn --group-by day,model
 
 > 2026-11-20：CHG-0016 新增 R46 并修改 §3.2 数据源契约（Antigravity 双目录、额度不采集）：299 tests / 0 skip、覆盖率 93.3%、AC map 46 criteria / 113 identifiers；本机实测 17 records / 308,611 tokens 与探针一致。
 >
-> REQ-0001 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
+> usage-ledger.md 建立于 v0.6.0（2026-11-15）。此前变更未补 CHG，证据为 git log、设计文档与本文测试基线；后续变更必须新建 CHG 并登记到本表。CHG-0001 已通过 PR #2 合并 main（`5b5f987`）；文档变更无部署产物，状态保持“已验证”。
 
 > 2026-11-16：CHG-0004（R19–R26、R39，commit `530d311`）与 CHG-0005（R27–R38、R40，commit `ebc48fe`）均已实现并验证；AC 同步写入 §5.6 / §5.7 与 `tests/ac_map.json`。
 >

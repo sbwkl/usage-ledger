@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互优化](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 §3.6](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互优化](CHG-0005-html-report-display-and-interaction.md)、[usage-ledger.md §3.6](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（统一台账、明确标注口径）、R8（活动仅 Qoder 且不参与计算）、R15（HTML 边界标注）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（统一台账、明确标注口径）、R8（活动仅 Qoder 且不参与计算）、R15（HTML 边界标注）。
 - 触发原因：2026-11-16 对 2026-11-15 生成的报告做 1440px / 500px 实际使用，以下问题均可复现。
 - 证据（报告：范围 `2026-06-01 ~ 2026-11-15`，generated `2026-11-15T08:00:38+08:00`；308 token 行、122 credit 行、8 Trae est 行、144 activity 行 / 84 活跃日、200 Trae 会话）：
 
@@ -25,11 +25,11 @@ Owner：wayne
 6. **“全选”语义不完整**：“全选”清空模型 / 项目但保留搜索；“重置筛选”清空全部，两个动作边界不一致（[html_report.py:915](../../../src/usage_ledger/html_report.py#L915)、[html_report.py:1105](../../../src/usage_ledger/html_report.py#L1105)）。
 
 - 不做的后果：快照报告在生成次日进入“全 0 但仍有数字”的矛盾状态；活动图与 token 图无法按日期对齐；用户会误以为活动表可排序、chip 数字是当前区间；窄化筛选后得到空表却不知道原因。
-- 用户补充需求（2026-11-16）：默认时间范围改为近 7 天，不再默认全量；这是对 REQ-0001 §3.6 “默认取全部数据覆盖”的 AC 变更，实现时需同步 §3.6 与 §5。近 7 天按 `DATA_UNTIL` 倒推 6 天（含端点），保留“全部”预设。
+- 用户补充需求（2026-11-16）：默认时间范围改为近 7 天，不再默认全量；这是对 usage-ledger.md §3.6 “默认取全部数据覆盖”的 AC 变更，实现时需同步 §3.6 与 §5。近 7 天按 `DATA_UNTIL` 倒推 6 天（含端点），保留“全部”预设。
 
 ## 3. 行为 / AC delta
 
-> R19–R26 与 R39 已写入 [REQ-0001 §5.6](../../product-specs/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到 `HtmlDateRangeTest` / `HtmlEmptyStateTest` / `HtmlActivityTest` / `HtmlFilterLinkageTest`；本节保留为本次 AC delta 记录。
+> R19–R26 与 R39 已写入 [usage-ledger.md §5.6](../../product-specs/usage-ledger.md)，并在 `tests/ac_map.json` 映射到 `HtmlDateRangeTest` / `HtmlEmptyStateTest` / `HtmlActivityTest` / `HtmlFilterLinkageTest`；本节保留为本次 AC delta 记录。
 
 - **R19**：When the report is opened after the data-until date, the system shall anchor the “最新 / 7 / 30 / 90 天” presets and the date pickers to `DATA_UNTIL`, display “数据截至 YYYY-MM-DD”, and reject or clamp dates after `DATA_UNTIL`; the preset previously labeled “今日” shall be labeled “最新”.
 - **R20**：While Trae CN is selected and the current range has no Trae credit rows but cached credit data exists outside the range, the system shall show “当前区间无 Trae credits” instead of “未同步”; it shall show “未同步” only when no credit cache exists, and “刷新失败（使用缓存）” only when refresh failed and cache is being used.
@@ -48,7 +48,7 @@ Owner：wayne
 - 受影响：`src/usage_ledger/html_report.py` 的日期状态、Trae KPI 文案、活动图 / 活动表、维度下拉、chip 汇总、筛选动作；`tests/test_html.py` 的 Node 行为测试。
 - 非目标：
   - 默认范围改为近 7 天（R39），保留“全部”；不改变单表结构、不改变 token / credits / est / activity 分轨与“不相加”口径。
-  - 不新增单位 tab、不做每张图独立日期范围；这些会改变 REQ-0001 §3.6 的 AC，需单独评审。
+  - 不新增单位 tab、不做每张图独立日期范围；这些会改变 usage-ledger.md §3.6 的 AC，需单独评审。
   - 不改 Python 采集、SQLite schema、CLI 参数或联网路径。
   - 不处理展示层重构（表格冻结列 / KPI 布局 / 覆盖说明 / Top 8 编码 / 粘性筛选），见 CHG-0005。
 - 兼容性 / 迁移：无 schema / DB / CLI 变化；旧 HTML 快照不自动更新，需重新生成；旧报告的 payload 字段不变。
@@ -63,7 +63,7 @@ Owner：wayne
 - 门禁结果（2026-11-16，`feat/html-report-ux`，worktree）：
   - `python3 -m unittest discover -s tests -t .`：255 tests，OK，0 skip
   - `python3 scripts/check_test_policy.py`：255 tests，0 failures / 0 errors / 0 skips；fast suite 1.358s（budget 5.0s）
-  - `python3 scripts/check_ac_map.py`：REQ-0001 27 criteria / 74 mapped identifiers，passed
+  - `python3 scripts/check_ac_map.py`：usage-ledger.md 27 criteria / 74 mapped identifiers，passed
   - 分支覆盖率：TOTAL 93.6%（threshold 85.0%，baseline 80.9%），`store.py` 97.1%、`collectors.py` 96.3%、`cli.py` 93.5%、`scheduler.py` 98.2%，`check_coverage.py` passed
 - 手工验收（Chrome 1440×900 与 500×900）：
   1. 用 2026-11-15 生成的报告在 2026-11-16 打开；清空 URL / localStorage 后首次加载默认应为 11-09 ~ 11-15；点“最新”仍为 11-15；点“全部”为 06-01 ~ 11-15；页面显示“数据截至 2026-11-15”；日期选择器不能选 11-16 之后。
@@ -99,11 +99,11 @@ Owner：wayne
 - 风险：活动图补零后柱子变细，稀疏区间可能更难读；用“活跃 N/M 天”覆盖率和 tooltip 补偿。
 - 未决：`DATA_UNTIL` 为空（空库）时“最新”的行为；建议回退到浏览器今天并显示“无数据”，实现时补边界测试。
 - 未决：日期选择器完全禁止未来日期，还是允许选择但显示空状态；本 CHG 选择“禁止 / 夹紧”，避免再次出现“未来全 0”。
-- DoR：用户已于 2026-11-16 审核通过范围；实现时把 R19–R26、R39 写入 REQ §5 并补 `tests/ac_map.json` 映射；REQ-0001 §3.6 的默认范围需由“全部数据覆盖”改为“近 7 天”。
+- DoR：用户已于 2026-11-16 审核通过范围；实现时把 R19–R26、R39 写入 REQ §5 并补 `tests/ac_map.json` 映射；usage-ledger.md §3.6 的默认范围需由“全部数据覆盖”改为“近 7 天”。
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) §3.6、R8、R15。
+- 功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md) §3.6、R8、R15。
 - 同批展示优化：[CHG-0005](CHG-0005-html-report-display-and-interaction.md)。
 - 实测报告：`usage html` 生成于 `2026-11-15T08:00:38+08:00`；payload 统计与视口测量见 §2。
 - commit：`530d311`（实现 + 测试）；`sit` / `main` 尚未合并，合并 `main` 需用户明确同意。

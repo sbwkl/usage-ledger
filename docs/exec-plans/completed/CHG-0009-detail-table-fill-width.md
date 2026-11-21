@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 R45](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[usage-ledger.md R45](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答用量问题）、R27 / R28（明细表布局）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答用量问题）、R27 / R28（明细表布局）。
 - 触发原因：用户 2026-11-16 反馈“所有的 Agent 明细部分，每行的右边都留有空白，这是 bug 还是设计”，确认按“把剩余宽度分给非冻结数据列”修复。
 - 证据：
   1. 旧逻辑在 `renderDataTable` 中把 `table.style.width` / `minWidth` 固定为所有列自然宽度之和；`STICKY_WIDTHS` 为 96 / 90 / 90 / 170 / 160，数值列 74，文本列 108。
@@ -63,7 +63,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) R45。
+- 功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md) R45。
 - commit：`26f30ad`（实现 + 测试）。
 - 截图 / 测试报告：`/tmp/chg9-report.html`、`/tmp/chg9-qoder.html`、`/tmp/chg9-trae.html` 及上述 PNG。
 

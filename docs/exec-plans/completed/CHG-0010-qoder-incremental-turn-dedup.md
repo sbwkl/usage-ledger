@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage sync` / `collectors.py`、`cli.py`、`store.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[REQ-0001 R41](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[usage-ledger.md R41](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Qoder turn credits 原先只与“本批转录扫描结果”去重。增量同�
 
 ## 2. 变更理由与证据
 
-- 对应功能卡：REQ-0001 R9 / R41（Qoder 双源 credits 合并、去重）。
+- 对应功能卡：usage-ledger.md R9 / R41（Qoder 双源 credits 合并、去重）。
 - 触发原因：2026-11-16 code review 发现增量路径未使用持久化 request ID。
 - 证据：
   1. `_sync_into()` 传入 `transcript_files` 状态；未变化转录文件不会重扫。
@@ -60,7 +60,7 @@ Qoder turn credits 原先只与“本批转录扫描结果”去重。增量同�
 
 ## 8. 关联与证据
 
-- 功能卡：REQ-0001 R9 / R41。
+- 功能卡：usage-ledger.md R9 / R41。
 - 文档修正：CHG-0006 §2 的 11-16 数据注明为首次扫描时点，最终值以 §5 为准。
 - commit：`3a121d0`（实现 + 测试）。
 - 测试：`tests.test_cli.QoderCliTest.test_incremental_backfill_skips_turn_request_seen_in_transcript`。

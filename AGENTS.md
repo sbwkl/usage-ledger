@@ -1,6 +1,6 @@
 # AGENTS.md — 项目工作区地图
 
-本目录是 `usage-ledger`——macOS 上极轻量的跨 AI 编码工具 **token / credits 用量台账**：默认离线、只读源日志、只写本地 SQLite、零第三方依赖。**本文件只是地图**：目录结构、硬性规则摘要、文档指针。架构基线在根目录 `ARCHITECTURE.md`，需求事实源在 `docs/product-specs/REQ-0001-usage-ledger.md`，变更事实源在 `docs/exec-plans/completed/CHG-0001-docs-alignment.md`，决策事实源在 `docs/design-docs/ADR-0001-source-of-truth-db-as-archive.md`，RFC 占位在 `docs/design-docs/rfcs/README.md`，开发约定与门禁在 `README.md`；动手前按「文档地图」按需读取，聊天 / issue / PR 只做同步。
+本目录是 `usage-ledger`——macOS 上极轻量的跨 AI 编码工具 **token / credits 用量台账**：默认离线、只读源日志、只写本地 SQLite、零第三方依赖。**本文件只是地图**：目录结构、硬性规则摘要、文档指针。架构基线在根目录 `ARCHITECTURE.md`，产品规格事实源在 `docs/product-specs/usage-ledger.md`，变更事实源在 `docs/exec-plans/completed/CHG-0001-docs-alignment.md`，决策事实源在 `docs/design-docs/ADR-0001-source-of-truth-db-as-archive.md`，RFC 占位在 `docs/design-docs/rfcs/README.md`，开发约定与门禁在 `README.md`；动手前按「文档地图」按需读取，聊天 / issue / PR 只做同步。
 
 ## 目录结构
 
@@ -18,7 +18,7 @@
 3. **隐私与只读**：不写源目录、不存 prompt / 正文；Trae JWT 只在刷新进程内使用，不落库、不写日志、不进 HTML；不读 Keychain / 浏览器 Cookie，不解密 Trae CN SQLCipher 库，不逆向厂商私有 API。
 4. `main` 是保护分支，只接受合并，不直接提交；**任何分支合并进 main 都必须先征得用户同意**，未经明确同意禁止合并。新特性走 `feat/<特性名>` 分支；集成测试用临时分支，测完即删，不保留长期集成分支；有未提交改动时用 `git worktree` 并行开发。完整流程见下文「开发流程」。
 5. **需求先行**：新特性先满足 DoR（REQ / CHG 已更新、AC delta 覆盖正常 / 异常 / 边界、依赖已链接），再写代码；实现中不得扩大 CHG 范围。新功能 / 跨模块行为变更先建 CHG 并登记 REQ 变更索引；一次性小修也要有极简 CHG 并回链入口。
-6. **测试门禁**：快速套件、覆盖率、skip / expectedFailure 白名单与 5 秒预算、REQ-0001 §5 AC→测试映射全部通过才算完成；Node 24 缺失导致的 skip 会被 `check_test_policy.py` 判失败，不得当环境问题忽略。
+6. **测试门禁**：快速套件、覆盖率、skip / expectedFailure 白名单与 5 秒预算、usage-ledger.md §5 AC→测试映射全部通过才算完成；Node 24 缺失导致的 skip 会被 `check_test_policy.py` 判失败，不得当环境问题忽略。
 7. 提交信息引用 CHG ID；PR 标题 / 描述引用 CHG 和 REQ。CHG 标「已验证」前证据必须写全：精确命令、环境（OS / Python / Node / commit）、通过 / 失败 / 跳过数、覆盖率与基线变化、日志或 artifact 链接；缺任一项保持「开发中」。没有部署 / 监控证据不得标「已发布」。
 8. 对话与文档用中文。
 
@@ -73,7 +73,7 @@
 | docs/DESIGN.md / FRONTEND.md / PLANS.md / PRODUCT_SENSE.md / QUALITY_SCORE.md / RELIABILITY.md / SECURITY.md | 领域宪章：设计、前端、计划、产品感知、质量评分、可靠性、安全 | 对应领域沉淀与评审时 |
 | docs/design-docs/index.md / core-beliefs.md | 设计文档索引与核心工程信念 | 沉淀 / 回顾工程价值观时 |
 | docs/design-docs/ | 设计文档、讨论纪要、ADR 与 RFC（`design-docs/rfcs/`） | 动采集、变更核心设计或需要 RFC 时 |
-| docs/product-specs/ | 产品功能卡与规格：`REQ-0001-usage-ledger.md`、`REQ-0002-testing.md`、`index.md` | 产品 / 需求、评审、开始新特性前 |
+| docs/product-specs/ | 产品功能卡与规格：`usage-ledger.md`、`ARCHITECTURE.md#9-测试体系`、`index.md` | 产品 / 需求、评审、开始新特性前 |
 | docs/exec-plans/completed/ | 已验证 CHG：`CHG-0001-docs-alignment.md` ~ `CHG-0020-docs-structure-and-dev-process.md` | 开发 / 评审时读本次 CHG |
 | docs/exec-plans/active/ | 进行中阶段 spec | 推进阶段实现时 |
 | docs/exec-plans/tech-debt-tracker.md | 技术债账本索引；权威清单见 ARCHITECTURE.md §11 | 评审、重构、排期时 |

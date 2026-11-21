@@ -6,7 +6,7 @@
 | 状态 | 已验证 |
 | Owner | wayne |
 | 所属模块 / 入口 | `AGENTS.md`、`ARCHITECTURE.md`、`docs/`、`tests/test_docs_structure.py` |
-| 关联 | [REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) |
+| 关联 | [usage-ledger.md](../../product-specs/usage-ledger.md) |
 
 ## 1. 摘要
 

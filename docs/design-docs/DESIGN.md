@@ -1,6 +1,6 @@
 # usage-ledger 实现方案（设计评审稿）
 
-> **历史文档（2026-11-15 标注）**：本文是 v0.4 设计评审稿，不再作为当前需求事实源。当前需求与验收见 [requirements/REQ-0001-usage-ledger.md](../product-specs/REQ-0001-usage-ledger.md)，当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。文中 G7 预算告警、G9 交叉校验、计价、WorkBuddy、NullStore、zstd、daemon 等均为当时方案，未全部实现；不要直接作为验收标准。
+> **历史文档（2026-11-15 标注）**：本文是 v0.4 设计评审稿，不再作为当前需求事实源。当前需求与验收见 [requirements/usage-ledger.md](../product-specs/usage-ledger.md)，当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。文中 G7 预算告警、G9 交叉校验、计价、WorkBuddy、NullStore、zstd、daemon 等均为当时方案，未全部实现；不要直接作为验收标准。
 
 | 项 | 内容 |
 |---|---|

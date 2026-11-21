@@ -1,6 +1,6 @@
 # QODER-DESIGN.md —— Qoder 用量统计扩展设计（评审稿）
 
-> **状态更新（2026-11-15）**：token 历史轨与活动轨已实现；credits / est 见 [QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)。本文保留设计沿革，当前实现以 [ARCHITECTURE.md](../../ARCHITECTURE.md) 为准；当前需求与验收见 [requirements/REQ-0001-usage-ledger.md](../product-specs/REQ-0001-usage-ledger.md)。
+> **状态更新（2026-11-15）**：token 历史轨与活动轨已实现；credits / est 见 [QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)。本文保留设计沿革，当前实现以 [ARCHITECTURE.md](../../ARCHITECTURE.md) 为准；当前需求与验收见 [requirements/usage-ledger.md](../product-specs/usage-ledger.md)。
 >
 > 日期：2026-10-30 ｜ 基线：usage-ledger v0.3.3（d331c31）
 > 一句话结论：Qoder 新版桌面端本地**没有 token 真值**；但 Qoder IDE 旧库存在**完整历史 token**（2026-06-01 ~ 2026-09-16），新版客户端存在**当前活动指标**（至今）。建议按“token 台账 + 活动台账”双轨接入，分表、分命令、分提示，**绝不相加**。

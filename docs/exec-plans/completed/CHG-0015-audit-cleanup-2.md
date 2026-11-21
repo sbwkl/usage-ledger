@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`src/usage_ledger/collectors.py`、`src/usage_ledger/trae_auth.py`、`scripts/probe.py`、`tests/test_collectors.py`、`tests/test_trae_credits.py`、`README.md`、`ARCHITECTURE.md`
-功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)（无 AC 变更）
+功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md)（无 AC 变更）
 关联：CHG-0014（同主题前序清理）、[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11 P2-9
 
 ## 1. 摘要
@@ -13,7 +13,7 @@ CHG-0014 完成审计清理后，复核仍发现 4 处零行为影响的死代�
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：无 AC 变更；属 REQ-0001 持续维护中的技术债清理。
+- 对应功能卡的问题/目标：无 AC 变更；属 usage-ledger.md 持续维护中的技术债清理。
 - 触发原因（缺陷/反馈/数据/技术债）：2026-11-17 全项目审计（CHG-0014）后的二次复核。
 - 证据：
   1. `src/usage_ledger/collectors.py` `scan_qoder_transcripts`：`max_ts` 赋值后无任何读取点（全仓库仅 `.pyc` 命中）。
@@ -50,7 +50,7 @@ CHG-0014 完成审计清理后，复核仍发现 4 处零行为影响的死代�
   - `python3 -m unittest discover -s tests -t .`：284 tests，0 failures / 0 errors / 0 skips，1.683s。
   - `uv run --with coverage python -m coverage run --branch --source=src/usage_ledger -m unittest discover -s tests -t .` + `python3 scripts/check_coverage.py coverage.json`：TOTAL 93.4%（阈值 85%，与 CHG-0014 持平）；store 96.7% / collectors 95.3% / cli 93.6% / scheduler 98.2%，全部 ok。
   - `python3 scripts/check_test_policy.py`：284 tests / 0 skip，2.008s（预算 5s），通过。
-  - `python3 scripts/check_ac_map.py`：REQ-0001 45 criteria / 98 identifiers，通过（无 AC 变更）。
+  - `python3 scripts/check_ac_map.py`：usage-ledger.md 45 criteria / 98 identifiers，通过（无 AC 变更）。
 - 手工验证：无需浏览器或真实凭证；本次不触碰网络、凭证、SQLite 写入路径。
 - 结果与证据链接：本 CHG 验证节；分支 `feat/audit-cleanup-2`。
 

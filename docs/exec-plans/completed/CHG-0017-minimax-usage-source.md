@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `usage doctor` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
 关联：探针脚本 [scripts/probe_minimax.py](../../../scripts/probe_minimax.py)
 
 ## 1. 摘要
@@ -17,7 +17,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答"每个平台、每个模型的用量"）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答"每个平台、每个模型的用量"）。
 - 触发原因：用户 2026-11-20 要求给 usage-ledger 增加 MiniMax 的用量统计。
 - 证据：以下全部来自本机实测，可用 `python3 scripts/probe_minimax.py` 复现（只读，不联网）。
 
@@ -124,7 +124,7 @@ SQLite 仍会在源目录创建空的 `-shm` / `-wal` 边文件；这是既有�
 - `src/usage_ledger/html_report.py`：`AGENT_KINDS` 把 `minimax` 归为 token 轨，补颜色 / 顺序 / 显示名。
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.8.0`（`__version__` 此前停留在 `0.6.0`、
   与 pyproject 的 `0.7.0` 漂移，`usage --version` 会报旧版本；本次随版本升级一并对齐）。
-- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与 §5.4。
+- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约、`usage-ledger.md` §3.2 与 §5.4。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
   `tests/ac_map.json` 增加 R47 映射，新增夹具 `tests/minimax_helpers.py`。
 
