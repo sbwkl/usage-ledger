@@ -103,7 +103,7 @@ usage-ledger/
 - 架构决策：[ADR-0001](docs/design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/design-docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/design-docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/design-docs/index.md](docs/design-docs/index.md)。`docs/design-docs/history/v0.4-design-review.md` 是历史设计稿，`ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0024`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0025`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
