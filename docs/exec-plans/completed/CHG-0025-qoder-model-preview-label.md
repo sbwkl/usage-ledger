@@ -40,9 +40,9 @@ Qoder 模型以界面显示名展示，取代手工一一映射。三层解析�
 
 ## 4. 验证
 
-- 命令：`python3 -m unittest discover -s tests -t .`、`uv run --with coverage ...` + `python3 scripts/check_coverage.py coverage.json`、`python3 scripts/check_test_policy.py`、`python3 scripts/check_ac_map.py`、`python3 -m compileall -q src tests scripts`。
+- 命令（与 CI 一致，固定 `TZ=UTC`）：`TZ=UTC python3 -m unittest discover -s tests -t .`、`TZ=UTC uv run --with coverage ...` + `TZ=UTC python3 scripts/check_coverage.py coverage.json`、`TZ=UTC python3 scripts/check_test_policy.py`、`TZ=UTC python3 scripts/check_ac_map.py`、`TZ=UTC python3 -m compileall -q src tests scripts`。
 - 环境：macOS（Apple Silicon）、Python 3.12；基线 main `f0c40d5`。
-- 全量套件：374 tests / 0 failures / 0 errors / 0 skips；快速套件 2.21s（预算 5s）。
+- 全量套件：374 tests / 0 failures / 0 errors / 0 skips；快速套件 2.46s（预算 5s）。非 UTC 本地时区下可能存在既有的 Trae 日期窗口测试差异，CI 与本次证据固定 `TZ=UTC`。
 - 覆盖率：TOTAL 92.5%，collectors 92.4% / cli 93.3% / scheduler 98.2% / store 96.7%，全部达标。
 - AC map：REQ-0001 49 criteria / 154 mapped identifiers（无 AC 变更）。
 - 真实数据端到端（只读）：`load_i18n_labels` 取到 19 条；`learn_qoder_model_labels` 学到 `{dfmodel: DeepSeek-Flash, qmodel_latest_preview: Qwen4-Max-Preview}`；`usage html --stateless` 输出含 `Qwen4-Max-Preview`、无原始键 `qmodel_latest_preview`。
