@@ -27,13 +27,13 @@
 | Kilo（CLI + 桌面） | ✅ | |
 | Cline（CLI + Desktop） | ✅ | 读 `~/.cline/data/sessions/**/<id>.messages.json` 中 assistant 的 `metrics`（input/output/cache read/write）；`inputTokens` 已含缓存，采集时扣除 |
 | Codex CLI | ✅ | 注意"增量 vs 累计"口径 |
-| Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（转录逐请求 + 新客户端桌面端 turn_credits，合并去重）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/QODER-DESIGN.md](docs/QODER-DESIGN.md)、[docs/QODER-CREDITS-DESIGN.md](docs/QODER-CREDITS-DESIGN.md) |
+| Qoder | ✅ 历史 token + ✅ 活动 + ✅ 额度 + ✅ 估算 | token 来自 IDE 旧库（2026-06-01 ~ 2026-09-16）；桌面端提供**活动指标**（会话/提示/工具调用/时长）、**credits 额度真值**（转录逐请求 + 新客户端桌面端 turn_credits，合并去重）与 **est 估算 token**（转录 + 上下文比例）。四轨口径不同、永不互加，见 [docs/design-docs/source-designs/QODER-DESIGN.md](docs/design-docs/source-designs/QODER-DESIGN.md)、[docs/design-docs/source-designs/QODER-CREDITS-DESIGN.md](docs/design-docs/source-designs/QODER-CREDITS-DESIGN.md) |
 | Antigravity（IDE + agy CLI） | ✅ token | 单源 `antigravity` 合并 `~/.gemini/antigravity`（IDE / hub）与 `~/.gemini/antigravity-cli`（CLI）两个**不共用**的 app data dir，读 `brain/<会话>/.system_generated/logs/transcript_full.jsonl` 里 `source=MODEL` 的 `input_tokens` / `cache_read_tokens` / `output_tokens`，用 `agent` 字段区分 `ide` / `cli`。实测两者不重叠的 `input` / `cache_read` 可直接映射；**额度本地不落盘**，不采集。只有 2026-11-20 起的会话带 token，之前的用量本地不可得 |
 | CodeArts（码道） | ✅ token | 复用共享 SQLite adapter 读 `~/.codeartsdoer/codearts-data/opencode.db`（OpenCode 旧版 `message` 表，`role` / `tokens` 在 `data` JSON 内）；`input` 不含 cache read，`tokens.total` 不采（口径与 opencode 一致）。**额度本地不落盘**，不采集。只有 2026-11-20 起的会话，之前的用量本地不可得 |
 | MiniMax Code（`mcode`） | ✅ token | 读 `~/.minimax/v2/sessions/<YYYY>/<MM>/<DD>/<会话>/messages.jsonl` 里 assistant 的 `usage`（`input` / `output` / `cacheRead` / `cacheWrite`）；实测 `totalTokens == input + output + cacheRead`，即 **`input` 已排除 cache read**，与 Claude / Codex 的非重叠口径一致。项目维度取运行库 `local_runtime_sessions.workspace_dir` 的 basename；`session_id` 优先读 `manifest.json`，缺失回退会话目录名后缀的 base64url 解码。**额度本地不落盘**，不采集；本机接入前的用量本地不可得 |
 | 腾讯 CodeBuddy CN（`codebuddy`） | ✅ token | 只读两处镜像扩展日志里 `[AgentReporter] ... Step execution metrics: ... usage={...}` 的逐 step 真值，按 `(traceId, step)` 去重；`inputTokens` / `totalTokens` 含 cache read 故不采，改采 `cachedMissTokens`（= `input − cache`）+ `cacheTokens` + `outputTokens`；模型 / 项目分别取日志 `Preparing model` 与 `genie-history` 映射的 workspace basename；`credit` 实测恒 0 故不采集额度。本机接入前日志无该字段，之前的用量本地不可得 |
 | WorkBuddy | ⏸ 未接入 | P1，需先安装 WorkBuddy 并核实样本；当前 11 个采集源不包含该源，未实现前不会出现在 doctor / 报表中 |
-| Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md) |
+| Trae CN | ⚠️ token 弱估算 + ✅ credits | 本机加密库不可读、额度不落盘；**credits** 通过客户端同源 usage 接口按会话拉取（服务端真值，需登录 JWT），**token** 通过官方 hooks 记录字符数重放为 **hook 弱估算**（`trae-cn.est`）。credits 为会话级、归属 `usage_time` 所在日；弱估算只覆盖安装 hook 后的请求，误差可能数倍，二者不可相加。见 [docs/design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md) |
 | ChatGPT 桌面端 | ❌ | 无本地数据，只有配额 |
 
 > 缺口是**厂商不下发**，不是解析器写不出来。任何工具都无法凭空造出这些平台的 token 数。工具会在 `doctor` 与报告页脚显式说明，避免"看起来没花"与"没采到"混淆。Qoder 新版本客户端已不再写 token，只保留活动元数据；活动指标用于观察 agent 使用强度，不参与 token 与成本统计。
@@ -63,15 +63,15 @@ usage-ledger/
 ├── docs/
 │   ├── README.md        文档索引与阅读顺序（REQ / CHG / ADR / 设计文档）
 │   ├── requirements/
-│   │   ├── REQ-0001-usage-ledger.md  功能卡（产品行为）
-│   │   └── REQ-0002-testing.md       功能卡（测试体系）
+│   │   ├── usage-ledger.md  功能卡（产品行为）
+│   │   └── ARCHITECTURE.md#9-测试体系       功能卡（测试体系）
 │   ├── changes/
 │   │   └── CHG-0001 ~ CHG-0018      变更记录（均已验证，状态以各 CHG 首部为准）
 │   ├── adr/
 │   │   ├── ADR-0001-source-of-truth-db-as-archive.md
 │   │   └── ADR-0002-pull-collection-no-daemon.md
 │   ├── rfcs/            跨团队 / 高不确定方案（按需）
-│   ├── DESIGN.md        历史设计稿（v0.4；当前需求见 requirements/REQ-0001）
+│   ├── DESIGN.md        历史设计稿（v0.4；当前需求见 requirements/usage-ledger.md）
 │   ├── QODER-DESIGN.md  Qoder 双轨设计（token + 活动指标）
 │   ├── QODER-CREDITS-DESIGN.md Qoder 额度 + 估算 token 设计
 │   ├── TRAE-CN-DESIGN.md Trae CN 接入与 hook 弱估算设计
@@ -98,24 +98,24 @@ usage-ledger/
 
 ## 需求、变更与决策
 
-- 功能事实源：产品行为见 [REQ-0001](docs/requirements/REQ-0001-usage-ledger.md)，测试体系见 [REQ-0002](docs/requirements/REQ-0002-testing.md)。
-- 变更记录：[docs/changes/](docs/changes/)（CHG-0001 ~ CHG-0019，均已验证；完整索引见 [docs/README.md](docs/README.md) 与 [REQ-0001 §8](docs/requirements/REQ-0001-usage-ledger.md)）。
-- 架构决策：[ADR-0001](docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/rfcs/`。
-- 文档阅读顺序与支撑文档：[docs/README.md](docs/README.md)。`docs/DESIGN.md` 是历史设计稿，`docs/ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
+- 功能事实源：产品行为见 [usage-ledger.md](docs/product-specs/usage-ledger.md)，测试体系见 [ARCHITECTURE.md §9](ARCHITECTURE.md#9-测试体系)。
+- 变更记录：[docs/exec-plans/completed/](docs/exec-plans/completed/)（CHG-0001 ~ CHG-0019，均已验证；完整索引见 [docs/design-docs/index.md](docs/design-docs/index.md) 与 [usage-ledger.md §8](docs/product-specs/usage-ledger.md)）。
+- 架构决策：[ADR-0001](docs/design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/design-docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/design-docs/rfcs/`。
+- 文档阅读顺序与支撑文档：[docs/design-docs/index.md](docs/design-docs/index.md)。`docs/design-docs/history/v0.4-design-review.md` 是历史设计稿，`ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0020`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0025`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
 
-工作流：`main` 是保护分支，只接受合并；新特性从最新 `main` 切 `feat/<特性名>`，集成走 `sit`；有未提交改动时用 `git worktree` 并行开发；合并 `main` 前必须获得用户同意。工作区根 `AGENTS.md` 的通用流程（TDD、DoR/DoD、需求管理）同时适用；在本工作区内冲突时以根 `AGENTS.md` 为准。项目补充如下：
+工作流：`main` 是保护分支，只接受合并；新特性从最新 `main` 切 `feat/<特性名>`；集成测试用临时 `tmp/integration-<特性名>` 分支，测完即删；有未提交改动时用 `git worktree` 并行开发；合并 `main` 前必须获得用户同意。工作区根 `AGENTS.md` 的通用流程（TDD、DoR/DoD、需求管理）同时适用；在本工作区内冲突时以根 `AGENTS.md` 为准。项目补充如下：
 
 - 新特性先满足 DoR：REQ / CHG 已更新，AC delta 覆盖正常 / 异常 / 边界，依赖已链接；实现中不得扩大 CHG 范围。
 - 测试命令与门禁见下文「测试与门禁」；完成后运行全量测试，更新 CHG 状态与证据，没有部署 / 监控证据不得标“已发布”。
 - CHG 标“已验证”前证据必须写全：精确命令、环境（OS / Python / Node / commit）、通过 / 失败 / 跳过数、覆盖率与基线变化、日志或 artifact 链接；缺任一项保持“开发中”。
 - 提交信息引用 CHG ID；PR 标题 / 描述引用 CHG 和 REQ。
 - 本地重装：`uv tool install --force --no-cache .`；直接运行：`PYTHONPATH=src python3 -m usage_ledger <cmd>`。
-- 边界：不要顺手修复 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §11 的 P0 / P1 / P2 问题，它们需要独立 CHG；不要逆向厂商私有 API、解密 Trae CN SQLCipher 库，或把估算值 / credits / token 真值相加；默认离线，只有 Trae CN credits 的两条显式前台刷新路径可以联网。
+- 边界：不要顺手修复 [ARCHITECTURE.md](ARCHITECTURE.md) §11 的 P0 / P1 / P2 问题，它们需要独立 CHG；不要逆向厂商私有 API、解密 Trae CN SQLCipher 库，或把估算值 / credits / token 真值相加；默认离线，只有 Trae CN credits 的两条显式前台刷新路径可以联网。
 
 ## 安装
 
@@ -308,7 +308,7 @@ usage html --strict-refresh --open            # 刷新失败时命令非 0（仍
 - **失败**：`html` 默认软回退缓存并在页面/命令行标注刷新失败与数据时间；`--strict-refresh` 才非 0。
   HTML 是生成时快照，旧文件不会因再次打开而更新。
 - **边界**：首版不做 Trae 余额/套餐配额，不落 API 的 token 字段，不做后台轮询、多账号或自动登录。
-  详见 [docs/TRAE-CN-CREDITS-DESIGN.md](docs/TRAE-CN-CREDITS-DESIGN.md)。
+  详见 [docs/design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md)。
 
 ### Hooks 弱估算（token 影子，离线）
 
@@ -401,7 +401,7 @@ python3 scripts/check_test_policy.py
 python3 scripts/check_ac_map.py
 ```
 
-CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
+CI 配置在 `.github/workflows/test.yml`：PR、`main` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
 
 ---
 

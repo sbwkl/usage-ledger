@@ -685,14 +685,18 @@ class CodeArtsCliTest(unittest.TestCase):
 
     def test_report_auto_syncs_new_codearts_messages(self):
         self.run_cli(["backfill"])
-        stamp = int(datetime(2026, 11, 20, 13, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        store = SqliteStore(self.db_path)
+        stored_us = store.source_mtimes()["codearts"]
+        store.close()
+
+        stamp = stored_us // 1_000 + 1_000
         conn = sqlite3.connect(self.codearts_db)
         conn.execute("INSERT INTO message VALUES (?,?,?,?,?)",
                      ("m3", "s1", stamp, stamp, json.dumps(codearts_message(stamp))))
         conn.commit()
         conn.close()
-        bumped = stamp * 1_000_000
-        os.utime(self.codearts_db, ns=(bumped, bumped))
+        bumped_ns = int((stored_us + 1_000_000) * 1_000)
+        os.utime(self.codearts_db, ns=(bumped_ns, bumped_ns))
 
         code, out, _ = self.run_cli(
             ["report", "--source", "codearts", "--format", "json"])
