@@ -1,5 +1,8 @@
 # ADR-0002 拉取式采集，无常驻进程
 
+> 文档库状态：current（accepted）
+> 当前事实源：ARCHITECTURE.md §4/§8
+> 索引：[design-docs/index.md](../index.md)
 | 项 | 内容 |
 |---|---|
 | ID | ADR-0002 |
@@ -7,7 +10,7 @@
 | 状态 | 接受 |
 | 日期 | 2026-10-22（DESIGN v0.4）/ 2026-11-15 归档 |
 | Owner | wayne |
-| 关联 | [usage-ledger.md](../product-specs/usage-ledger.md)、[CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[DESIGN.md](../design-docs/DESIGN.md) §10、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| 关联 | [usage-ledger.md](../../product-specs/usage-ledger.md)、[CHG-0001](../../exec-plans/completed/CHG-0001-docs-alignment.md)、[DESIGN.md](../history/v0.4-design-review.md) §10、[ARCHITECTURE.md](../../../ARCHITECTURE.md) |
 
 ## 背景
 

@@ -8,7 +8,7 @@
 | Owner | wayne |
 | 所属模块 / 入口 | `docs/`、`README.md`、`AGENTS.md` |
 | 功能卡 | [usage-ledger.md](../../product-specs/usage-ledger.md) |
-| 关联 | [ADR-0001](../../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11、commit `02e8473`（评审修订见后续 CHG-0001 提交） |
+| 关联 | [ADR-0001](../../design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11、commit `02e8473`（评审修订见后续 CHG-0001 提交） |
 
 > 说明：本变更已通过 [PR #2](https://github.com/sbwkl/usage-ledger/pull/2) 合并 `main`（`5b5f987`，2026-11-15）。文档变更没有部署产物，状态保持“已验证”，不标“已发布”。
 
@@ -23,7 +23,7 @@
 ## 1. 变更理由与证据
 
 - 工作区规范要求固定目录 `docs/product-specs/`、`docs/exec-plans/completed/`、`docs/design-docs/rfcs/`、`docs/design-docs/`；当前 `docs/` 下没有这些目录，也没有功能卡 / 变更文档。
-- [DESIGN.md](../../design-docs/DESIGN.md) 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy、zstd 等未实现；直接把它当需求事实源会持续误导。
+- [DESIGN.md](../../design-docs/history/v0.4-design-review.md) 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy、zstd 等未实现；直接把它当需求事实源会持续误导。
 - [README.md](../../../README.md) 的覆盖表把 WorkBuddy 标为已支持，但 `collectors.py` 实际只有 7 个源，README「下一步」也写明需要先安装 WorkBuddy 采集样本。
 - [ARCHITECTURE.md](../../../ARCHITECTURE.md) §0 把“设计文档与实现漂移”列为需要审核的现状问题。
 
@@ -35,7 +35,7 @@
 - 新增文档工件：
   - [usage-ledger.md](../../product-specs/usage-ledger.md)：当前功能卡，含问题 / 证据、目标 / 非目标、As-Built 功能说明（数据源契约 / CLI 命令 / 报表字段 / 存储 / HTML / 调度 / 隐私）、成功指标、R1–R18 EARS 验收、风险与变更索引。
   - [CHG-0001](./CHG-0001-docs-alignment.md)：本变更记录。
-  - [ADR-0001](../../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/ADR-0002-pull-collection-no-daemon.md)：两项已做出的架构决策。
+  - [ADR-0001](../../design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/adr/ADR-0002-pull-collection-no-daemon.md)：两项已做出的架构决策。
   - [docs/design-docs/index.md](../../../README.md)：文档索引与阅读顺序。
   - 项目级 [开发约定](../../../README.md#开发约定)（原 `AGENTS.md`）：把规范落到本项目的文档路径、测试命令、分支流程与下一批 ID。
 - 文档修正：
@@ -88,7 +88,7 @@
 ## 6. 关联
 
 - 功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md)
-- 决策：[ADR-0001](../../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/ADR-0002-pull-collection-no-daemon.md)
+- 决策：[ADR-0001](../../design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/adr/ADR-0002-pull-collection-no-daemon.md)
 - 现状问题：[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11
 - 使用说明：[README.md](../../../README.md)
 - 分支：`feat/req-docs`（从 main 切出）

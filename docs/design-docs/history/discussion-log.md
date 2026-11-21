@@ -1,7 +1,10 @@
 # 讨论纪要：从"要不要自研"到"要不要数据库"
 
-> 讨论日期：2026-10-22 ｜ 关联文档：[RESEARCH.md](../references/RESEARCH.md)（调研）、[DESIGN.md](./DESIGN.md)（方案 v0.4）
+> 讨论日期：2026-10-22 ｜ 关联文档：[RESEARCH.md](../../references/RESEARCH.md)（调研）、[DESIGN.md](./v0.4-design-review.md)（方案 v0.4）
 
+> 文档库状态：historical（historical）
+> 当前事实源：ADR / source-designs
+> 索引：[design-docs/index.md](../index.md)
 本文记录本次讨论的**问题链、关键结论、以及每轮结论对设计文档的修订**，供后续追溯"为什么是这样"。
 
 ---

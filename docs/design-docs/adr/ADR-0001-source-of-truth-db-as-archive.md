@@ -1,5 +1,8 @@
 # ADR-0001 源是唯一事实来源，SQLite 是可插拔的归档 / 索引层
 
+> 文档库状态：current（accepted）
+> 当前事实源：ARCHITECTURE.md §5
+> 索引：[design-docs/index.md](../index.md)
 | 项 | 内容 |
 |---|---|
 | ID | ADR-0001 |
@@ -7,7 +10,7 @@
 | 状态 | 接受 |
 | 日期 | 2026-10-22（DESIGN v0.4）/ 2026-11-15 归档 |
 | Owner | wayne |
-| 关联 | [usage-ledger.md](../product-specs/usage-ledger.md)、[CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[DESIGN.md](../design-docs/DESIGN.md) §4.3、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| 关联 | [usage-ledger.md](../../product-specs/usage-ledger.md)、[CHG-0001](../../exec-plans/completed/CHG-0001-docs-alignment.md)、[DESIGN.md](../history/v0.4-design-review.md) §4.3、[ARCHITECTURE.md](../../../ARCHITECTURE.md) |
 
 ## 背景
 
@@ -34,7 +37,7 @@
 ### 代价 / 后续动作
 
 - 读路径必须维持“读库 ≡ 读源”的一致性约束；新增功能两边都要覆盖。
-- `prune` 与 `sync` 的组合需要额外水位 / 区间重算机制；当前存在 P0-1（`prune` 后重放导致 `usage_daily` 重复累计），见 [ARCHITECTURE.md](../../ARCHITECTURE.md) §11。
+- `prune` 与 `sync` 的组合需要额外水位 / 区间重算机制；当前存在 P0-1（`prune` 后重放导致 `usage_daily` 重复累计），见 [ARCHITECTURE.md](../../../ARCHITECTURE.md) §11。
 - `archived=1` 明细当前不压缩，长期体积会增长（P2-1）。
 
 ## 替代方案
