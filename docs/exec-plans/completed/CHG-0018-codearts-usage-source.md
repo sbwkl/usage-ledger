@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `usage doctor` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：探针脚本 [scripts/probe_codearts.py](../../scripts/probe_codearts.py)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：探针脚本 [scripts/probe_codearts.py](../../../scripts/probe_codearts.py)
 
 > ID 说明：CHG-0017 / R47 已由 CHG-0017（MiniMax Code，已合入 main）占用，
 > 本变更按递增取 CHG-0018 / R48。分支基于 pre-minimax 的 main（`505ef0b`）开发，
@@ -222,7 +222,7 @@ python3 scripts/probe_codearts.py
 
 ## 8. 关联与证据
 
-- 探针脚本：[scripts/probe_codearts.py](../../scripts/probe_codearts.py)
+- 探针脚本：[scripts/probe_codearts.py](../../../scripts/probe_codearts.py)
 - 探针输出（本机，2026-11-20，冻结快照）：28 条 assistant；27/27 完整字段行满足
   `total == input + output + cache.read + reasoning`；重复 `message.id` 0 处；
   汇总 input 277,622 / output 6,522 / cache_read 1,329,152 / cache_write 0 /

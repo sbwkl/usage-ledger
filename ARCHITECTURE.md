@@ -4,7 +4,7 @@
 |---|---|
 | 文档状态 | v1.4（2026-11-15 二次评审修订） |
 | 代码基线 | `usage-ledger 0.6.0`；main `820a6f2`（PR #1 已合入） |
-| 文档定位 | 描述**当前实现如何工作**，不是新方案。当前需求 / AC 见 [requirements/REQ-0001-usage-ledger.md](docs/requirements/REQ-0001-usage-ledger.md)，变更记录见 [changes/CHG-0001-docs-alignment.md](docs/changes/CHG-0001-docs-alignment.md)；设计沿革与动机见 [DESIGN.md](docs/design-docs/DESIGN.md)、[QODER-DESIGN.md](docs/design-docs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](docs/design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](docs/design-docs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](docs/design-docs/CLINE-DESIGN.md) |
+| 文档定位 | 描述**当前实现如何工作**，不是新方案。当前需求 / AC 见 [requirements/REQ-0001-usage-ledger.md](docs/product-specs/REQ-0001-usage-ledger.md)，变更记录见 [changes/CHG-0001-docs-alignment.md](docs/exec-plans/completed/CHG-0001-docs-alignment.md)；设计沿革与动机见 [DESIGN.md](docs/design-docs/DESIGN.md)、[QODER-DESIGN.md](docs/design-docs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](docs/design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](docs/design-docs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](docs/design-docs/CLINE-DESIGN.md) |
 | 验收基线 | `python3 -m unittest discover -s tests -t .` → **159 tests OK** |
 | 阅读顺序 | 审核者先看 §0、§10、§11、§12；实现细节按需查 §4–§9 |
 

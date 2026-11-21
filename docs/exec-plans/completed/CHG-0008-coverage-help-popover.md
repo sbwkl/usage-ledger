@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 R30 / R44](../requirements/REQ-0001-usage-ledger.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 R30 / R44](../../product-specs/REQ-0001-usage-ledger.md)
 
 ## 1. 摘要
 
@@ -62,7 +62,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) R30 / R44。
+- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) R30 / R44。
 - commit：`7ff22fb`（实现 + 测试 + 文档）。
 - 截图 / 测试报告：`/tmp/chg8-report.html`、`/tmp/chg8-1440.png`、`/tmp/chg8-500.png`。
 

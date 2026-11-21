@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `usage doctor` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：探针脚本 [scripts/probe_codebuddy.py](../../scripts/probe_codebuddy.py)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：探针脚本 [scripts/probe_codebuddy.py](../../../scripts/probe_codebuddy.py)
 
 > ID 说明：CHG-0017 / R47（MiniMax Code）、CHG-0018 / R48（CodeArts）已占用，
 > 本变更按递增取 CHG-0019 / R49。
@@ -206,7 +206,7 @@ offline with no network calls, and expose the rows under the single source `code
 
 ## 8. 关联与证据
 
-- 探针脚本：[scripts/probe_codebuddy.py](../../scripts/probe_codebuddy.py)
+- 探针脚本：[scripts/probe_codebuddy.py](../../../scripts/probe_codebuddy.py)
 - 开发基线：main `50a73a0`；特性分支 `feat/codebuddy-usage-source`。
 - issue / PR：暂无。
 - 测试 / 覆盖率证据：见 §5；探针输出保存于 `/tmp/codebuddy-probe-final.txt`（临时文件，不入仓库）。

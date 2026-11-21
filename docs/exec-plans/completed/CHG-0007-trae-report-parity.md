@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[REQ-0001 R42 / R43](../requirements/REQ-0001-usage-ledger.md)、[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[REQ-0001 R42 / R43](../../product-specs/REQ-0001-usage-ledger.md)、[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)
 
 ## 1. 摘要
 
@@ -75,7 +75,7 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) R15、R29、R32、R42、R43。
+- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) R15、R29、R32、R42、R43。
 - 截图：`/tmp/report-qoder.png`、`/tmp/report-trae.png`（2026-11-16，1440px）。
 - commit：`735d00a`（实现 + 测试 + 文档）。
 - 日志 / 截图 / 测试报告：`/tmp/chg7-report.html`、`/tmp/chg7-qoder.png`、`/tmp/chg7-trae.png`、`/tmp/chg7-qoder-500.png`、`/tmp/chg7-trae-500.png`。

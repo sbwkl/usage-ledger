@@ -6,7 +6,7 @@
 | 类型 | 功能卡 |
 | 状态 | 探索 |
 | Owner | wayne |
-| 关联 | [REQ-0001](REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[ARCHITECTURE.md §11](../../ARCHITECTURE.md)、`tests/` |
+| 关联 | [REQ-0001](REQ-0001-usage-ledger.md)、[CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[ARCHITECTURE.md §11](../../ARCHITECTURE.md)、`tests/` |
 | 代码基线 | usage-ledger v0.6.0（main `5b5f987`，2026-11-15） |
 | 平台 | macOS（Apple Silicon）；Python ≥3.11；Node 24（仅测试用） |
 | 最后更新 | 2026-11-16 |
@@ -292,7 +292,7 @@ E2E 是最接近真实使用的证据层，因此不按“抽样几条边界”�
 
 | CHG ID | 标题 | 状态 | 链接 |
 |---|---|---|---|
-| CHG-0002 | 测试门禁与覆盖率基线（R2–R6，R17/R18 快速套件部分） | 已验证（未合并 main） | [CHG-0002](../changes/CHG-0002-test-gates.md) |
+| CHG-0002 | 测试门禁与覆盖率基线（R2–R6，R17/R18 快速套件部分） | 已验证（未合并 main） | [CHG-0002](../exec-plans/completed/CHG-0002-test-gates.md) |
 
 > 后续按“可独立验收、可独立回滚”继续拆分：数据正确性回归（R1/R11/R13）、CLI 用户旅程 E2E（R8–R10/R19/R20）、浏览器 E2E（R7）、鲁棒性与契约（R12/R14–R17）。
 
@@ -315,7 +315,7 @@ E2E 是最接近真实使用的证据层，因此不按“抽样几条边界”�
 ## 12. 链接
 
 - 产品功能事实源：[REQ-0001](REQ-0001-usage-ledger.md)
-- 文档体系变更：[CHG-0001](../changes/CHG-0001-docs-alignment.md)
+- 文档体系变更：[CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)
 - 当前实现与已知问题：[ARCHITECTURE.md](../../ARCHITECTURE.md)（§11）
 - 测试目录：`../../tests/`
 - 运行与分支约定：[README.md 的开发约定](../../README.md#开发约定)

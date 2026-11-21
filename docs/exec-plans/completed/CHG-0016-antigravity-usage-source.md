@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：探针脚本 [scripts/probe_antigravity.py](../../scripts/probe_antigravity.py)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：探针脚本 [scripts/probe_antigravity.py](../../../scripts/probe_antigravity.py)
 
 ## 1. 摘要
 
@@ -165,7 +165,7 @@ python3 scripts/probe_antigravity.py
 
 ## 8. 关联与证据
 
-- 探针脚本：[scripts/probe_antigravity.py](../../scripts/probe_antigravity.py)
+- 探针脚本：[scripts/probe_antigravity.py](../../../scripts/probe_antigravity.py)
 - 探针输出（本机，2026-11-20）：ide 129 文件 / 15,480 step，cli 3 文件 / 339 step；带 token 17 条（ide 15 / cli 2）；合计 input 87,489 / output 8,737 / cache_read 212,385；覆盖 1 天。
 - 基线：main `a81870f`。
 - issue/PR：无。

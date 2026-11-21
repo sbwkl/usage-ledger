@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage sync` / `collectors.py`、`cli.py`、`store.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[REQ-0001 R41](../requirements/REQ-0001-usage-ledger.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[REQ-0001 R41](../../product-specs/REQ-0001-usage-ledger.md)
 
 ## 1. 摘要
 

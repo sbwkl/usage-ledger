@@ -6,7 +6,7 @@
 | 类型 | 功能卡 |
 | 状态 | 活跃 |
 | Owner | wayne |
-| 关联 | [CHG-0001](../changes/CHG-0001-docs-alignment.md)、[CHG-0003](../changes/CHG-0003-docs-status.md)、[ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| 关联 | [CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md)、[ADR-0001](../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../design-docs/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | 代码基线 | usage-ledger v0.6.0（main `820a6f2`，2026-11-15） |
 | 平台 | macOS（Apple Silicon），单机、单用户、本地 |
 | 最后更新 | 2026-11-16 |
@@ -264,8 +264,8 @@ usage est --source trae-cn --group-by day,model
 - **估算开关**：Qoder 影子估算与 Trae 弱估算默认关闭，仅在选中对应 Agent 且存在估算数据时显示开关；开关文案与 `aria-label` 随选中 Agent 生成。关闭时估算不进入 KPI、图表、Top 8、明细表和页脚计数；打开后 Qoder 显示影子 est、Trae 显示弱估算，始终注明不可与 credits 相加。
 - **活动指标**：仅选中 qoder 时显示，折叠在页面底部，不参与任何用量计算；展开后分页并冻结日期 / 项目，折叠时跳过重绘，只挂载当前页行。Trae 没有活动数据时不渲染空活动区。
 - **数据新鲜度**：Trae credits 状态（已刷新 / 离线缓存 / 刷新失败 / 未同步）放入页首问号按钮打开的“口径与数据覆盖”说明层，且仅选中 Trae 时渲染；由后端 `coverage["trae-cn.credits"]` 驱动，不在前端猜测；有 warn / error 时问号按钮显示提醒点。
-- **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；可选“聚焦有数据区间”默认关闭，关闭时恢复近 7 天。见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md)。
-- **展示与交互**：覆盖说明、Trae 状态、生成时间与行数口径不再单独占据报告卡片，统一收进页首问号按钮（`?`）打开的说明层；生成时间只出现一次，帮助层的“本页”计数随筛选刷新。筛选行使用固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件的宽高与换行；图表 tooltip 支持触控与键盘；页面滚动后保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`，URL 优先，布尔开关接受 `true` / `"1"`，无效状态丢弃或夹紧；主题仍单独持久化。见 [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md)、[CHG-0008](../changes/CHG-0008-coverage-help-popover.md)、[CHG-0011](../changes/CHG-0011-html-boolean-state.md)、[CHG-0012](../changes/CHG-0012-html-filter-sync.md)。
+- **日期范围**：默认取截至数据日的近 7 个自然日（含端点，起点不早于数据起点），并保留“全部”为全量，避免把单日 / 短周期 Agent 的图压成一条线；日期预设与选择器锚定数据截止日，不允许未来日期；可选“聚焦有数据区间”默认关闭，关闭时恢复近 7 天。见 [CHG-0004](../exec-plans/completed/CHG-0004-html-report-empty-state-and-filters.md)。
+- **展示与交互**：覆盖说明、Trae 状态、生成时间与行数口径不再单独占据报告卡片，统一收进页首问号按钮（`?`）打开的说明层；生成时间只出现一次，帮助层的“本页”计数随筛选刷新。筛选行使用固定宽度，切换 Agent 不改变模型 / 项目 / 搜索控件的宽高与换行；图表 tooltip 支持触控与键盘；页面滚动后保留紧凑粘性筛选条与回到顶部，≤640px 折叠为“筛选”抽屉；筛选 / 排序 / 页码写入 URL hash 与 `localStorage`，URL 优先，布尔开关接受 `true` / `"1"`，无效状态丢弃或夹紧；主题仍单独持久化。见 [CHG-0005](../exec-plans/completed/CHG-0005-html-report-display-and-interaction.md)、[CHG-0008](../exec-plans/completed/CHG-0008-coverage-help-popover.md)、[CHG-0011](../exec-plans/completed/CHG-0011-html-boolean-state.md)、[CHG-0012](../exec-plans/completed/CHG-0012-html-filter-sync.md)。
 - **快照属性**：HTML 是生成时快照，再次打开旧文件不会更新；生成过程中可能按联网规则刷新 Trae credits。
 
 ### 3.7 新鲜度与调度
@@ -418,7 +418,7 @@ usage est --source trae-cn --group-by day,model
 
 > 上述问题需要独立 CHG 修复，不在本次文档整理范围内；修复前不得在 README / 报告中宣称已解决。
 
-> HTML 报表的交互缺口（2026-11-16 实测）见 [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) 与 [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md)；它们是独立变更，不与上表的 P0/P1 编号混用。
+> HTML 报表的交互缺口（2026-11-16 实测）见 [CHG-0004](../exec-plans/completed/CHG-0004-html-report-empty-state-and-filters.md) 与 [CHG-0005](../exec-plans/completed/CHG-0005-html-report-display-and-interaction.md)；它们是独立变更，不与上表的 P0/P1 编号混用。
 
 ### 6.2 持续风险
 
@@ -448,8 +448,8 @@ usage est --source trae-cn --group-by day,model
 
 | 决策 | 结论 | 载体 |
 |---|---|---|
-| 事实源与存储 | 源是唯一事实来源；SQLite 只做归档 + 索引；`--stateless` 可完全绕过 DB | [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md) |
-| 采集模型 | 拉取式、无常驻进程；每小时增量 + 每日全量；`live` 直读源 | [ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md) |
+| 事实源与存储 | 源是唯一事实来源；SQLite 只做归档 + 索引；`--stateless` 可完全绕过 DB | [ADR-0001](../design-docs/ADR-0001-source-of-truth-db-as-archive.md) |
+| 采集模型 | 拉取式、无常驻进程；每小时增量 + 每日全量；`live` 直读源 | [ADR-0002](../design-docs/ADR-0002-pull-collection-no-daemon.md) |
 | 口径隔离 | token 真值 / credits / est / activity 分轨；任何两轨不相加；跨厂商 credits 不相加 | 本文 §2.2、[QODER-CREDITS-DESIGN.md](../design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) |
 | 联网例外 | 仅 Trae CN credits 的两条前台刷新路径联网；其余默认离线 | 本文 R11、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) |
 | 技术选型 | Python ≥3.11、标准库 only、零第三方依赖、SQLite WAL、launchd | [pyproject.toml](../../pyproject.toml)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
@@ -460,25 +460,25 @@ usage est --source trae-cn --group-by day,model
 
 | CHG ID | 标题 | 状态 | 链接 |
 |---|---|---|---|
-| CHG-0001 | 需求 / 变更文档体系对齐 | 已验证 | [CHG-0001](../changes/CHG-0001-docs-alignment.md) |
-| CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../changes/CHG-0003-docs-status.md) |
-| CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../changes/CHG-0004-html-report-empty-state-and-filters.md) |
-| CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../changes/CHG-0005-html-report-display-and-interaction.md) |
-| CHG-0006 | 补齐 Qoder 桌面端 turn credits | 已验证 | [CHG-0006](../changes/CHG-0006-qoder-turn-credits.md) |
-| CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 已验证 | [CHG-0007](../changes/CHG-0007-trae-report-parity.md) |
-| CHG-0008 | 口径说明改为问号帮助层 | 已验证 | [CHG-0008](../changes/CHG-0008-coverage-help-popover.md) |
-| CHG-0009 | 明细表填满卡片宽度 | 已验证 | [CHG-0009](../changes/CHG-0009-detail-table-fill-width.md) |
-| CHG-0010 | Qoder turn credits 增量去重与历史重复清理 | 已验证 | [CHG-0010](../changes/CHG-0010-qoder-incremental-turn-dedup.md) |
-| CHG-0011 | HTML 布尔筛选状态恢复 | 已验证 | [CHG-0011](../changes/CHG-0011-html-boolean-state.md) |
-| CHG-0012 | HTML 筛选后的页脚与 Top 8 同步 | 已验证 | [CHG-0012](../changes/CHG-0012-html-filter-sync.md) |
-| CHG-0013 | 明细合计的来源专用列显示 | 已验证 | [CHG-0013](../changes/CHG-0013-html-total-source-columns.md) |
-| CHG-0014 | 审计清理：重复键、死代码与过期文档引用 | 已验证 | [CHG-0014](../changes/CHG-0014-audit-cleanup.md) |
-| CHG-0015 | 审计清理（二）：死代码、过期注释与测试文档校准 | 已验证 | [CHG-0015](../changes/CHG-0015-audit-cleanup-2.md) |
-| CHG-0016 | 接入 Google Antigravity 用量（IDE / agy 双目录合并） | 已验证 | [CHG-0016](../changes/CHG-0016-antigravity-usage-source.md) |
-| CHG-0017 | 接入 MiniMax Code 用量（会话 messages.jsonl + 运行库项目映射） | 已验证 | [CHG-0017](../changes/CHG-0017-minimax-usage-source.md) |
-| CHG-0018 | 接入 CodeArts（码道）用量（复用 SQLite agent adapter） | 已验证 | [CHG-0018](../changes/CHG-0018-codearts-usage-source.md) |
-| CHG-0019 | 接入腾讯 CodeBuddy CN 用量（双目录日志镜像去重） | 已验证 | [CHG-0019](../changes/CHG-0019-codebuddy-usage-source.md) |
-| CHG-0020 | 文档结构调整与开发流程入规 | 开发中 | [CHG-0020](../changes/CHG-0020-docs-structure-and-dev-process.md) |
+| CHG-0001 | 需求 / 变更文档体系对齐 | 已验证 | [CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md) |
+| CHG-0003 | 修正 CHG-0001 / REQ-0001 的合并状态 | 已验证 | [CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md) |
+| CHG-0004 | HTML 报表空状态与筛选联动修复 | 已验证 | [CHG-0004](../exec-plans/completed/CHG-0004-html-report-empty-state-and-filters.md) |
+| CHG-0005 | HTML 报表展示与交互优化 | 已验证 | [CHG-0005](../exec-plans/completed/CHG-0005-html-report-display-and-interaction.md) |
+| CHG-0006 | 补齐 Qoder 桌面端 turn credits | 已验证 | [CHG-0006](../exec-plans/completed/CHG-0006-qoder-turn-credits.md) |
+| CHG-0007 | Trae CN credits 展示结构对齐 Qoder | 已验证 | [CHG-0007](../exec-plans/completed/CHG-0007-trae-report-parity.md) |
+| CHG-0008 | 口径说明改为问号帮助层 | 已验证 | [CHG-0008](../exec-plans/completed/CHG-0008-coverage-help-popover.md) |
+| CHG-0009 | 明细表填满卡片宽度 | 已验证 | [CHG-0009](../exec-plans/completed/CHG-0009-detail-table-fill-width.md) |
+| CHG-0010 | Qoder turn credits 增量去重与历史重复清理 | 已验证 | [CHG-0010](../exec-plans/completed/CHG-0010-qoder-incremental-turn-dedup.md) |
+| CHG-0011 | HTML 布尔筛选状态恢复 | 已验证 | [CHG-0011](../exec-plans/completed/CHG-0011-html-boolean-state.md) |
+| CHG-0012 | HTML 筛选后的页脚与 Top 8 同步 | 已验证 | [CHG-0012](../exec-plans/completed/CHG-0012-html-filter-sync.md) |
+| CHG-0013 | 明细合计的来源专用列显示 | 已验证 | [CHG-0013](../exec-plans/completed/CHG-0013-html-total-source-columns.md) |
+| CHG-0014 | 审计清理：重复键、死代码与过期文档引用 | 已验证 | [CHG-0014](../exec-plans/completed/CHG-0014-audit-cleanup.md) |
+| CHG-0015 | 审计清理（二）：死代码、过期注释与测试文档校准 | 已验证 | [CHG-0015](../exec-plans/completed/CHG-0015-audit-cleanup-2.md) |
+| CHG-0016 | 接入 Google Antigravity 用量（IDE / agy 双目录合并） | 已验证 | [CHG-0016](../exec-plans/completed/CHG-0016-antigravity-usage-source.md) |
+| CHG-0017 | 接入 MiniMax Code 用量（会话 messages.jsonl + 运行库项目映射） | 已验证 | [CHG-0017](../exec-plans/completed/CHG-0017-minimax-usage-source.md) |
+| CHG-0018 | 接入 CodeArts（码道）用量（复用 SQLite agent adapter） | 已验证 | [CHG-0018](../exec-plans/completed/CHG-0018-codearts-usage-source.md) |
+| CHG-0019 | 接入腾讯 CodeBuddy CN 用量（双目录日志镜像去重） | 已验证 | [CHG-0019](../exec-plans/completed/CHG-0019-codebuddy-usage-source.md) |
+| CHG-0020 | 文档结构调整与开发流程入规 | 开发中 | [CHG-0020](../exec-plans/completed/CHG-0020-docs-structure-and-dev-process.md) |
 
 > 2026-11-20：CHG-0019 新增 R49 并修改 §3.2 数据源契约（CodeBuddy 双目录日志镜像、按 `(traceId, step)` 去重、非重叠 token 口径、额度不采集、genie-history 目录名 padding quirk）：340 tests / 0 skip、覆盖率 92.8%、AC map 49 criteria / 154 identifiers；本机实测 88 文件 / 117 条唯一记录 / 16,034,512 tokens，读写一致，doctor / html 正常；PR #12 修复项目映射解码后 20/20 目录正确解出。
 >

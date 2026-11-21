@@ -1,6 +1,6 @@
 # AGENTS.md — 项目工作区地图
 
-本目录是 `usage-ledger`——macOS 上极轻量的跨 AI 编码工具 **token / credits 用量台账**：默认离线、只读源日志、只写本地 SQLite、零第三方依赖。**本文件只是地图**：目录结构、硬性规则摘要、文档指针。架构基线在根目录 `ARCHITECTURE.md`，需求事实源在 `docs/requirements/`，变更事实源在 `docs/changes/`，决策事实源在 `docs/adr/`，开发约定与门禁在 `README.md`；动手前按「文档地图」按需读取，聊天 / issue / PR 只做同步。
+本目录是 `usage-ledger`——macOS 上极轻量的跨 AI 编码工具 **token / credits 用量台账**：默认离线、只读源日志、只写本地 SQLite、零第三方依赖。**本文件只是地图**：目录结构、硬性规则摘要、文档指针。架构基线在根目录 `ARCHITECTURE.md`，需求事实源在 `docs/product-specs/REQ-0001-usage-ledger.md`，变更事实源在 `docs/exec-plans/completed/CHG-0001-docs-alignment.md`，决策事实源在 `docs/design-docs/ADR-0001-source-of-truth-db-as-archive.md`，RFC 占位在 `docs/design-docs/rfcs/README.md`，开发约定与门禁在 `README.md`；动手前按「文档地图」按需读取，聊天 / issue / PR 只做同步。
 
 ## 目录结构
 
@@ -72,15 +72,11 @@
 | ARCHITECTURE.md | As-Built 架构总览，含 §11 已知问题清单 | 了解整体结构、排障、审计时 |
 | docs/DESIGN.md / FRONTEND.md / PLANS.md / PRODUCT_SENSE.md / QUALITY_SCORE.md / RELIABILITY.md / SECURITY.md | 领域宪章：设计、前端、计划、产品感知、质量评分、可靠性、安全 | 对应领域沉淀与评审时 |
 | docs/design-docs/index.md / core-beliefs.md | 设计文档索引与核心工程信念 | 沉淀 / 回顾工程价值观时 |
-| docs/design-docs/ | 具体设计文档与讨论纪要 | 动某源采集或回顾设计背景时 |
-| docs/requirements/ | 功能卡：REQ-0001 / REQ-0002 | 产品 / 需求、评审、开始新特性前 |
-| docs/changes/ | 变更文档 CHG-0001 ~ CHG-0020 | 开发 / 评审时读本次 CHG |
-| docs/adr/ | ADR-0001 / ADR-0002 | 变更核心设计前 |
-| docs/rfcs/ | RFC 占位 | 需要 RFC 时 |
+| docs/design-docs/ | 设计文档、讨论纪要、ADR 与 RFC（`design-docs/rfcs/`） | 动采集、变更核心设计或需要 RFC 时 |
+| docs/product-specs/ | 产品功能卡与规格：`REQ-0001-usage-ledger.md`、`REQ-0002-testing.md`、`index.md` | 产品 / 需求、评审、开始新特性前 |
+| docs/exec-plans/completed/ | 已验证 CHG：`CHG-0001-docs-alignment.md` ~ `CHG-0020-docs-structure-and-dev-process.md` | 开发 / 评审时读本次 CHG |
 | docs/exec-plans/active/ | 进行中阶段 spec | 推进阶段实现时 |
-| docs/exec-plans/completed/ | 已完成特性归档 | 回顾决策背景时 |
 | docs/exec-plans/tech-debt-tracker.md | 技术债账本索引；权威清单见 ARCHITECTURE.md §11 | 评审、重构、排期时 |
-| docs/product-specs/ | 新特性规格（index.md 为索引；REQ 仍是规格事实源） | 写新特性规格时 |
 | docs/references/ | RESEARCH.md / PROBE.md 调研与实测证据 | 查选型证据 / 数据边界时 |
 | docs/generated/db-schema.md | SQLite schema 快照（源自 store.py，勿手改） | 查看 / 核对数据库结构时 |
 | README.md | 项目定位、覆盖能力、开发约定与门禁 | 首次了解项目、开发前核对约定 |

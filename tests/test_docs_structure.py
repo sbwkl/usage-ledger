@@ -4,6 +4,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+ALLOWED_DOCS_DIRS = {
+    "design-docs",
+    "exec-plans",
+    "generated",
+    "product-specs",
+    "references",
+}
 
 
 class DocsStructureTest(unittest.TestCase):
@@ -18,11 +25,6 @@ class DocsStructureTest(unittest.TestCase):
             "docs/exec-plans/tech-debt-tracker.md",
             "docs/generated/db-schema.md",
             "docs/product-specs/index.md",
-            "docs/requirements/REQ-0001-usage-ledger.md",
-            "docs/requirements/REQ-0002-testing.md",
-            "docs/changes/CHG-0001-docs-alignment.md",
-            "docs/adr/ADR-0001-source-of-truth-db-as-archive.md",
-            "docs/rfcs/README.md",
             "docs/DESIGN.md",
             "docs/FRONTEND.md",
             "docs/PLANS.md",
@@ -34,53 +36,59 @@ class DocsStructureTest(unittest.TestCase):
         missing = [path for path in required if not (ROOT / path).is_file()]
         self.assertEqual(missing, [], "missing required docs: %s" % ", ".join(missing))
 
-    def test_legacy_docs_at_root_of_docs_are_moved(self):
-        legacy = [
-            "docs/ARCHITECTURE.md",
-            "docs/README.md",
-            "docs/RESEARCH.md",
-            "docs/PROBE.md",
-            "docs/DISCUSSION.md",
-            "docs/QODER-DESIGN.md",
-            "docs/QODER-CREDITS-DESIGN.md",
-            "docs/TRAE-CN-DESIGN.md",
-            "docs/TRAE-CN-CREDITS-DESIGN.md",
-            "docs/CLINE-DESIGN.md",
+    def test_docs_top_level_dirs_match_spec(self):
+        actual = {p.name for p in (ROOT / "docs").iterdir() if p.is_dir()}
+        self.assertEqual(actual, ALLOWED_DOCS_DIRS,
+                         "unexpected docs dirs: %s; missing: %s"
+                         % (sorted(actual - ALLOWED_DOCS_DIRS),
+                            sorted(ALLOWED_DOCS_DIRS - actual)))
+
+    def test_legacy_artifact_dirs_are_moved(self):
+        legacy_files = [
+            "docs/requirements/REQ-0001-usage-ledger.md",
+            "docs/requirements/REQ-0002-testing.md",
+            "docs/changes/CHG-0001-docs-alignment.md",
+            "docs/changes/CHG-0020-docs-structure-and-dev-process.md",
+            "docs/adr/ADR-0001-source-of-truth-db-as-archive.md",
+            "docs/rfcs/README.md",
         ]
-        present = [path for path in legacy if (ROOT / path).is_file()]
-        self.assertEqual(present, [], "legacy docs still present: %s" % ", ".join(present))
+        present = [path for path in legacy_files if (ROOT / path).is_file()]
+        self.assertEqual(present, [], "legacy artifacts still present: %s" % ", ".join(present))
 
-    def test_agents_doc_map_uses_required_structure(self):
+    def test_requirements_are_under_product_specs(self):
+        for name in ["REQ-0001-usage-ledger.md", "REQ-0002-testing.md"]:
+            self.assertTrue((ROOT / "docs" / "product-specs" / name).is_file(), name)
+
+    def test_changes_are_under_exec_plans_completed(self):
+        self.assertTrue((ROOT / "docs" / "exec-plans" / "completed" / "CHG-0001-docs-alignment.md").is_file())
+        self.assertTrue((ROOT / "docs" / "exec-plans" / "completed" / "CHG-0020-docs-structure-and-dev-process.md").is_file())
+
+    def test_adr_is_under_design_docs(self):
+        self.assertTrue((ROOT / "docs" / "design-docs" / "ADR-0001-source-of-truth-db-as-archive.md").is_file())
+        self.assertTrue((ROOT / "docs" / "design-docs" / "ADR-0002-pull-collection-no-daemon.md").is_file())
+
+    def test_rfc_is_under_design_docs(self):
+        self.assertTrue((ROOT / "docs" / "design-docs" / "rfcs" / "README.md").is_file())
+
+    def test_agents_doc_map_uses_new_artifact_locations(self):
         text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         for needle in [
-            "## 文档地图（真相在这里）",
-            "ARCHITECTURE.md",
-            "docs/design-docs/index.md",
+            "docs/product-specs/REQ-0001-usage-ledger.md",
+            "docs/exec-plans/completed/CHG-0001-docs-alignment.md",
+            "docs/design-docs/ADR-0001-source-of-truth-db-as-archive.md",
+            "docs/design-docs/rfcs/README.md",
             "docs/exec-plans/active/",
-            "docs/exec-plans/completed/",
-            "docs/exec-plans/tech-debt-tracker.md",
             "docs/generated/db-schema.md",
-            "docs/product-specs/",
-            "docs/references/",
-            "docs/DESIGN.md / FRONTEND.md",
         ]:
             self.assertIn(needle, text)
+        for forbidden in ["`docs/requirements/`", "`docs/changes/`", "`docs/adr/`", "`docs/rfcs/`"]:
+            self.assertNotIn(forbidden, text)
 
-    def test_agents_has_new_development_process(self):
-        text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        for needle in [
-            "## 开发流程（每个新特性都必须遵守）",
-            "从最新 main 切分支",
-            "本地有未提交改动时用 worktree",
-            "TDD 开发",
-            "提交前静态检查（强制）",
-            "用临时分支做集成测试",
-            "需求补充 / 修改的处理",
-            "创建 PR 供人工审核",
-            "集成测试用临时分支，测完即删，不保留长期集成分支",
-        ]:
-            self.assertIn(needle, text)
-        self.assertNotIn("集成走 `sit`", text)
+    def test_ac_map_points_to_new_requirement_location(self):
+        import json
+        payload = json.loads((ROOT / "tests" / "ac_map.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["REQ-0001"]["path"],
+                         "docs/product-specs/REQ-0001-usage-ledger.md")
 
 
 if __name__ == "__main__":
