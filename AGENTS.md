@@ -17,9 +17,9 @@
 2. **口径不可混加**：token 真值 / 活动指标 / credits 额度 / est 估算四轨分表分示，任何两轨都不相加；缺失数据不伪造 0、估算永不冒充真值。
 3. **隐私与只读**：不写源目录、不存 prompt / 正文；Trae JWT 只在刷新进程内使用，不落库、不写日志、不进 HTML；不读 Keychain / 浏览器 Cookie，不解密 Trae CN SQLCipher 库，不逆向厂商私有 API。
 4. `main` 是保护分支，只接受合并，不直接提交；**任何分支合并进 main 都必须先征得用户同意**，未经明确同意禁止合并。新特性走 `feat/<特性名>` 分支；集成测试用临时分支，测完即删，不保留长期集成分支；有未提交改动时用 `git worktree` 并行开发。完整流程见下文「开发流程」。
-5. **需求先行**：新特性先满足 DoR（REQ / CHG 已更新、AC delta 覆盖正常 / 异常 / 边界、依赖已链接），再写代码；实现中不得扩大 CHG 范围。新功能 / 跨模块行为变更先建 CHG 并登记 REQ 变更索引；一次性小修也要有极简 CHG 并回链入口。
+5. **需求先行**：产品行为变化先更新 `docs/product-specs/usage-ledger.md`；新功能 / 跨模块行为变更先建变更文档并链接对应规格章节，AC delta 覆盖正常 / 异常 / 边界后再写代码，实现中不得扩大变更范围。历史 `REQ-xxxx` / `CHG-xxxx` / `ADR-xxxx` 编号冻结，不再为新文档分配顺序编号；新增文档使用语义化主题路径（变更文档用 `YYYY-MM-DD-<主题>.md`，开发中放 `exec-plans/active/`，验证后移入 `exec-plans/completed/`）。
 6. **测试门禁**：快速套件、覆盖率、skip / expectedFailure 白名单与 5 秒预算、usage-ledger.md §5 AC→测试映射全部通过才算完成；Node 24 缺失导致的 skip 会被 `check_test_policy.py` 判失败，不得当环境问题忽略。
-7. 提交信息引用 CHG ID；PR 标题 / 描述引用 CHG 和 REQ。CHG 标「已验证」前证据必须写全：精确命令、环境（OS / Python / Node / commit）、通过 / 失败 / 跳过数、覆盖率与基线变化、日志或 artifact 链接；缺任一项保持「开发中」。没有部署 / 监控证据不得标「已发布」。
+7. 提交信息引用变更文档路径或主题；PR 标题 / 描述引用产品规格章节与变更文档路径。CHG 标「已验证」前证据必须写全：精确命令、环境（OS / Python / Node / commit）、通过 / 失败 / 跳过数、覆盖率与基线变化、日志或 artifact 链接；缺任一项保持「开发中」。没有部署 / 监控证据不得标「已发布」。
 8. 对话与文档用中文。
 
 ## 开发流程（每个新特性都必须遵守）
@@ -74,7 +74,7 @@
 | docs/design-docs/index.md / core-beliefs.md | 设计文档索引与核心工程信念 | 沉淀 / 回顾工程价值观时 |
 | docs/design-docs/ | 设计知识库：`index.md` 状态索引、`core-beliefs.md`、`adr/`、`rfcs/`、`source-designs/`、`history/` | 理解设计理由、查 ADR / RFC、追溯历史时 |
 | docs/product-specs/ | 产品功能卡与规格：`usage-ledger.md`、`ARCHITECTURE.md#9-测试体系`、`index.md` | 产品 / 需求、评审、开始新特性前 |
-| docs/exec-plans/completed/ | 已验证 CHG：`CHG-0001-docs-alignment.md` ~ `CHG-0025-qoder-model-preview-label.md` | 开发 / 评审时读本次 CHG |
+| docs/exec-plans/completed/ | 已验证变更记录；历史编号文档与语义化主题文档并存，状态以文档头为准 | 开发 / 评审时读本次变更文档 |
 | docs/exec-plans/active/ | 进行中阶段 spec | 推进阶段实现时 |
 | docs/exec-plans/tech-debt-tracker.md | 技术债账本索引；权威清单见 ARCHITECTURE.md §11 | 评审、重构、排期时 |
 | docs/references/ | RESEARCH.md / PROBE.md 调研与实测证据 | 查选型证据 / 数据边界时 |
