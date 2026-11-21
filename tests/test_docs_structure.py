@@ -132,5 +132,27 @@ class DocsStructureTest(unittest.TestCase):
 
 
 
+    def test_pr13_review_consistency(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("CHG-0024", readme)
+        self.assertNotIn("集成走 `sit`", readme)
+
+        spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
+        self.assertIn("| CHG-0020 | 文档结构调整与开发流程入规 | 已验证 |", spec)
+        for chg in ["CHG-0020", "CHG-0021", "CHG-0022", "CHG-0023"]:
+            self.assertIn(chg, spec)
+
+        chg0001 = (ROOT / "docs" / "exec-plans" / "completed" / "CHG-0001-docs-alignment.md").read_text(encoding="utf-8")
+        self.assertIn("(../../design-docs/index.md)", chg0001)
+
+        for rel in [
+            "docs/design-docs/source-designs/QODER-DESIGN.md",
+            "docs/design-docs/source-designs/TRAE-CN-DESIGN.md",
+        ]:
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIn("superseded_by:", text, rel)
+
+
+
 if __name__ == "__main__":
     unittest.main()

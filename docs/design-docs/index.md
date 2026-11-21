@@ -7,7 +7,7 @@
 | 状态 | 含义 |
 |---|---|
 | current | 当前有效，已与 `usage-ledger.md` / `ARCHITECTURE.md` / 代码核对 |
-| partial | 部分有效；必须按 `superseded_by` 指向当前事实源 |
+| partial | 部分有效；头部必须同时包含 `superseded_by` 与 `当前事实源` 指针 |
 | historical | 历史记录，不作为当前事实或验收标准 |
 | proposed | 提案 / RFC，尚未接受 |
 
@@ -38,5 +38,5 @@
 ## 更新规则
 
 - 新增设计文档必须在本索引登记状态、领域、当前事实源与代码入口。
-- 被替代文档不得直接删除事实源指针；在头部写清 `superseded_by`。
+- partial 文档不得直接删除事实源指针；在头部同时写清 `superseded_by` 与 `当前事实源`。
 - 历史文档不得作为验收标准；当前产品行为以 `../product-specs/usage-ledger.md` 为准，当前实现以 `../../ARCHITECTURE.md` 为准。

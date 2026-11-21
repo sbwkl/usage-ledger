@@ -10,6 +10,7 @@
 > 一句话结论：加密库路径仍不可行；Trae CN 的 token 只能走 Hooks 可见内容的**弱估算**（Plan H），额度仍不可得。
 
 > 文档库状态：partial（partial）
+> superseded_by: source-designs/TRAE-CN-CREDITS-DESIGN.md
 > 当前事实源：TRAE-CN-CREDITS-DESIGN.md
 > 索引：[design-docs/index.md](../index.md)
 ---
