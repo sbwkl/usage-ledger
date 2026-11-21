@@ -483,6 +483,7 @@ usage est --source trae-cn --group-by day,model
 | CHG-0022 | 产品规格语义重构 | 待验证 | [CHG-0022](../exec-plans/active/CHG-0022-product-spec-semantics.md) |
 | CHG-0023 | 设计文档语义分层与索引重构 | 待验证 | [CHG-0023](../exec-plans/active/CHG-0023-design-docs-semantics.md) |
 | CHG-0024 | PR #13 审核意见修复 | 已验证 | [CHG-0024](../exec-plans/completed/CHG-0024-pr13-review-fixes.md) |
+| CHG-0025 | Qoder 模型显示名分层解析（i18n + 计费学习 + 静态兜底） | 已验证 | [CHG-0025](../exec-plans/completed/CHG-0025-qoder-model-preview-label.md) |
 
 > 2026-11-20：CHG-0019 新增 R49 并修改 §3.2 数据源契约（CodeBuddy 双目录日志镜像、按 `(traceId, step)` 去重、非重叠 token 口径、额度不采集、genie-history 目录名 padding quirk）：340 tests / 0 skip、覆盖率 92.8%、AC map 49 criteria / 154 identifiers；本机实测 88 文件 / 117 条唯一记录 / 16,034,512 tokens，读写一致，doctor / html 正常；PR #12 修复项目映射解码后 20/20 目录正确解出。
 >

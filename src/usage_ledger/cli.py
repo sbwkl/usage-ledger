@@ -17,13 +17,13 @@ from . import __version__, scheduler, trae_credits, trae_hooks
 from .aggregation import (DIMENSIONS, aggregate, match, merge_records, missing_days,
                           period_label)
 from .collectors import (EST_FACTOR_VERSION, TRAE_EST_SOURCE, TRAE_EST_VERSION,
-                         collect_all, qoder_paths, scan_qoder_activity,
-                         scan_qoder_credit_sources, scan_trae_cn_est,
-                         source_signatures)
+                         collect_all, learn_qoder_model_labels, qoder_paths,
+                         scan_qoder_activity, scan_qoder_credit_sources,
+                         scan_trae_cn_est, source_signatures)
 from .html_report import build_payload, render_html
 from .models import ACTIVITY_FIELDS, FIELDS, Activity, SourceResult
 from .pricing import cost_for_record, normalize_model
-from .qoder_models import qoder_model_label
+from .qoder_models import load_i18n_labels, qoder_model_label, resolve_labels
 from .store import SqliteStore
 from .trae_credits import (TRAE_CREDITS_SOURCE, can_reuse_last_sync,
                            credits_coverage, jwt_file_info, report_window,
@@ -163,6 +163,46 @@ def _source_results(sources: list[str] | None = None, skip_qoder_tokens: bool = 
                        known_credit_request_ids=known_credit_request_ids)
 
 
+def _merge_model_labels(store, learned: dict[str, str]) -> None:
+    """把新学到的 Qoder 显示名并入库中已存的映射（新值覆盖旧值）。"""
+    if not learned:
+        return
+    try:
+        existing = json.loads(store.get_meta("qoder_model_labels") or "{}")
+    except ValueError:
+        existing = {}
+    if not isinstance(existing, dict):
+        existing = {}
+    existing.update(learned)
+    store.set_meta("qoder_model_labels",
+                   json.dumps(existing, ensure_ascii=False, sort_keys=True))
+
+
+def _stored_model_labels(store) -> dict[str, str]:
+    try:
+        raw = store.get_meta("qoder_model_labels")
+        data = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items() if k and v}
+
+
+def _qoder_labels(store=None) -> dict[str, str]:
+    """构建 Qoder 显示名解析表：静态种子 < 计费学习（库中持久化 + 实时） < i18n。
+
+    实时学习始终执行，使计费缓存里新出现的服务器下发键（如 `qmodel_latest_preview`）
+    无需等 Qoder 活动库/转录/log 触发同步即可显示；库中持久化的映射作为缓存被驱逐后的兜底。
+    """
+    home = source_home()
+    learned: dict[str, str] = {}
+    if store is not None:
+        learned.update(_stored_model_labels(store))
+    learned.update(learn_qoder_model_labels(home))
+    return resolve_labels(load_i18n_labels(home=home), learned)
+
+
 def _activity_totals(activities: list[Activity]) -> dict:
     totals = {field: 0 for field in ACTIVITY_FIELDS}
     for act in activities:
@@ -269,6 +309,8 @@ def _store_credit_result(store, result: SourceResult, signatures: dict,
     if result.superseded_credit_ids:
         store.delete_credits(result.superseded_credit_ids)
     store.upsert_estimates(result.estimates)
+    if result.model_labels:
+        _merge_model_labels(store, result.model_labels)
     if result.transcript_state is not None:
         store.set_meta("transcript_files",
                        json.dumps(result.transcript_state, ensure_ascii=False))
@@ -556,6 +598,11 @@ def cmd_live(args):
 
 def _print_live(args):
     results = _source_results([args.source] if args.source else None)
+    learned = {}
+    for result in results:
+        if result.model_labels:
+            learned.update(result.model_labels)
+    labels = resolve_labels(load_i18n_labels(home=source_home()), learned)
     records = [rec for result in results for rec in result.records]
     if args.session:
         records = [rec for rec in records if rec.session == args.session]
@@ -563,7 +610,7 @@ def _print_live(args):
 
     print(f"{'source':8}{'session':20}{'model':34}{'tokens':>14}  {'updated':10}")
     for rec in records[:50]:
-        model = qoder_model_label(rec.model) if rec.source == "qoder" else rec.model
+        model = qoder_model_label(rec.model, labels) if rec.source == "qoder" else rec.model
         print(f"{rec.source:8}{(rec.session or '-')[:18]:20}{(model or 'unknown')[:32]:34}"
               f"{_fmt_int(rec.counts.total()):>14}  {_ago(rec.ts):10}")
 
@@ -599,7 +646,7 @@ def _effective_range(args) -> tuple[str | None, str | None]:
     return since, until
 
 
-def _load_records(args, since, until, filters) -> tuple[list, list[Activity], dict | None]:
+def _load_records(args, since, until, filters) -> tuple[list, list[Activity], dict | None, dict]:
     wanted = [filters["source"]] if "source" in filters else None
     activities: list[Activity] = []
     use_stateless = args.stateless
@@ -607,21 +654,26 @@ def _load_records(args, since, until, filters) -> tuple[list, list[Activity], di
         results = _source_results(wanted)
         records = [rec for result in results for rec in result.records]
         activities = [act for result in results for act in result.activities]
+        labels = _qoder_labels(None)
     else:
         if not os.path.exists(db_path()):
             print("warning: 数据库不存在，自动降级为 --stateless（读源）", file=sys.stderr)
             results = _source_results(wanted)
             records = [rec for result in results for rec in result.records]
             activities = [act for result in results for act in result.activities]
+            labels = _qoder_labels(None)
             use_stateless = True
         else:
             store = SqliteStore(db_path())
             try:
+                # 先同步（可能学习到新模型并持久化），再构建 labels，
+                # 确保本次 report/html/top 用的是刷新后的最新显示名。
                 _refresh_if_stale(store, filters.get("source"))
                 records = store.fetch_records(
                     since=since, until=until, source=filters.get("source"),
                     project=filters.get("project"))
                 activities = store.fetch_activity(source=ACTIVITY_SOURCE)
+                labels = _qoder_labels(store)
             finally:
                 store.close()
             if getattr(args, "live", False):
@@ -631,8 +683,8 @@ def _load_records(args, since, until, filters) -> tuple[list, list[Activity], di
     coverage = _qoder_coverage(records, activities, stateless=use_stateless)
     records = [rec for rec in records
                if (not since or rec.day >= since) and (not until or rec.day <= until)
-               and match(rec, filters)]
-    return records, activities, coverage
+               and match(rec, filters, labels=labels)]
+    return records, activities, coverage, labels
 
 
 def _period(args) -> str:
@@ -652,9 +704,9 @@ def _report_rows(args):
         filters["source"] = args.source
     if getattr(args, "model", None):
         filters["model"] = args.model
-    records, activities, coverage = _load_records(args, since, until, filters)
+    records, activities, coverage, labels = _load_records(args, since, until, filters)
     dims = parse_dims(args.group_by)
-    rows = aggregate(records, dims, _period(args))
+    rows = aggregate(records, dims, _period(args), labels)
     return rows, dims, records, since, until, coverage, filters
 
 
@@ -956,7 +1008,8 @@ def _credit_totals_from_rows(credits, since, until) -> dict:
     return totals
 
 
-def _credit_rows_from_rows(credits, since, until) -> list[dict]:
+def _credit_rows_from_rows(credits, since, until,
+                           labels: dict[str, str] | None = None) -> list[dict]:
     buckets: dict[tuple, dict] = {}
     for row in credits:
         if since and row.day < since:
@@ -964,7 +1017,7 @@ def _credit_rows_from_rows(credits, since, until) -> list[dict]:
         if until and row.day > until:
             continue
         source = _credit_source(row)
-        model = qoder_model_label(row.model) if source == "qoder" else row.model
+        model = qoder_model_label(row.model, labels) if source == "qoder" else row.model
         project = row.project or "-"
         item = buckets.setdefault((row.day, source, model, project), {
             "day": row.day, "source": source, "model": model, "project": project,
@@ -1092,7 +1145,8 @@ def _parse_est_dims(value: str | None) -> tuple[str, ...]:
     return dims
 
 
-def _aggregate_estimates(estimates, dims, since, until) -> list[dict]:
+def _aggregate_estimates(estimates, dims, since, until,
+                         labels: dict[str, str] | None = None) -> list[dict]:
     buckets: dict[tuple, dict] = {}
     for row in estimates:
         if since and row.day < since:
@@ -1106,7 +1160,7 @@ def _aggregate_estimates(estimates, dims, since, until) -> list[dict]:
             elif dim == "project":
                 key.append(row.project or "-")
             elif dim == "model":
-                key.append(qoder_model_label(row.model)
+                key.append(qoder_model_label(row.model, labels)
                            if row.source == "qoder.est" else row.model)
             elif dim == "session":
                 key.append(row.session or "-")
@@ -1128,19 +1182,19 @@ def _aggregate_estimates(estimates, dims, since, until) -> list[dict]:
     return rows
 
 
-def _label_est_rows(rows) -> None:
+def _label_est_rows(rows, labels: dict[str, str] | None = None) -> None:
     for row in rows:
         if "model" in row:
-            row["model"] = qoder_model_label(row["model"])
+            row["model"] = qoder_model_label(row["model"], labels)
         if "project" in row:
             row["project"] = row["project"] or "-"
 
 
-def _label_credit_rows(rows) -> None:
+def _label_credit_rows(rows, labels: dict[str, str] | None = None) -> None:
     for row in rows:
         row["source"] = row.get("source") or "qoder"
         if row["source"] == "qoder":
-            row["model"] = qoder_model_label(row.get("model"))
+            row["model"] = qoder_model_label(row.get("model"), labels)
         row["project"] = row.get("project") or "-"
 
 
@@ -1176,9 +1230,12 @@ def cmd_est(args):
     if args.stateless:
         if args.source == "trae-cn":
             result = scan_trae_cn_est(home=source_home())
+            labels = None
         else:
             result = scan_qoder_credit_sources(source_home())
-        rows = _aggregate_estimates(result.estimates, dims, since, until)
+            labels = resolve_labels(load_i18n_labels(home=source_home()),
+                                     result.model_labels)
+        rows = _aggregate_estimates(result.estimates, dims, since, until, labels)
         missing = sum(1 for row in result.estimates if row.ratio is None)
         requests = len(result.estimates)
         for note in result.notes:
@@ -1191,8 +1248,9 @@ def cmd_est(args):
             else:
                 _refresh_credits_if_stale(store)
             rows = store.est_rows(since, until, dims, source=source)
+            labels = _qoder_labels(store) if source == "qoder.est" else None
             if source == "qoder.est":
-                _label_est_rows(rows)
+                _label_est_rows(rows, labels)
             totals = store.est_totals(since, until, source=source)
             missing = totals["missing_ratio"]
             requests = totals["requests"]
@@ -1240,19 +1298,22 @@ def _load_credit_payload(args, since, until, filters):
         credits = []
         quota_rows = []
         estimates = []
+        labels = None
         if "qoder" in wanted:
             result = scan_qoder_credit_sources(source_home())
             credits = result.credits
             quota_rows = result.quota
             estimates = result.estimates
+            labels = resolve_labels(load_i18n_labels(home=source_home()),
+                                     result.model_labels)
             for note in result.notes:
                 print("note:", note, file=sys.stderr)
         days = _credit_daily_from_rows(credits, quota_rows, since, until)
         totals = _credit_totals_from_rows(credits, since, until)
-        credit_rows = _credit_rows_from_rows(credits, since, until)
+        credit_rows = _credit_rows_from_rows(credits, since, until, labels)
         quota = _quota_latest_rows(quota_rows) if "qoder" in wanted else {}
         est_rows = _aggregate_estimates(estimates, ("day", "model", "project"),
-                                        since, until)
+                                        since, until, labels)
         selected = [row for row in estimates
                     if (not since or row.day >= since) and (not until or row.day <= until)]
         est_totals = {
@@ -1268,6 +1329,7 @@ def _load_credit_payload(args, since, until, filters):
         try:
             if "qoder" in wanted:
                 _refresh_credits_if_stale(store)
+            labels = _qoder_labels(store) if "qoder" in wanted else None
             source = wanted[0] if len(wanted) == 1 else None
             allowed = set(wanted)
             days = [row for row in store.credit_daily(since, until, source=source)
@@ -1277,11 +1339,11 @@ def _load_credit_payload(args, since, until, filters):
                       if name in allowed}
             credit_rows = [row for row in store.credit_rows(since, until, source=source)
                            if row["source"] in allowed]
-            _label_credit_rows(credit_rows)
+            _label_credit_rows(credit_rows, labels)
             quota = store.latest_quota() if "qoder" in wanted else {}
             if "qoder" in wanted:
                 est_rows = store.est_rows(since, until, ("day", "model", "project"))
-                _label_est_rows(est_rows)
+                _label_est_rows(est_rows, labels)
                 est_totals = store.est_totals(since, until)
             else:
                 est_rows, est_totals = [], _empty_est_totals()
@@ -1389,7 +1451,7 @@ def cmd_html(args):
             print("trae-cn.credits: offline cache from %s" % (cached_at or "无"),
                   file=sys.stderr)
 
-    records, activities, coverage = _load_records(args, since, until, filters)
+    records, activities, coverage, labels = _load_records(args, since, until, filters)
     credit_data, quota, credit_rows, est_rows, est_totals, factor_version = \
         _load_credit_payload(args, since, until, filters)
     trae_rows, trae_totals, trae_factor = _load_trae_est_payload(
@@ -1411,7 +1473,7 @@ def cmd_html(args):
         if args.strict_refresh and trae_mode == "auto" and refresh_error:
             exit_code = 1
     dims = ("day", "source", "model", "project")
-    rows = aggregate(records, dims)
+    rows = aggregate(records, dims, labels=labels)
     activity_rows = _filter_activity(activities, since, until, filters)
     span_days = [rec.day for rec in records] + [act.day for act in activity_rows]
     if credit_data:
@@ -1447,14 +1509,14 @@ def cmd_html(args):
 def cmd_top(args):
     since, until = _effective_range(args)
     filters = parse_filters(None)
-    records, _, _ = _load_records(args, since, until, filters)
+    records, _, _, labels = _load_records(args, since, until, filters)
     dims = {
         "models": ("source", "model"),
         "sources": ("source",),
         "projects": ("project",),
         "sessions": ("source", "session"),
     }[args.kind]
-    rows = aggregate(records, dims)
+    rows = aggregate(records, dims, labels=labels)
     rows.sort(key=lambda row: row["total"], reverse=True)
     rows = rows[:args.limit]
     if args.format == "json":

@@ -18,7 +18,8 @@ def period_label(day: str, period: str) -> str:
     return day
 
 
-def _dim_value(rec: Record, dim: str, period: str) -> str:
+def _dim_value(rec: Record, dim: str, period: str,
+               labels: dict[str, str] | None = None) -> str:
     if dim == "day":
         return period_label(rec.day, period)
     if dim == "week":
@@ -28,7 +29,7 @@ def _dim_value(rec: Record, dim: str, period: str) -> str:
     if dim == "source":
         return rec.source
     if dim == "model":
-        return qoder_model_label(rec.model) if rec.source == "qoder" else rec.model
+        return qoder_model_label(rec.model, labels) if rec.source == "qoder" else rec.model
     if dim == "project":
         return rec.project or "-"
     if dim == "session":
@@ -37,10 +38,10 @@ def _dim_value(rec: Record, dim: str, period: str) -> str:
 
 
 def aggregate(records: list[Record], dims: tuple[str, ...] = ("day", "source", "model"),
-              period: str = "day") -> list[dict]:
+              period: str = "day", labels: dict[str, str] | None = None) -> list[dict]:
     buckets: dict[tuple, dict] = {}
     for rec in records:
-        key = tuple(_dim_value(rec, dim, period) for dim in dims)
+        key = tuple(_dim_value(rec, dim, period, labels) for dim in dims)
         row = buckets.get(key)
         if row is None:
             row = {"dims": key, "cost": 0.0, "cost_known_turns": 0,
@@ -74,14 +75,15 @@ def aggregate(records: list[Record], dims: tuple[str, ...] = ("day", "source", "
     return rows
 
 
-def match(rec: Record, filters: dict[str, str] | None = None, project: str | None = None) -> bool:
+def match(rec: Record, filters: dict[str, str] | None = None, project: str | None = None,
+          labels: dict[str, str] | None = None) -> bool:
     if project and (rec.project or "") != project:
         return False
     for key, value in (filters or {}).items():
         if key == "source" and rec.source != value:
             return False
         if key == "model" and rec.model != value:
-            if not (rec.source == "qoder" and qoder_model_label(rec.model) == value):
+            if not (rec.source == "qoder" and qoder_model_label(rec.model, labels) == value):
                 return False
         if key == "project" and (rec.project or "") != value:
             return False

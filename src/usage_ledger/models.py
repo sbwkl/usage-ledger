@@ -119,6 +119,7 @@ class SourceResult:
     superseded_credit_ids: list[str] = field(default_factory=list)
     affected_days: set[str] = field(default_factory=set)
     cursor_ms: int | None = None
+    model_labels: dict[str, str] = field(default_factory=dict)
     errors: list[tuple[str, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     seen_keys: set[str] = field(default_factory=set)
