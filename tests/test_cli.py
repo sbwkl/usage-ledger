@@ -57,6 +57,7 @@ class CliConsistencyTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -256,6 +257,7 @@ class QoderCliTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -472,6 +474,7 @@ class ClineCliTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -550,6 +553,7 @@ class AntigravityCliTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -643,6 +647,7 @@ class CodeArtsCliTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -726,6 +731,7 @@ class MiniMaxCliTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -809,6 +815,7 @@ class CodeBuddyCliTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "USAGE_LEDGER_SOURCE_HOME": self.home,
             "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
         })
         self.env.start()
 
@@ -876,6 +883,149 @@ class CodeBuddyCliTest(unittest.TestCase):
         code, out, _ = self.run_cli(["doctor"])
         self.assertEqual(code, 0)
         self.assertIn("codebuddy", out)
+
+
+class QoderModelLabelCliTest(unittest.TestCase):
+    """CHG-0021：报表用学习到的显示名，且首次自动同步即生效、可用显示名过滤。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+        self.db_path = os.path.join(self.home, "usage.db")
+        self.token_db = token_path(self.home)
+        self.activity_db = activity_path(self.home)
+        self.cache_dir = os.path.join(self.home, "cache")
+        self.env = patch.dict(os.environ, {
+            "USAGE_LEDGER_SOURCE_HOME": self.home,
+            "USAGE_LEDGER_DB": self.db_path,
+            "USAGE_LEDGER_QODER_I18N": "",
+            "USAGE_LEDGER_QODER_CACHE": self.cache_dir,
+        })
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def _ts(self, day):
+        return int(datetime(2026, 10, day, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
+
+    def _write_token_db(self, messages):
+        if os.path.exists(self.token_db):
+            os.remove(self.token_db)
+        create_token_db(self.token_db, messages, {})
+
+    def _write_activity_db(self, session_models, messages=None):
+        if os.path.exists(self.activity_db):
+            os.remove(self.activity_db)
+        os.makedirs(os.path.dirname(self.activity_db), exist_ok=True)
+        conn = sqlite3.connect(self.activity_db)
+        conn.execute("CREATE TABLE chat_sessions (session_id TEXT PRIMARY KEY, "
+                     "cwd TEXT, model TEXT)")
+        for sid, model in session_models.items():
+            conn.execute("INSERT INTO chat_sessions VALUES (?,?,?)",
+                         (sid, "/tmp/p", model))
+        conn.execute(
+            "CREATE TABLE chat_session_messages (session_id TEXT, message_id TEXT, "
+            "role TEXT, payload_json TEXT, created_at INTEGER, updated_at INTEGER, "
+            "turn_credits REAL, turn_credits_request_set_id TEXT)")
+        for mid, sid, role, created in (messages or []):
+            conn.execute(
+                "INSERT INTO chat_session_messages VALUES (?,?,?,?,?,?,?,?)",
+                (sid, mid, role, "{}", created, created, 0.0, None))
+        conn.commit()
+        conn.close()
+
+    def _write_cache(self, name, entries):
+        os.makedirs(self.cache_dir, exist_ok=True)
+        with open(os.path.join(self.cache_dir, name), "w", encoding="utf-8") as fh:
+            fh.write("1/0/https://openapi.qoder.sh/x" + json.dumps({"data": entries}))
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_report_shows_learned_display_name_and_filters(self):
+        self._write_token_db([
+            ("m1", "s1", "assistant", self._ts(1),
+             '{"model_key":"qmodel_latest_preview"}',
+             '{"prompt_tokens":100,"completion_tokens":10,"cached_tokens":0}'),
+        ])
+        self._write_activity_db({"s1": "qmodel_latest_preview"})
+        self._write_cache("a_0", [{"session_id": "s1",
+                                   "model_category": "Qwen4-Max-Preview"}])
+        self.run_cli(["backfill"])
+
+        code, out, _ = self.run_cli(["report", "--source", "qoder", "--format", "json"])
+        self.assertEqual(code, 0)
+        rows = json.loads(out)
+        self.assertEqual({row["model"] for row in rows}, {"Qwen4-Max-Preview"})
+
+        # 用显示名过滤
+        code, out, _ = self.run_cli(["report", "--source", "qoder", "--format", "json",
+                                     "--model", "Qwen4-Max-Preview"])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(out))
+        # 原始键也能过滤
+        code, out, _ = self.run_cli(["report", "--source", "qoder", "--format", "json",
+                                     "--model", "qmodel_latest_preview"])
+        self.assertTrue(json.loads(out))
+
+    def test_auto_sync_first_appearance_shows_new_name_same_run(self):
+        # issue 2：先 backfill（只有 qmodel），之后新模型只在新会话出现并触发自动同步；
+        # 本次 report 必须用同步后重新构建的 labels，不能再用旧映射。
+        self._write_token_db([
+            ("m1", "s1", "assistant", self._ts(1), '{"model_key":"qmodel"}',
+             '{"prompt_tokens":100,"completion_tokens":10,"cached_tokens":0}'),
+        ])
+        self._write_activity_db({"s1": "qmodel"})
+        self.run_cli(["backfill"])
+
+        # 新会话 s2 使用 qmodel_latest_preview，计费缓存给出显示名
+        self._write_token_db([
+            ("m1", "s1", "assistant", self._ts(1), '{"model_key":"qmodel"}',
+             '{"prompt_tokens":100,"completion_tokens":10,"cached_tokens":0}'),
+            ("m2", "s2", "assistant", self._ts(2),
+             '{"model_key":"qmodel_latest_preview"}',
+             '{"prompt_tokens":50,"completion_tokens":5,"cached_tokens":0}'),
+        ])
+        self._write_activity_db({"s1": "qmodel", "s2": "qmodel_latest_preview"})
+        self._write_cache("a_0", [{"session_id": "s2",
+                                   "model_category": "Qwen4-Max-Preview"}])
+        bump = os.stat(self.activity_db).st_mtime_ns + 1_000_000_000
+        os.utime(self.activity_db, ns=(bump, bump))
+
+        code, out, _ = self.run_cli(["report", "--source", "qoder", "--format", "json"])
+        self.assertEqual(code, 0)
+        models = {row["model"] for row in json.loads(out)}
+        self.assertIn("Qwen4-Max-Preview", models)
+        self.assertNotIn("qmodel_latest_preview", models)
+
+    def test_cache_only_change_learned_without_resync(self):
+        # issue 3：缓存出现新映射、活动库 mtime 不变（不触发同步），实时学习仍生效。
+        self._write_token_db([
+            ("m1", "s1", "assistant", self._ts(1),
+             '{"model_key":"qmodel_latest_preview"}',
+             '{"prompt_tokens":100,"completion_tokens":10,"cached_tokens":0}'),
+        ])
+        self._write_activity_db({"s1": "qmodel_latest_preview"})
+        # 先不放缓存，backfill 学不到，report 显示原始键
+        self.run_cli(["backfill"])
+        code, out, _ = self.run_cli(["report", "--source", "qoder", "--format", "json"])
+        self.assertEqual({row["model"] for row in json.loads(out)},
+                         {"qmodel_latest_preview"})
+
+        mtime = os.stat(self.activity_db).st_mtime_ns
+        self._write_cache("a_0", [{"session_id": "s1",
+                                   "model_category": "Qwen4-Max-Preview"}])
+        code, out, _ = self.run_cli(["report", "--source", "qoder", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual({row["model"] for row in json.loads(out)},
+                         {"Qwen4-Max-Preview"})
+        # 活动库 mtime 未变，说明没有触发同步，label 来自实时学习
+        self.assertEqual(os.stat(self.activity_db).st_mtime_ns, mtime)
 
 
 if __name__ == "__main__":

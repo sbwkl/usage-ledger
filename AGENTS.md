@@ -74,7 +74,7 @@
 | docs/design-docs/index.md / core-beliefs.md | 设计文档索引与核心工程信念 | 沉淀 / 回顾工程价值观时 |
 | docs/design-docs/ | 设计知识库：`index.md` 状态索引、`core-beliefs.md`、`adr/`、`rfcs/`、`source-designs/`、`history/` | 理解设计理由、查 ADR / RFC、追溯历史时 |
 | docs/product-specs/ | 产品功能卡与规格：`usage-ledger.md`、`ARCHITECTURE.md#9-测试体系`、`index.md` | 产品 / 需求、评审、开始新特性前 |
-| docs/exec-plans/completed/ | 已验证 CHG：`CHG-0001-docs-alignment.md` ~ `CHG-0020-docs-structure-and-dev-process.md` | 开发 / 评审时读本次 CHG |
+| docs/exec-plans/completed/ | 已验证 CHG：`CHG-0001-docs-alignment.md` ~ `CHG-0025-qoder-model-preview-label.md` | 开发 / 评审时读本次 CHG |
 | docs/exec-plans/active/ | 进行中阶段 spec | 推进阶段实现时 |
 | docs/exec-plans/tech-debt-tracker.md | 技术债账本索引；权威清单见 ARCHITECTURE.md §11 | 评审、重构、排期时 |
 | docs/references/ | RESEARCH.md / PROBE.md 调研与实测证据 | 查选型证据 / 数据边界时 |

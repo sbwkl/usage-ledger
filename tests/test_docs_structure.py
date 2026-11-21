@@ -134,7 +134,7 @@ class DocsStructureTest(unittest.TestCase):
 
     def test_pr13_review_consistency(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("CHG-0025", readme)
+        self.assertIn("CHG-0026", readme)
         self.assertNotIn("集成走 `sit`", readme)
 
         spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")

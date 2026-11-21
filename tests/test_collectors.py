@@ -6,7 +6,9 @@ import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
-from src.usage_ledger.collectors import (codearts_db, scan_antigravity, scan_claude,
+from src.usage_ledger.collectors import (codearts_db, learn_billing_labels,
+                                       learn_qoder_model_labels,
+                                       scan_antigravity, scan_claude,
                                        scan_cline, scan_codearts, scan_codebuddy,
                                        scan_codex, scan_minimax, scan_qoder_activity,
                                        scan_qoder_credit_sources, scan_qoder_quota,
@@ -1381,6 +1383,88 @@ class CodeBuddySignatureTest(unittest.TestCase):
                       root="ide", name="playground__hash.log")
             fourth = source_signatures(home, ["codebuddy"])
             self.assertGreaterEqual(fourth["codebuddy"], third["codebuddy"])
+
+
+class QoderModelLabelLearningTest(unittest.TestCase):
+    def _write_cache(self, cache_dir, name, entries):
+        os.makedirs(cache_dir, exist_ok=True)
+        payload = json.dumps({"data": entries})
+        with open(os.path.join(cache_dir, name), "w", encoding="utf-8") as fh:
+            fh.write("1/0/https://openapi.qoder.sh/x" + payload)
+
+    def _write_activity_db(self, path, session_models):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE chat_sessions (session_id TEXT PRIMARY KEY, "
+                     "cwd TEXT, model TEXT)")
+        for sid, model in session_models.items():
+            conn.execute("INSERT INTO chat_sessions VALUES (?,?,?)",
+                         (sid, "/tmp/p", model))
+        conn.commit()
+        conn.close()
+
+    def test_unambiguous_sessions_learn_key_to_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "cache")
+            db = activity_path(tmp)
+            self._write_activity_db(db, {"s1": "qmodel_latest_preview",
+                                         "s2": "dfmodel",
+                                         "s3": "qmodel_latest_preview"})
+            self._write_cache(cache_dir, "a_0", [
+                # s1 全部是 Qwen4 → 无歧义，采纳
+                {"session_id": "s1", "model_category": "Qwen4-Max-Preview"},
+                {"session_id": "s1", "model_category": "Qwen4-Max-Preview"},
+                # s2 全部是 DeepSeek → 无歧义，采纳
+                {"session_id": "s2", "model_category": "DeepSeek-Flash"},
+                # s3 全部是 Qwen4 → 无歧义，采纳（与 s1 同键，多数票）
+                {"session_id": "s3", "model_category": "Qwen4-Max-Preview"},
+            ])
+            old = os.environ.get("USAGE_LEDGER_QODER_CACHE")
+            os.environ["USAGE_LEDGER_QODER_CACHE"] = cache_dir
+            try:
+                labels = learn_qoder_model_labels(tmp)
+            finally:
+                if old is None:
+                    os.environ.pop("USAGE_LEDGER_QODER_CACHE", None)
+                else:
+                    os.environ["USAGE_LEDGER_QODER_CACHE"] = old
+            self.assertEqual(labels["qmodel_latest_preview"], "Qwen4-Max-Preview")
+            self.assertEqual(labels["dfmodel"], "DeepSeek-Flash")
+
+    def test_session_switching_models_is_skipped(self):
+        # 同一会话先 A 后 B：计费条目混入两个 category，归属不唯一 → 整段跳过，
+        # 不能把任一模型误标成另一个。
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "cache")
+            self._write_cache(cache_dir, "a_0", [
+                {"session_id": "s1", "model_category": "DeepSeek-Flash"},
+                {"session_id": "s1", "model_category": "DeepSeek-Flash"},
+                {"session_id": "s1", "model_category": "Qwen4-Max-Preview"},
+            ])
+            labels = learn_billing_labels(cache_dir, {"s1": "qmodel_latest_preview"})
+            self.assertEqual(labels, {})
+
+    def test_tie_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "cache")
+            self._write_cache(cache_dir, "a_0", [
+                {"session_id": "s1", "model_category": "A"},
+                {"session_id": "s1", "model_category": "B"},
+            ])
+            labels = learn_billing_labels(cache_dir, {"s1": "somekey"})
+            self.assertEqual(labels, {})
+
+    def test_missing_sources_return_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(learn_qoder_model_labels(tmp), {})
+
+    def test_corrupt_cache_files_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "cache")
+            os.makedirs(cache_dir)
+            with open(os.path.join(cache_dir, "junk"), "wb") as fh:
+                fh.write(b"\x00\x01not a cache")
+            self.assertEqual(learn_billing_labels(cache_dir, {"s1": "k"}), {})
 
 
 if __name__ == "__main__":

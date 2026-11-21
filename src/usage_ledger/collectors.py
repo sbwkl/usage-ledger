@@ -1520,6 +1520,154 @@ def qoder_log_root(home: str | None = None) -> str:
                         "com.qoder.app.stable", "logs")
 
 
+def qoder_billing_cache_dir(home: str | None = None) -> str:
+    env = os.environ.get("USAGE_LEDGER_QODER_CACHE")
+    if env is not None:
+        return env
+    home = home or os.path.expanduser("~")
+    return os.path.join(home, "Library", "Application Support",
+                        "com.qoder.app.stable", "Cache", "Cache_Data")
+
+
+def _qoder_session_models(activity_db: str) -> dict[str, str]:
+    """从活动库读取 session_id → 内部 model 键（只读，缺失/异常返回空）。"""
+    if not os.path.exists(activity_db):
+        return {}
+    try:
+        conn = _open_ro(activity_db)
+    except sqlite3.Error:
+        return {}
+    try:
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if "chat_sessions" not in tables:
+            return {}
+        columns = {row[1] for row in conn.execute(
+            "PRAGMA table_info(chat_sessions)")}
+        if "model" not in columns:
+            return {}
+        rows = conn.execute(
+            "SELECT session_id, model FROM chat_sessions "
+            "WHERE session_id IS NOT NULL AND model IS NOT NULL").fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    return {sid: model for sid, model in rows if sid and model}
+
+
+def _iter_billing_entries(cache_dir: str):
+    """逐个产出计费缓存里的 usage 条目 dict（best-effort，忽略损坏文件）。"""
+    if not os.path.isdir(cache_dir):
+        return
+    decoder = json.JSONDecoder()
+    for path in glob.glob(os.path.join(cache_dir, "*")):
+        try:
+            with open(path, "rb") as fh:
+                raw = fh.read()
+        except OSError:
+            continue
+        idx = raw.find(b'{"data":')
+        if idx < 0:
+            continue
+        try:
+            obj, _ = decoder.raw_decode(raw[idx:].decode("utf-8", "replace"))
+        except ValueError:
+            continue
+        data = obj.get("data") if isinstance(obj, dict) else None
+        if not isinstance(data, list):
+            continue
+        for entry in data:
+            if isinstance(entry, dict):
+                yield entry
+
+
+def learn_billing_labels(cache_dir: str,
+                         session_models: dict[str, str]) -> dict[str, str]:
+    """从计费缓存学习 内部键 → 显示名，仅采用“无歧义会话”。
+
+    计费条目只带 `session_id`，无法精确到单次请求；而 `chat_sessions.model` 是会话级
+    单一键。若同一会话中途切换过模型，其计费条目会混入多个 `model_category`，无法可靠
+    归属——这类会话直接跳过，避免把某个模型误标成另一个。仅当会话的全部计费条目只有
+    同一个 `model_category` 时才采纳；同一内部键跨多个无歧义会话时再取多数票（平票跳过）。
+    """
+    session_categories: dict[str, set[str]] = {}
+    for entry in _iter_billing_entries(cache_dir):
+        sid = entry.get("session_id")
+        category = entry.get("model_category")
+        if not isinstance(sid, str) or not isinstance(category, str) or not category:
+            continue
+        session_categories.setdefault(sid, set()).add(category)
+    votes: dict[str, dict[str, int]] = {}
+    for sid, categories in session_categories.items():
+        if len(categories) != 1:  # 会话切换过模型，归属不唯一 → 跳过
+            continue
+        key = session_models.get(sid)
+        if not key:
+            continue
+        category = next(iter(categories))
+        bucket = votes.setdefault(key, {})
+        bucket[category] = bucket.get(category, 0) + 1
+    labels: dict[str, str] = {}
+    for key, counter in votes.items():
+        ranked = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+        if len(ranked) == 1 or ranked[0][1] > ranked[1][1]:
+            labels[key] = ranked[0][0]
+    return labels
+
+
+_LEARNED_CACHE: dict[str, dict[str, str]] = {}
+
+
+def _learn_cache_key(cache_dir: str, activity_db: str) -> str | None:
+    """按“缓存目录签名 + 活动库 mtime”生成进程内缓存键；目录不存在返回 None。
+
+    签名用文件数、mtime 之和、size 之和（`os.scandir` 的 stat，不读文件内容），
+    任一变化都会使键失效，从而安全地复用上一次学习结果。
+    """
+    try:
+        count = 0
+        mtime_sum = 0.0
+        size_sum = 0
+        with os.scandir(cache_dir) as it:
+            for entry in it:
+                count += 1
+                try:
+                    st = entry.stat()
+                except OSError:
+                    continue
+                mtime_sum += st.st_mtime
+                size_sum += st.st_size
+    except OSError:
+        return None
+    try:
+        activity_mtime = os.stat(activity_db).st_mtime_ns
+    except OSError:
+        activity_mtime = 0
+    return "%s|%d:%.6f:%d:%d" % (cache_dir, count, mtime_sum, size_sum, activity_mtime)
+
+
+def learn_qoder_model_labels(home: str | None = None) -> dict[str, str]:
+    """学习 Qoder 计费缓存里的内部键 → 显示名映射（缺失源返回空）。
+
+    进程内按“缓存目录签名 + 活动库 mtime”缓存，避免同一命令内重复扫描计费缓存；
+    缓存或活动库变化会换键，自动失效。
+    """
+    home = home or os.path.expanduser("~")
+    cache_dir = qoder_billing_cache_dir(home)
+    activity_db = qoder_paths(home)[1]
+    session_models = _qoder_session_models(activity_db)
+    if not session_models:
+        return {}
+    key = _learn_cache_key(cache_dir, activity_db)
+    if key is not None and key in _LEARNED_CACHE:
+        return dict(_LEARNED_CACHE[key])
+    labels = learn_billing_labels(cache_dir, session_models)
+    if key is not None:
+        _LEARNED_CACHE[key] = dict(labels)
+    return labels
+
+
 def est_factor(model: str | None) -> float:
     return EST_FACTORS.get(model or "", EST_DEFAULT_FACTOR)
 
@@ -1873,7 +2021,9 @@ def scan_qoder_credit_sources(home: str | None = None,
     home = home or os.path.expanduser("~")
     result = scan_qoder_transcripts(qoder_transcript_root(home), file_state, result)
     result = scan_qoder_turn_credits(qoder_paths(home)[1], result, known_request_ids)
-    return scan_qoder_quota(qoder_log_root(home), result)
+    result = scan_qoder_quota(qoder_log_root(home), result)
+    result.model_labels = learn_qoder_model_labels(home)
+    return result
 
 
 def source_signatures(home: str | None = None,
