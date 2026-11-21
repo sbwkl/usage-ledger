@@ -103,12 +103,12 @@ usage-ledger/
 - 架构决策：[ADR-0001](docs/design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](docs/design-docs/adr/ADR-0002-pull-collection-no-daemon.md)；只有已做出、难回退的架构 / 技术选型才建 ADR；跨团队、不可逆、影响公共接口 / 数据模型 / 安全隐私的方案放 `docs/design-docs/rfcs/`。
 - 文档阅读顺序与支撑文档：[docs/design-docs/index.md](docs/design-docs/index.md)。`docs/design-docs/history/v0.4-design-review.md` 是历史设计稿，`ARCHITECTURE.md` 是 As-Built；不要拿 DESIGN 里的未实现项当当前 AC。
 - 新变更先建 CHG，登记到对应 REQ 的变更索引，再写代码；设计文档只作支撑，不再作为需求事实源。
-- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0020`、`ADR-0003`。
+- ID 按类型递增、不复用。当前下一批：`REQ-0003`、`CHG-0024`、`ADR-0003`。
 - 文档是事实源；issue/PR 不存在时，用 commit、测试结果、release note 作为证据。状态以 REQ / CHG 文档首部为准；代码合并不等于已发布，没有部署 / 验证证据不得标“已发布 / 已验证”。
 
 ## 开发约定
 
-工作流：`main` 是保护分支，只接受合并；新特性从最新 `main` 切 `feat/<特性名>`，集成走 `sit`；有未提交改动时用 `git worktree` 并行开发；合并 `main` 前必须获得用户同意。工作区根 `AGENTS.md` 的通用流程（TDD、DoR/DoD、需求管理）同时适用；在本工作区内冲突时以根 `AGENTS.md` 为准。项目补充如下：
+工作流：`main` 是保护分支，只接受合并；新特性从最新 `main` 切 `feat/<特性名>`；集成测试用临时 `tmp/integration-<特性名>` 分支，测完即删；有未提交改动时用 `git worktree` 并行开发；合并 `main` 前必须获得用户同意。工作区根 `AGENTS.md` 的通用流程（TDD、DoR/DoD、需求管理）同时适用；在本工作区内冲突时以根 `AGENTS.md` 为准。项目补充如下：
 
 - 新特性先满足 DoR：REQ / CHG 已更新，AC delta 覆盖正常 / 异常 / 边界，依赖已链接；实现中不得扩大 CHG 范围。
 - 测试命令与门禁见下文「测试与门禁」；完成后运行全量测试，更新 CHG 状态与证据，没有部署 / 监控证据不得标“已发布”。
@@ -401,7 +401,7 @@ python3 scripts/check_test_policy.py
 python3 scripts/check_ac_map.py
 ```
 
-CI 配置在 `.github/workflows/test.yml`：PR、`main`、`sit` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
+CI 配置在 `.github/workflows/test.yml`：PR、`main` 上跑 Python 3.11–3.14 + Node 24 矩阵，并执行上述覆盖率、skip/时长和 AC 映射检查。`main` 已启用 5 个 required checks（strict + enforce_admins），失败 PR 不可合并。
 
 ---
 

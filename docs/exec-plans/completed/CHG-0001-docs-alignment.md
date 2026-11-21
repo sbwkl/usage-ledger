@@ -36,7 +36,7 @@
   - [usage-ledger.md](../../product-specs/usage-ledger.md)：当前功能卡，含问题 / 证据、目标 / 非目标、As-Built 功能说明（数据源契约 / CLI 命令 / 报表字段 / 存储 / HTML / 调度 / 隐私）、成功指标、R1–R18 EARS 验收、风险与变更索引。
   - [CHG-0001](./CHG-0001-docs-alignment.md)：本变更记录。
   - [ADR-0001](../../design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/adr/ADR-0002-pull-collection-no-daemon.md)：两项已做出的架构决策。
-  - [docs/design-docs/index.md](../../../README.md)：文档索引与阅读顺序。
+  - [docs/design-docs/index.md](../../design-docs/index.md)：文档索引与阅读顺序。
   - 项目级 [开发约定](../../../README.md#开发约定)（原 `AGENTS.md`）：把规范落到本项目的文档路径、测试命令、分支流程与下一批 ID。
 - 文档修正：
   - README 将 WorkBuddy 改为“未接入（缺样本）”，把“零 UI”改为“零常驻 UI（HTML 为单文件静态报表）”，并修正 `NullStore` 已实现的误导性表述。

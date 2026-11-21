@@ -478,7 +478,11 @@ usage est --source trae-cn --group-by day,model
 | CHG-0017 | 接入 MiniMax Code 用量（会话 messages.jsonl + 运行库项目映射） | 已验证 | [CHG-0017](../exec-plans/completed/CHG-0017-minimax-usage-source.md) |
 | CHG-0018 | 接入 CodeArts（码道）用量（复用 SQLite agent adapter） | 已验证 | [CHG-0018](../exec-plans/completed/CHG-0018-codearts-usage-source.md) |
 | CHG-0019 | 接入腾讯 CodeBuddy CN 用量（双目录日志镜像去重） | 已验证 | [CHG-0019](../exec-plans/completed/CHG-0019-codebuddy-usage-source.md) |
-| CHG-0020 | 文档结构调整与开发流程入规 | 开发中 | [CHG-0020](../exec-plans/completed/CHG-0020-docs-structure-and-dev-process.md) |
+| CHG-0020 | 文档结构调整与开发流程入规 | 已验证 | [CHG-0020](../exec-plans/completed/CHG-0020-docs-structure-and-dev-process.md) |
+| CHG-0021 | 文档工件迁移到规范目录 | 已验证 | [CHG-0021](../exec-plans/completed/CHG-0021-relocate-doc-artifacts.md) |
+| CHG-0022 | 产品规格语义重构 | 待验证 | [CHG-0022](../exec-plans/active/CHG-0022-product-spec-semantics.md) |
+| CHG-0023 | 设计文档语义分层与索引重构 | 待验证 | [CHG-0023](../exec-plans/active/CHG-0023-design-docs-semantics.md) |
+| CHG-0024 | PR #13 审核意见修复 | 已验证 | [CHG-0024](../exec-plans/active/CHG-0024-pr13-review-fixes.md) |
 
 > 2026-11-20：CHG-0019 新增 R49 并修改 §3.2 数据源契约（CodeBuddy 双目录日志镜像、按 `(traceId, step)` 去重、非重叠 token 口径、额度不采集、genie-history 目录名 padding quirk）：340 tests / 0 skip、覆盖率 92.8%、AC map 49 criteria / 154 identifiers；本机实测 88 文件 / 117 条唯一记录 / 16,034,512 tokens，读写一致，doctor / html 正常；PR #12 修复项目映射解码后 20/20 目录正确解出。
 >
@@ -509,5 +513,5 @@ usage est --source trae-cn --group-by day,model
 - 当前实现：[ARCHITECTURE.md](../../ARCHITECTURE.md)
 - 历史设计：[DESIGN.md](../design-docs/history/v0.4-design-review.md)、[QODER-DESIGN.md](../design-docs/source-designs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](../design-docs/source-designs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](../design-docs/source-designs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](../design-docs/source-designs/CLINE-DESIGN.md)
 - 调研 / 实测 / 讨论：[RESEARCH.md](../references/RESEARCH.md)、[PROBE.md](../references/PROBE.md)、[DISCUSSION.md](../design-docs/history/discussion-log.md)
-- 文档索引：[docs/design-docs/index.md](../../README.md)
+- 文档索引：[docs/design-docs/index.md](../design-docs/index.md)
 - 使用说明：[README.md](../../README.md)
