@@ -6,12 +6,12 @@
 | 文档类型 | 产品规格 |
 | 当前版本 | v0.10.0 |
 | 适用范围 | 当前产品行为与验收规格 |
-| 关联 | [CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md)、[ADR-0001](../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../design-docs/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| 关联 | [CHG-0001](../exec-plans/completed/CHG-0001-docs-alignment.md)、[CHG-0003](../exec-plans/completed/CHG-0003-docs-status.md)、[ADR-0001](../design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../design-docs/adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | 代码基线 | usage-ledger v0.6.0（main `820a6f2`，2026-11-15） |
 | 平台 | macOS（Apple Silicon），单机、单用户、本地 |
 | 最后更新 | 2026-11-16 |
 
-> 本文是 **usage-ledger 的产品规格与验收事实源**。设计沿革见 [DESIGN.md](../design-docs/DESIGN.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
+> 本文是 **usage-ledger 的产品规格与验收事实源**。设计沿革见 [DESIGN.md](../design-docs/history/v0.4-design-review.md)（历史方案稿）与各源设计文档；当前实现见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
 
 ## 摘要
 
@@ -37,7 +37,7 @@ usage-ledger 是 macOS 上的本地 AI 编码工具用量台账，统一采集 C
 
 - [RESEARCH.md](../references/RESEARCH.md)：ccusage / tokscale / TokenTracker 等竞品横评；结论是采集层不值得重写，报表层没有合口味的产品。
 - [PROBE.md](../references/PROBE.md)：2026-10-22 本机全量只读扫描 4 源、16,799 条记录、约 2.14B token；发现 9 处规格偏差。
-- [DISCUSSION.md](../design-docs/DISCUSSION.md)：原始需求与决策链（不自研采集层；全平台在数据层不成立；不需要常驻进程）。
+- [DISCUSSION.md](../design-docs/history/discussion-log.md)：原始需求与决策链（不自研采集层；全平台在数据层不成立；不需要常驻进程）。
 - 现实边界：Qoder 新客户端自 2026-09-16 起不再写 token 真值；Trae CN 本地库为 SQLCipher 加密；ChatGPT 桌面端无本地数据；Cline 1,806/1,821 条 assistant 消息带 `metrics`。详见 [README.md](../../README.md) 与各源设计文档。
 
 ### 1.4 不做的后果
@@ -448,10 +448,10 @@ usage est --source trae-cn --group-by day,model
 
 | 决策 | 结论 | 载体 |
 |---|---|---|
-| 事实源与存储 | 源是唯一事实来源；SQLite 只做归档 + 索引；`--stateless` 可完全绕过 DB | [ADR-0001](../design-docs/ADR-0001-source-of-truth-db-as-archive.md) |
-| 采集模型 | 拉取式、无常驻进程；每小时增量 + 每日全量；`live` 直读源 | [ADR-0002](../design-docs/ADR-0002-pull-collection-no-daemon.md) |
-| 口径隔离 | token 真值 / credits / est / activity 分轨；任何两轨不相加；跨厂商 credits 不相加 | 本文 §2.2、[QODER-CREDITS-DESIGN.md](../design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) |
-| 联网例外 | 仅 Trae CN credits 的两条前台刷新路径联网；其余默认离线 | 本文 R11、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) |
+| 事实源与存储 | 源是唯一事实来源；SQLite 只做归档 + 索引；`--stateless` 可完全绕过 DB | [ADR-0001](../design-docs/adr/ADR-0001-source-of-truth-db-as-archive.md) |
+| 采集模型 | 拉取式、无常驻进程；每小时增量 + 每日全量；`live` 直读源 | [ADR-0002](../design-docs/adr/ADR-0002-pull-collection-no-daemon.md) |
+| 口径隔离 | token 真值 / credits / est / activity 分轨；任何两轨不相加；跨厂商 credits 不相加 | 本文 §2.2、[QODER-CREDITS-DESIGN.md](../design-docs/source-designs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md) |
+| 联网例外 | 仅 Trae CN credits 的两条前台刷新路径联网；其余默认离线 | 本文 R11、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md) |
 | 技术选型 | Python ≥3.11、标准库 only、零第三方依赖、SQLite WAL、launchd | [pyproject.toml](../../pyproject.toml)、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 
 ---
@@ -507,7 +507,7 @@ usage est --source trae-cn --group-by day,model
 ## 9. 链接
 
 - 当前实现：[ARCHITECTURE.md](../../ARCHITECTURE.md)
-- 历史设计：[DESIGN.md](../design-docs/DESIGN.md)、[QODER-DESIGN.md](../design-docs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](../design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](../design-docs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](../design-docs/CLINE-DESIGN.md)
-- 调研 / 实测 / 讨论：[RESEARCH.md](../references/RESEARCH.md)、[PROBE.md](../references/PROBE.md)、[DISCUSSION.md](../design-docs/DISCUSSION.md)
+- 历史设计：[DESIGN.md](../design-docs/history/v0.4-design-review.md)、[QODER-DESIGN.md](../design-docs/source-designs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](../design-docs/source-designs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](../design-docs/source-designs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](../design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](../design-docs/source-designs/CLINE-DESIGN.md)
+- 调研 / 实测 / 讨论：[RESEARCH.md](../references/RESEARCH.md)、[PROBE.md](../references/PROBE.md)、[DISCUSSION.md](../design-docs/history/discussion-log.md)
 - 文档索引：[docs/design-docs/index.md](../../README.md)
 - 使用说明：[README.md](../../README.md)

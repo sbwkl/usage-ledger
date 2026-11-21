@@ -4,7 +4,7 @@
 |---|---|
 | 文档状态 | v1.4（2026-11-15 二次评审修订） |
 | 代码基线 | `usage-ledger 0.6.0`；main `820a6f2`（PR #1 已合入） |
-| 文档定位 | 描述**当前实现如何工作**，不是新方案。当前需求 / AC 见 [usage-ledger.md](docs/product-specs/usage-ledger.md)，变更记录见 [changes/CHG-0001-docs-alignment.md](docs/exec-plans/completed/CHG-0001-docs-alignment.md)；设计沿革与动机见 [DESIGN.md](docs/design-docs/DESIGN.md)、[QODER-DESIGN.md](docs/design-docs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](docs/design-docs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](docs/design-docs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](docs/design-docs/CLINE-DESIGN.md) |
+| 文档定位 | 描述**当前实现如何工作**，不是新方案。当前需求 / AC 见 [usage-ledger.md](docs/product-specs/usage-ledger.md)，变更记录见 [changes/CHG-0001-docs-alignment.md](docs/exec-plans/completed/CHG-0001-docs-alignment.md)；设计沿革与动机见 [DESIGN.md](docs/design-docs/history/v0.4-design-review.md)、[QODER-DESIGN.md](docs/design-docs/source-designs/QODER-DESIGN.md)、[QODER-CREDITS-DESIGN.md](docs/design-docs/source-designs/QODER-CREDITS-DESIGN.md)、[TRAE-CN-DESIGN.md](docs/design-docs/source-designs/TRAE-CN-DESIGN.md)、[TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md)、[CLINE-DESIGN.md](docs/design-docs/source-designs/CLINE-DESIGN.md) |
 | 验收基线 | `python3 -m unittest discover -s tests -t .` → **159 tests OK** |
 | 阅读顺序 | 审核者先看 §0、§10、§11、§12；实现细节按需查 §4–§9 |
 
@@ -427,7 +427,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 元数据：`model←modelInfo.id`，回退会话元数据 `model`；`provider←modelInfo.provider`，回退元数据 `provider`；`project←basename(workspace_root || cwd)`；`session←sessionId`，回退目录名；`ts←ts`（毫秒；>1e11 才除以 1000）。
 - 去重键：`cline:<message.id>`；缺 id 时 `cline:<session>:<ts>:<index>`。
 - 实测（2026-11-11）：20 会话 / 1,806 assistant / 1,806 记录 / 108ms；range 2026-08-11..2026-11-11；input 11,559,216 / output 1,020,011 / cache_read 131,382,471 / cache_write 0。
-- 详见 [CLINE-DESIGN.md](docs/design-docs/CLINE-DESIGN.md)。
+- 详见 [CLINE-DESIGN.md](docs/design-docs/source-designs/CLINE-DESIGN.md)。
 
 ### 6.8 Trae CN hook 弱估算（`trae-cn.est`）
 
@@ -436,7 +436,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - 重放：按 `(ts, file, line)` 排序，维护每会话上下文 `ctx`；`UserPromptSubmit` / `PostToolUse` 累加 `chars_in`，`PreToolUse` / `Stop` 以 `chars_out` 产出一条 `Estimate` 并累加。
 - 估算：`est_input = min(round(ctx / factor) + overhead, window)`、`est_output = round(chars_out / factor)`；默认 `factor=3.8`、`overhead=0`、`window=200000`，可用 `USAGE_LEDGER_TRAE_EST_*` 覆盖；`ratio=None`。
 - 去重键：`trae-cn:<uid>`；缺失时 `<session>:<ts>:<event>:<file>:<line>`。
-- 详见 [TRAE-CN-DESIGN.md](docs/design-docs/TRAE-CN-DESIGN.md)。
+- 详见 [TRAE-CN-DESIGN.md](docs/design-docs/source-designs/TRAE-CN-DESIGN.md)。
 
 ### 6.9 Trae CN credits（`trae-cn.credits`）
 
@@ -447,7 +447,7 @@ sync --full（每日 00:15，且该源 healthy、无 --since）
 - **项目映射**：用 `store.est_session_projects('trae-cn.est')` 的 hook session→project 尽力映射；未命中 `-`。2026-11-15 本机实测 200 个 credits session 与 hook session 零重叠，因此当前全部显示 `-`，属于已知的不可关联状态而非部分映射。
 - **写库**：整批成功后才 `upsert_credits`；`billable=1`、`free_credits=0`、`source='trae-cn'`；失败保留旧缓存并更新 `source_state` 错误；不写部分结果。
 - **窗口/新鲜度**：`trae_credits_last_window` + `trae_credits_last_attempt` 写入 meta；`can_reuse_last_sync()` 同时检查 `--max-age` 与窗口覆盖；`credits_coverage()` 输出 `last_sync_at` / `refresh_mode` / `refresh_error` / `stale`。
-- 详见 [TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/TRAE-CN-CREDITS-DESIGN.md) 与 [PROBE.md](docs/references/PROBE.md) §6.9。
+- 详见 [TRAE-CN-CREDITS-DESIGN.md](docs/design-docs/source-designs/TRAE-CN-CREDITS-DESIGN.md) 与 [PROBE.md](docs/references/PROBE.md) §6.9。
 
 ### 6.10 CodeArts / 码道（`codearts`）
 

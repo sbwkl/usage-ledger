@@ -1,5 +1,8 @@
 # Cline 用量采集设计（As-Built）
 
+> 文档库状态：current（current）
+> 当前事实源：ARCHITECTURE.md §6.7
+> 索引：[design-docs/index.md](../index.md)
 | 项 | 内容 |
 |---|---|
 | 文档状态 | 已实现（v1，2026-11-11） |

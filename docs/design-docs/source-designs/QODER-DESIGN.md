@@ -1,10 +1,13 @@
 # QODER-DESIGN.md —— Qoder 用量统计扩展设计（评审稿）
 
-> **状态更新（2026-11-15）**：token 历史轨与活动轨已实现；credits / est 见 [QODER-CREDITS-DESIGN.md](QODER-CREDITS-DESIGN.md)。本文保留设计沿革，当前实现以 [ARCHITECTURE.md](../../ARCHITECTURE.md) 为准；当前需求与验收见 [requirements/usage-ledger.md](../product-specs/usage-ledger.md)。
+> **状态更新（2026-11-15）**：token 历史轨与活动轨已实现；credits / est 见 [QODER-CREDITS-DESIGN.md](../source-designs/QODER-CREDITS-DESIGN.md)。本文保留设计沿革，当前实现以 [ARCHITECTURE.md](../../../ARCHITECTURE.md) 为准；当前需求与验收见 [requirements/usage-ledger.md](../../product-specs/usage-ledger.md)。
 >
 > 日期：2026-10-30 ｜ 基线：usage-ledger v0.3.3（d331c31）
 > 一句话结论：Qoder 新版桌面端本地**没有 token 真值**；但 Qoder IDE 旧库存在**完整历史 token**（2026-06-01 ~ 2026-09-16），新版客户端存在**当前活动指标**（至今）。建议按“token 台账 + 活动台账”双轨接入，分表、分命令、分提示，**绝不相加**。
 
+> 文档库状态：partial（partial）
+> 当前事实源：QODER-CREDITS-DESIGN.md
+> 索引：[design-docs/index.md](../index.md)
 ---
 
 ## 1. 背景与目标
@@ -408,7 +411,7 @@ qoder.activity: files=1 days=... sessions=... prompts=... tool_calls=... status=
 | `tests/fixtures/qoder/`（新增） | 测试用最小 schema 生成器；不提交真实数据 |
 | `README.md` | 源表增加 Qoder 双轨说明、命令示例 |
 | `pyproject.toml` / `__init__.py` | 版本 0.4.0 |
-| `docs/design-docs/DESIGN.md` §3.3 / `docs/references/PROBE.md` §1.1 | 更新 Qoder 结论（评审通过后） |
+| `docs/design-docs/history/v0.4-design-review.md` §3.3 / `docs/references/PROBE.md` §1.1 | 更新 Qoder 结论（评审通过后） |
 
 ---
 

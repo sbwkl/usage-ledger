@@ -1,8 +1,11 @@
 # Qoder 额度（credits）+ 估算 token 设计
 
-> 日期：2026-10-30 ｜ 关联文档：[QODER-DESIGN.md](./QODER-DESIGN.md)（双轨台账）、[RESEARCH.md](../references/RESEARCH.md)（竞品调研）
+> 日期：2026-10-30 ｜ 关联文档：[QODER-DESIGN.md](./QODER-DESIGN.md)（双轨台账）、[RESEARCH.md](../../references/RESEARCH.md)（竞品调研）
 > 状态：已实现（v0.5.0，2026-10-31）
 
+> 文档库状态：current（current）
+> 当前事实源：ARCHITECTURE.md §6.6
+> 索引：[design-docs/index.md](../index.md)
 ## 0. 决策背景
 
 - Qoder 新版客户端不再写 token 真值（旧 IDE 库止于 2026-09-16；消息 payload 无 usage 字段；缓冲库 usage 掩码全零；`chat_session_context_usage` 的 `tokenCountsAvailable=false`）。
