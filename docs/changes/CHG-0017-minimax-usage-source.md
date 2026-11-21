@@ -124,7 +124,7 @@ SQLite 仍会在源目录创建空的 `-shm` / `-wal` 边文件；这是既有�
 - `src/usage_ledger/html_report.py`：`AGENT_KINDS` 把 `minimax` 归为 token 轨，补颜色 / 顺序 / 显示名。
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.8.0`（`__version__` 此前停留在 `0.6.0`、
   与 pyproject 的 `0.7.0` 漂移，`usage --version` 会报旧版本；本次随版本升级一并对齐）。
-- `README.md` 覆盖能力表与状态行、`docs/ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与 §5.4。
+- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与 §5.4。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
   `tests/ac_map.json` 增加 R47 映射，新增夹具 `tests/minimax_helpers.py`。
 

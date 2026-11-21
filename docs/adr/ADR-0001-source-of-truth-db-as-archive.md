@@ -7,7 +7,7 @@
 | 状态 | 接受 |
 | 日期 | 2026-10-22（DESIGN v0.4）/ 2026-11-15 归档 |
 | Owner | wayne |
-| 关联 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[DESIGN.md](../DESIGN.md) §4.3、[ARCHITECTURE.md](../ARCHITECTURE.md) |
+| 关联 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md)、[CHG-0001](../changes/CHG-0001-docs-alignment.md)、[DESIGN.md](../design-docs/DESIGN.md) §4.3、[ARCHITECTURE.md](../../ARCHITECTURE.md) |
 
 ## 背景
 
@@ -34,7 +34,7 @@
 ### 代价 / 后续动作
 
 - 读路径必须维持“读库 ≡ 读源”的一致性约束；新增功能两边都要覆盖。
-- `prune` 与 `sync` 的组合需要额外水位 / 区间重算机制；当前存在 P0-1（`prune` 后重放导致 `usage_daily` 重复累计），见 [ARCHITECTURE.md](../ARCHITECTURE.md) §11。
+- `prune` 与 `sync` 的组合需要额外水位 / 区间重算机制；当前存在 P0-1（`prune` 后重放导致 `usage_daily` 重复累计），见 [ARCHITECTURE.md](../../ARCHITECTURE.md) §11。
 - `archived=1` 明细当前不压缩，长期体积会增长（P2-1）。
 
 ## 替代方案

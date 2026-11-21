@@ -1,6 +1,6 @@
 # PROBE.md —— 实测探针报告（DESIGN v0.4 的落地校验）
 
-> 探针脚本：[`scripts/probe.py`](../scripts/probe.py) ｜ 生成日期：2026-10-22 ｜ 数据来源：本机实测
+> 探针脚本：[`scripts/probe.py`](../../scripts/probe.py) ｜ 生成日期：2026-10-22 ｜ 数据来源：本机实测
 > 用途：在写正式框架之前，用一次全量只读扫描回答 DESIGN 里的待决问题，并**校正 9 处与实际格式不符的规格**。
 
 ---
@@ -34,7 +34,7 @@
 - Claude Code 的 `subagents/` transcript：**89 个文件**（分布在 2 个 subagents 目录），占 Claude 记录的一半量级 —— 必须递归扫。
 - Codex：50 个 `sessions/` + 18 个 `archived_sessions/`；`.jsonl.zst` **0 个**（v1 不必实现 zstd）。
 - OpenCode：`storage/message/` **不存在**（只有 `migration/`、`session_diff/`）→ 双存储去重当前不成立。
-- Qoder：`~/.qoder/projects/` 的 6,898 条记录 token 字段仍全为 0；但 v0.4 复核发现 IDE 的 `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db` 有真实历史 token（19,963 行、2,700,982,026 tokens，覆盖 2026-06-01 ~ 2026-09-16），桌面端 `main.sqlite` 提供持续更新的活动元数据 → 改为 token + 活动双轨采集，详见 [QODER-DESIGN.md](QODER-DESIGN.md)。
+- Qoder：`~/.qoder/projects/` 的 6,898 条记录 token 字段仍全为 0；但 v0.4 复核发现 IDE 的 `~/Library/Application Support/Qoder/SharedClientCache/cache/db/local.db` 有真实历史 token（19,963 行、2,700,982,026 tokens，覆盖 2026-06-01 ~ 2026-09-16），桌面端 `main.sqlite` 提供持续更新的活动元数据 → 改为 token + 活动双轨采集，详见 [QODER-DESIGN.md](../design-docs/QODER-DESIGN.md)。
 - Cursor 生态清理作业仍在：`~/.cursor/projects/.agent-data-cleanup-2026-10-20`、`-2026-10-21`。
 
 ### 1.2 模型清单（source × model）
@@ -212,7 +212,7 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
 
 > 授权范围：一次性读取 Keychain 密钥、安装 `sqlcipher`、复制加密库做只读解密。
 > 约束：密钥不打印 / 不落盘；只读本地数据；不调用私有 API；不读 JWT；不读会话正文。
-> **结论：Phase 0 不通过 → 按 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md) §4.3 走方案 D（维持不采集），未写任何采集代码。**
+> **结论：Phase 0 不通过 → 按 [TRAE-CN-DESIGN.md](../design-docs/TRAE-CN-DESIGN.md) §4.3 走方案 D（维持不采集），未写任何采集代码。**
 
 ### 6.1 库形态
 
@@ -246,7 +246,7 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
 - `db_persistence` 只在 `libharness.dylib` 中出现；全部应用 JS、`product.json`、用户数据目录、日志与缓存中**均无该字符串**。
 - harness 的 boot config 通过 AHA IPC 实时获取：主进程日志有 `event:BootService.onBootConfigChanged` 广播，harness 侧有 `[AhaIPCSource] start_boot_config_stream` / `onDidBootConfigChanged deserialize`；`BOOT_CONFIG_FILE` 未设置，本机也不存在 boot config 文件。
 - 结论：DB 密钥来自**运行时下发的 `db_persistence` 配置**（服务端下发或原生层注入），本地没有明文落盘；`PRAGMA key` 由 DB 层从该配置格式化得到（libharness `0x65b66bc`），harness 自带的 PBKDF2 辅助函数不被该路径调用。
-- 本地获取只剩「IPC 抓包 / 进程内存扫描 / 注入」三条路，均被 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md) §1.3 明确排除，也超出本次授权。
+- 本地获取只剩「IPC 抓包 / 进程内存扫描 / 注入」三条路，均被 [TRAE-CN-DESIGN.md](../design-docs/TRAE-CN-DESIGN.md) §1.3 明确排除，也超出本次授权。
 
 ### 6.4 只读性与清理
 
@@ -382,14 +382,14 @@ python3 scripts/probe.py --json /tmp/p.json # 机器可读输出
    - 不建议：用 `prompt` / `last_assistant_message` 估算 token——违反设计 §1.3「不估算 token」，
      且 hook 会拿到正文，与「不落正文」原则冲突。
 
-**处置（2026-11-01 更新）**：按用户决定，改走 [TRAE-CN-DESIGN.md](TRAE-CN-DESIGN.md) §12 的 Plan H——
+**处置（2026-11-01 更新）**：按用户决定，改走 [TRAE-CN-DESIGN.md](../design-docs/TRAE-CN-DESIGN.md) §12 的 Plan H——
 用 hooks 可见内容做 `trae-cn.est` **弱估算**（只记字符数/事件元数据，不落正文），
 不以 hooks 采 token 真值或额度。安装 hook 需用户批准（全局 `/Users/wayne/.trae-cn/hooks.json`
 或项目级 `<workspace>/.trae/hooks.json`）。仅当未来 Trae 提供用量字段/导出时，才考虑升级为真值轨。
 
 ### 6.9 Trae CN credits 数据源与 JWT 形态（2026-11-14，已批准 D1/D2）
 
-> 本节记录 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 实现所依据的接口证据。
+> 本节记录 [TRAE-CN-CREDITS-DESIGN.md](../design-docs/TRAE-CN-CREDITS-DESIGN.md) 实现所依据的接口证据。
 > 探针阶段**没有调用**该接口，也没有把 JWT 内容写入文档/日志；以下为客户端日志 + 竞品实现 + 本机文件形态。
 
 1. **端点**

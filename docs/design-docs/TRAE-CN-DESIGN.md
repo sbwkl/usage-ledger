@@ -1,12 +1,12 @@
 # TRAE-CN-DESIGN.md —— Trae CN 用量统计接入设计（已实现 Plan H）
 
 > 日期：2026-10-30（初测）/ 2026-10-31（竞品复测）/ 2026-11-01（额度、hooks 与估算方案）/ 2026-11-02（Plan H 实现） ｜ 状态：**Phase 0 不通过 → 加密库路径维持 §4.3 方案 D；Plan H（Hooks 弱估算）H1–H3 已实现并通过 86 个单测，H0 真实捕获待用户验收** ｜ 基线：usage-ledger v0.4.0（2ec136e）
-> Phase 0 实测：加密库无法在本地只读解密（密钥由运行时 `db_persistence` 配置下发，本地无明文落盘；详见 [PROBE.md](PROBE.md) §6）。§5–§10 保留作记录，不实施。
-> 竞品复测（2026-10-31）：竞品的内存扫描取密钥方案已在 macOS 端口端到端自测通过（HMAC + sqlcipher 打开），但对 Trae CN 被 hardened runtime 阻断——全进程 `flags=0x10000` 且无 `com.apple.security.get-task-allow`，`task_for_pid`/lldb/Apple debugserver 均被拒（受控实验证实签名是唯一变量）；备份旁路也关闭且即使开启仍为加密导出。详见 [PROBE.md](PROBE.md) §6.6。
-> 额度复测（2026-11-01）：本地没有额度真值可读——用量接口响应不落盘，日志只有 URL + HTTP 200，`storage.json` / localStorage 仅套餐权益与活动配置，无 used/remaining；维持不做额度轴。详见 [PROBE.md](PROBE.md) §6.7。
-> Hooks 复测（2026-11-01）：Trae CN 提供项目级 `.trae/hooks.json` 与全局 `~/.trae-cn/hooks.json`（六个官方事件），但 hook stdin 只有会话/工具/文本元数据，没有 token、credits、quota 或 transcript 路径；不能用于真值统计（只能做弱估算，见 §12）。详见 [PROBE.md](PROBE.md) §6.8。
+> Phase 0 实测：加密库无法在本地只读解密（密钥由运行时 `db_persistence` 配置下发，本地无明文落盘；详见 [PROBE.md](../references/PROBE.md) §6）。§5–§10 保留作记录，不实施。
+> 竞品复测（2026-10-31）：竞品的内存扫描取密钥方案已在 macOS 端口端到端自测通过（HMAC + sqlcipher 打开），但对 Trae CN 被 hardened runtime 阻断——全进程 `flags=0x10000` 且无 `com.apple.security.get-task-allow`，`task_for_pid`/lldb/Apple debugserver 均被拒（受控实验证实签名是唯一变量）；备份旁路也关闭且即使开启仍为加密导出。详见 [PROBE.md](../references/PROBE.md) §6.6。
+> 额度复测（2026-11-01）：本地没有额度真值可读——用量接口响应不落盘，日志只有 URL + HTTP 200，`storage.json` / localStorage 仅套餐权益与活动配置，无 used/remaining；维持不做额度轴。详见 [PROBE.md](../references/PROBE.md) §6.7。
+> Hooks 复测（2026-11-01）：Trae CN 提供项目级 `.trae/hooks.json` 与全局 `~/.trae-cn/hooks.json`（六个官方事件），但 hook stdin 只有会话/工具/文本元数据，没有 token、credits、quota 或 transcript 路径；不能用于真值统计（只能做弱估算，见 §12）。详见 [PROBE.md](../references/PROBE.md) §6.8。
 > Plan H（2026-11-01 设计 / 2026-11-02 实现）：按用户决定改用 Hooks 做 **token 估算**，复用 Qoder `est` 轨的呈现方式；只记录字符数与事件元数据，不落正文。因 hook 不可见系统提示/工具定义/上下文比例，该轨是**弱估算/下限**，误差可能数倍（未校准），仅看趋势，永不与真值或额度相加。详见 §12。
-> **后续（2026-11-14）**：credits 轴已由 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 定向修订并实现——通过客户端同源 usage 接口获取会话级 credits，报告改为 credits 主指标。2026-11-15 凭证来源再修正：默认读取 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5 本地解密），`~/.trae-cn/trae-jwt-token` 是临时 token（usage 接口 401）已弃用；详见 [PROBE.md](PROBE.md) §6.10。本文 §1.2/§4.3/§5 中“不读登录态 / 不做 credits 轴”的结论仅代表当时阶段；**hook 弱估算（§12）仍是 Trae CN token 影子的唯一来源**，两条轨互不相加。
+> **后续（2026-11-14）**：credits 轴已由 [TRAE-CN-CREDITS-DESIGN.md](TRAE-CN-CREDITS-DESIGN.md) 定向修订并实现——通过客户端同源 usage 接口获取会话级 credits，报告改为 credits 主指标。2026-11-15 凭证来源再修正：默认读取 `storage.json` 的 `iCubeAuthInfo://icube.cloudide`（tc v5 本地解密），`~/.trae-cn/trae-jwt-token` 是临时 token（usage 接口 401）已弃用；详见 [PROBE.md](../references/PROBE.md) §6.10。本文 §1.2/§4.3/§5 中“不读登录态 / 不做 credits 轴”的结论仅代表当时阶段；**hook 弱估算（§12）仍是 Trae CN token 影子的唯一来源**，两条轨互不相加。
 > 一句话结论：加密库路径仍不可行；Trae CN 的 token 只能走 Hooks 可见内容的**弱估算**（Plan H），额度仍不可得。
 
 ---
@@ -222,7 +222,7 @@ Keychain（只读取了元数据，未读取 secret）：
 6. 无人值守验证：
    - 在非交互 shell（模拟 launchd）中再次读取 Keychain；若被拒绝，确认必须使用 0600 密钥文件或「始终允许」。
 7. 性能：记录首次打开耗时、全表扫描耗时、增量（mtime 不变）耗时。
-8. 产出：把 §4.2 结果追加到 `/Users/wayne/workspace/playground/usage-ledger/docs/PROBE.md`（不含密钥、不含正文），作为是否进入 Phase 1 的依据。
+8. 产出：把 §4.2 结果追加到 `/Users/wayne/workspace/playground/usage-ledger/docs/references/PROBE.md`（不含密钥、不含正文），作为是否进入 Phase 1 的依据。
 
 ### 4.3 Phase 0 通过 / 不通过标准
 
@@ -424,7 +424,7 @@ usage trae-cn-setup [--keychain-account "Trae CN Key"] [--key-file PATH] [--no-c
 | `tests/test_html.py` | payload 含 `trae-cn` source；不可用提示 |
 | `tests/fixtures/trae_cn/`（新增） | 生成 SQLCipher 测试库的脚本（需 `sqlcipher`，默认跳过）；不提交真实数据 |
 | `README.md` | 覆盖表 Trae CN 改为「可用（条件：SQLCipher + 本机密钥）」；命令示例；依赖说明 |
-| `docs/DESIGN.md` §3.3 / `docs/PROBE.md` §1.1 | 更新 Trae CN 结论（Phase 0 通过后） |
+| `docs/design-docs/DESIGN.md` §3.3 / `docs/references/PROBE.md` §1.1 | 更新 Trae CN 结论（Phase 0 通过后） |
 | `pyproject.toml` / `__init__.py` | 版本 0.5.0 |
 
 ---
@@ -775,7 +775,7 @@ usage doctor                                    # 显示 hook 安装状态/覆�
 | `tests/fixtures/trae_hooks/`（新增） | 脱敏事件序列 |
 | `tests/test_trae_hooks.py`（新增） | 安装合并、长度记录、隐私、重放、幂等 |
 | `tests/test_store.py` / `test_cli.py` / `test_html.py` | source 迁移、`est --source`、doctor、HTML |
-| `README.md` / `docs/TRAE-CN-DESIGN.md` / `docs/PROBE.md` | 口径、命令、限制 |
+| `README.md` / `docs/design-docs/TRAE-CN-DESIGN.md` / `docs/references/PROBE.md` | 口径、命令、限制 |
 
 ### 12.9 测试与验收
 

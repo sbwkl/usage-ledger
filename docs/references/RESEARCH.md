@@ -1,7 +1,7 @@
 # 调研报告：macOS 上跨 AI 编码工具的 Token 用量统计
 
 > 调研日期：2026-10-22 ｜ 环境：macOS 27.0.1 (Apple Silicon) ｜ Python 3.12.13 / Node 24.16.0
-> 关联文档：[DESIGN.md](./DESIGN.md)（实现方案）、[DISCUSSION.md](./DISCUSSION.md)（讨论纪要）
+> 关联文档：[DESIGN.md](../design-docs/DESIGN.md)（实现方案）、[DISCUSSION.md](../design-docs/DISCUSSION.md)（讨论纪要）
 
 ## 摘要
 
