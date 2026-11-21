@@ -134,7 +134,7 @@ class DocsStructureTest(unittest.TestCase):
 
     def test_pr13_review_consistency(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("CHG-0024", readme)
+        self.assertIn("CHG-0025", readme)
         self.assertNotIn("集成走 `sit`", readme)
 
         spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
@@ -152,6 +152,31 @@ class DocsStructureTest(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn("superseded_by:", text, rel)
 
+
+
+    def test_next_chg_id_is_unused(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        import re
+        match = re.search(r"当前下一批：.*?CHG-(\d+)", readme)
+        self.assertIsNotNone(match, "README must declare next CHG id")
+        next_id = int(match.group(1))
+        pattern = f"CHG-{next_id:04d}"
+        existing = []
+        for d in [ROOT / "docs" / "exec-plans" / "active", ROOT / "docs" / "exec-plans" / "completed"]:
+            existing.extend(p.name for p in d.glob(f"{pattern}-*.md"))
+        spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
+        self.assertEqual(existing, [], f"{pattern} already exists")
+        self.assertNotIn(f"| {pattern} |", spec)
+
+    def test_chg_0024_is_completed_when_verified(self):
+        active = ROOT / "docs" / "exec-plans" / "active" / "CHG-0024-pr13-review-fixes.md"
+        completed = ROOT / "docs" / "exec-plans" / "completed" / "CHG-0024-pr13-review-fixes.md"
+        self.assertFalse(active.exists())
+        self.assertTrue(completed.exists())
+        text = completed.read_text(encoding="utf-8")
+        self.assertIn("| 状态 | 已验证 |", text)
+        spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
+        self.assertIn("CHG-0024](../exec-plans/completed/CHG-0024-pr13-review-fixes.md)", spec)
 
 
 if __name__ == "__main__":
