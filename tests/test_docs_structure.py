@@ -134,13 +134,10 @@ class DocsStructureTest(unittest.TestCase):
 
     def test_pr13_review_consistency(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("CHG-0026", readme)
         self.assertNotIn("集成走 `sit`", readme)
 
         spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
         self.assertIn("| CHG-0020 | 文档结构调整与开发流程入规 | 已验证 |", spec)
-        for chg in ["CHG-0020", "CHG-0021", "CHG-0022", "CHG-0023"]:
-            self.assertIn(chg, spec)
 
         chg0001 = (ROOT / "docs" / "exec-plans" / "completed" / "CHG-0001-docs-alignment.md").read_text(encoding="utf-8")
         self.assertIn("(../../design-docs/index.md)", chg0001)
@@ -154,20 +151,6 @@ class DocsStructureTest(unittest.TestCase):
 
 
 
-    def test_next_chg_id_is_unused(self):
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        import re
-        match = re.search(r"当前下一批：.*?CHG-(\d+)", readme)
-        self.assertIsNotNone(match, "README must declare next CHG id")
-        next_id = int(match.group(1))
-        pattern = f"CHG-{next_id:04d}"
-        existing = []
-        for d in [ROOT / "docs" / "exec-plans" / "active", ROOT / "docs" / "exec-plans" / "completed"]:
-            existing.extend(p.name for p in d.glob(f"{pattern}-*.md"))
-        spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
-        self.assertEqual(existing, [], f"{pattern} already exists")
-        self.assertNotIn(f"| {pattern} |", spec)
-
     def test_chg_0024_is_completed_when_verified(self):
         active = ROOT / "docs" / "exec-plans" / "active" / "CHG-0024-pr13-review-fixes.md"
         completed = ROOT / "docs" / "exec-plans" / "completed" / "CHG-0024-pr13-review-fixes.md"
@@ -177,6 +160,23 @@ class DocsStructureTest(unittest.TestCase):
         self.assertIn("| 状态 | 已验证 |", text)
         spec = (ROOT / "docs" / "product-specs" / "usage-ledger.md").read_text(encoding="utf-8")
         self.assertIn("CHG-0024](../exec-plans/completed/CHG-0024-pr13-review-fixes.md)", spec)
+
+
+    def test_document_sequence_ids_are_not_required(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertNotIn("ID 按类型递增", readme)
+        self.assertNotIn("当前下一批", readme)
+        self.assertNotIn("提交信息引用 CHG ID", agents)
+        self.assertIn("不再为新文档分配顺序编号", agents)
+        self.assertIn("语义化", readme)
+
+    def test_new_change_docs_use_topic_paths_without_required_sequence(self):
+        completed = ROOT / "docs" / "exec-plans" / "completed"
+        self.assertTrue(completed.is_dir())
+        self.assertTrue(any(p.suffix == ".md" for p in completed.iterdir()))
+        active = ROOT / "docs" / "exec-plans" / "active"
+        self.assertTrue(active.is_dir())
 
 
 if __name__ == "__main__":
