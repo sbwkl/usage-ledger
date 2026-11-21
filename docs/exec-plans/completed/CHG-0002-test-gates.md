@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`tests/`、`scripts/`、`.github/workflows/`、`pyproject.toml`
-功能卡：[REQ-0002 测试体系完善](../../product-specs/REQ-0002-testing.md)
-关联：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)、[ARCHITECTURE.md §9/§11](../../../ARCHITECTURE.md)
+功能卡：[ARCHITECTURE.md §9 测试体系完善](../../../ARCHITECTURE.md#9-测试体系)
+关联：[usage-ledger.md](../../product-specs/usage-ledger.md)、[ARCHITECTURE.md §9/§11](../../../ARCHITECTURE.md)
 
 > 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../../README.md#开发约定)；本文中的 `AGENTS.md` 均为当时的历史记录。
 
@@ -15,23 +15,23 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0002 G2（合并前自动门禁）、G3（风险分层覆盖）、G5（可持续执行）；R2–R6。
+- 对应功能卡的问题/目标：ARCHITECTURE.md §9 G2（合并前自动门禁）、G3（风险分层覆盖）、G5（可持续执行）；R2–R6。
 - 触发原因：当前没有 CI，PR #2 的 `statusCheckRollup` 为空；“159 tests OK”只是本地事实，评审人无法独立验证。
 - 证据（v0.6.0，main `5b5f987`，2026-11-15 实测）：
   - 快速套件 159 tests / 0.90s；coverage.py `--branch` 总覆盖 81%。
   - 模块覆盖：store 88%、collectors 83%、CLI 77%、scheduler 45%、aggregation 65%、`__main__` 0%。
   - 4 个 HTML/JS 测试在 Node 缺失时 `skipUnless` 静默跳过；没有 skip 白名单或到期检查。
-  - 没有 AC→测试映射文件；REQ-0001 §5 的 60 个测试名只存在于文档表格，无法机械校验。
+  - 没有 AC→测试映射文件；usage-ledger.md §5 的 60 个测试名只存在于文档表格，无法机械校验。
 - 不做的后果：PR 合并前没有统一反馈；覆盖率继续被当作数字而不是门禁；关键模块可以在“全绿”下退化；Node 缺失时套件仍显示 OK。
 
 ## 3. 行为 / AC delta
 
-本次实现 REQ-0002 的以下需求：
+本次实现 ARCHITECTURE.md §9 的以下需求：
 
 - **R2**：`.github/workflows/test.yml` 在 PR、`main`、`sit` 上运行；矩阵 Python 3.11/3.12/3.13/3.14，Node 24；任一检查失败即 job 失败。`main` 已启用 5 个 required checks（`tests (py3.11)`–`(py3.14)`、`test policy`），strict + enforce_admins；PR #3 5/5 通过，故意失败 PR #5 被 BLOCKED（见 §5.4）。
 - **R3**：`scripts/check_test_policy.py` 运行完整套件并检查 skip / expectedFailure 是否有白名单条目（owner、reason、expires）；无条目、条目过期、条目未被使用、重复条目或零测试均失败。白名单文件 `tests/skip_allowlist.json`，当前为空。
 - **R4（Python 覆盖率部分）**：`coverage.py --branch` + `scripts/check_coverage.py`；总覆盖 ≥85%，store/collectors ≥85%，CLI ≥80%，scheduler ≥80%；任一关键模块较 v0.6.0 基线下降超过 1 个百分点即失败。浏览器/JS 关键旅程覆盖率不在本 CHG，见 §7。
-- **R5（REQ-0001 映射部分）**：`tests/ac_map.json` + `scripts/check_ac_map.py`；解析 REQ-0001 §5 的 R1–R18，校验每条 AC 至少映射一个真实存在的测试标识，缺失或孤立映射即失败。REQ-0002 自身 R1–R20 的映射不在本 CHG，见 §7。
+- **R5（usage-ledger.md 映射部分）**：`tests/ac_map.json` + `scripts/check_ac_map.py`；解析 usage-ledger.md §5 的 R1–R18，校验每条 AC 至少映射一个真实存在的测试标识，缺失或孤立映射即失败。ARCHITECTURE.md §9 自身 R1–R20 的映射不在本 CHG，见 §7。
 - **R6**：在 `AGENTS.md` 增加 CHG 验证证据清单（命令、环境、通过/失败数、覆盖率变化、产物链接）；`CHG` 标记“已验证”前必须写全。
 - **R17（快速套件部分）**：`check_test_policy.py` 对快速套件计时，超过 5 秒失败。
 - **R18（快速套件部分）**：README 与 AGENTS 写明一条快速测试命令及 Node 前置条件。
@@ -90,7 +90,7 @@ python3 scripts/check_ac_map.py
 ```
 
 - `check_test_policy.py`：运行完整套件，记录 skip / expectedFailure / unexpected success；校验 `tests/skip_allowlist.json`；零测试、重复白名单条目或套件计时 >5s 均失败。
-- `check_ac_map.py`：从 REQ-0001 §5 解析 AC ID，校验 `tests/ac_map.json` 的覆盖与测试标识存在性。
+- `check_ac_map.py`：从 usage-ledger.md §5 解析 AC ID，校验 `tests/ac_map.json` 的覆盖与测试标识存在性。
 - CI 上传 `coverage.json` 与 `test.log` 作为 artifact；测试失败时仍上传 `test.log`。
 
 ### 5.3 手工验证
@@ -108,7 +108,7 @@ python3 scripts/check_ac_map.py
   - 总 **93.57%**（基线 80.87%，阈值 85%）；store **97.07%**、collectors **96.32%**、CLI **93.47%**、scheduler **98.23%**、aggregation **100%**。
   - `python3 scripts/check_coverage.py coverage.json` → passed。
 - 测试策略：`python3 scripts/check_test_policy.py` → 244 tests / 1.229s（预算 5s），0 skip，passed。
-- AC 映射：`python3 scripts/check_ac_map.py` → REQ-0001 18 条 AC、65 个测试标识，passed。
+- AC 映射：`python3 scripts/check_ac_map.py` → usage-ledger.md 18 条 AC、65 个测试标识，passed。
 - 反向验证：
   - PATH 去掉 node 后运行策略脚本 → exit 1，4 个 HTML/JS 测试报 unauthorized skip。
   - 临时把 total 阈值调到 99% → `check_coverage.py` exit 1（`TOTAL 93.6% < threshold 99.0%`）。
@@ -139,13 +139,13 @@ python3 scripts/check_ac_map.py
 - **CI 时长**：4 个 Python 版本 × 完整套件 + policy 重跑；快速套件当前 <1.5s，预计可接受。
 - **PR #4 暂无 checks**：`feat/docs-status` 基于 `main` `5b5f987`，该基线尚无 `.github/workflows/test.yml`，因此 PR #4 要等 PR #3 合并 `main` 后重新触发才有检查；CHG-0003 为纯文档变更，验证不依赖 CI。
 - **Actions Node 20 弃用告警**：`actions/checkout@v4`、`actions/setup-python@v5`、`actions/setup-node@v4` 被 GitHub 强制以 Node 24 运行并产生 warning；不影响 5/5 通过，升级 action 主版本留给独立 CHG。
-- **R4/R5 仍是部分实现**：本 CHG 只发布 Python 覆盖率，不含浏览器/JS 覆盖率；AC 映射只覆盖 REQ-0001，未覆盖 REQ-0002 自身 R1–R20。完整验收留给后续 CHG，不得用本 CHG 宣称 R4/R5 全部完成。
+- **R4/R5 仍是部分实现**：本 CHG 只发布 Python 覆盖率，不含浏览器/JS 覆盖率；AC 映射只覆盖 usage-ledger.md，未覆盖 ARCHITECTURE.md §9 自身 R1–R20。完整验收留给后续 CHG，不得用本 CHG 宣称 R4/R5 全部完成。
 - **CI 硬化**：workflow 已限制 `permissions: contents: read` 并设置 job timeout；actions 仍按 major tag 引用，未按 commit SHA 固定，后续可按供应链要求收紧。
-- **未决**：REQ-0002 §5.1 的“20/20 条 R”与 REQ-0001 的 R1–R18 数量口径不一致；本次按 REQ-0001 的 18 条 AC 建映射，待 REQ-0002 自身 AC 的实施 CHG 落地后追加映射。
+- **未决**：ARCHITECTURE.md §9 §5.1 的“20/20 条 R”与 usage-ledger.md 的 R1–R18 数量口径不一致；本次按 usage-ledger.md 的 18 条 AC 建映射，待 ARCHITECTURE.md §9 自身 AC 的实施 CHG 落地后追加映射。
 
 ## 8. 关联与证据
 
-- RFC/ADR：无（工具选型已在 REQ-0002 §9 决策）。
+- RFC/ADR：无（工具选型已在 ARCHITECTURE.md §9 §9 决策）。
 - issue/PR：[PR #3](https://github.com/sbwkl/usage-ledger/pull/3)（本 CHG）、[PR #4](https://github.com/sbwkl/usage-ledger/pull/4)（CHG-0003 文档）、[PR #5](https://github.com/sbwkl/usage-ledger/pull/5)（失败门禁演练，已关闭）。
 - commit：`c3902ad`、`fcc974a`、`b81f9d7`、`f748a32`（`feat/test-system`，基于 `5b5f987`）。
 - release：不涉及；尚未合并 `main`。
@@ -156,7 +156,7 @@ python3 scripts/check_ac_map.py
 
 | 状态 | 操作人 | 证据/链接 |
 |---|---|---|
-| 提议 | wayne | 2026-11-15 用户指示开发 REQ-0002；本 CHG 为第一个可独立验收切片 |
+| 提议 | wayne | 2026-11-15 用户指示开发 ARCHITECTURE.md §9；本 CHG 为第一个可独立验收切片 |
 | 就绪 | wayne | 待用户确认 CHG 后进入开发 |
 | 开发中 | wayne | 2026-11-15 本地实现：244 tests OK、coverage 93.57%、三项门禁通过、反向验证通过；CI 与分支保护待远程验证 |
 | 开发中 | wayne | 2026-11-15 按 code review 修复：artifact 增加 test.log、workflow 权限/timeout/pipefail、策略脚本零测试与重复白名单检查、收窄 R2/R4/R5 范围；远程门禁待验证 |

@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0004 HTML 报表空状态与筛选联动修复](CHG-0004-html-report-empty-state-and-filters.md)、[REQ-0001 §3.6](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0004 HTML 报表空状态与筛选联动修复](CHG-0004-html-report-empty-state-and-filters.md)、[usage-ledger.md §3.6](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答用量问题并明确标注口径）、R15（HTML 边界标注）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答用量问题并明确标注口径）、R15（HTML 边界标注）。
 - 触发原因：2026-11-16 对 2026-11-15 生成的报告做 1440px / 500px 实际使用；以下问题均为主观可用性缺陷，不影响数据正确性，但直接影响“能否读出来”。
 - 证据：
   1. **宽表**：明细表 21 列、`scrollWidth` 1828px；1440px 下容器 1236px（约 592px 默认不可见），500px 下容器 436px（约 4.2 屏）。横向滚动后日期 / Agent / 模型 / 项目全部消失；没有冻结列、列分组表头或合计行；同时有 50 行分页与 `max-height:660px` 的纵向内滚动（[html_report.py:237](../../../src/usage_ledger/html_report.py#L237)、[html_report.py:2335](../../../src/usage_ledger/html_report.py#L2335)）。
@@ -32,7 +32,7 @@ Owner：wayne
 
 ## 3. 行为 / AC delta
 
-> R27–R38 与 R40 已写入 [REQ-0001 §5.7](../../product-specs/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到表内测试类；本节保留为本次 AC delta 记录。R35 依赖 CHG-0004 R23（活动表排序）；R30 的 chip 口径依赖 CHG-0004 R25；R40 的筛选行布局与 CHG-0004 R24 的选项重建共用同一套状态。
+> R27–R38 与 R40 已写入 [usage-ledger.md §5.7](../../product-specs/usage-ledger.md)，并在 `tests/ac_map.json` 映射到表内测试类；本节保留为本次 AC delta 记录。R35 依赖 CHG-0004 R23（活动表排序）；R30 的 chip 口径依赖 CHG-0004 R25；R40 的筛选行布局与 CHG-0004 R24 的选项重建共用同一套状态。
 
 ### 3.1 明细表
 
@@ -106,7 +106,7 @@ Owner：wayne
 - 门禁结果（2026-11-16，`feat/html-report-ux`，worktree）：
   - `python3 -m unittest discover -s tests -t .`：269 tests，OK，0 skip
   - `python3 scripts/check_test_policy.py`：269 tests，0 failures / 0 errors / 0 skips；fast suite 1.547s（budget 5.0s）
-  - `python3 scripts/check_ac_map.py`：REQ-0001 40 criteria / 87 mapped identifiers，passed
+  - `python3 scripts/check_ac_map.py`：usage-ledger.md 40 criteria / 87 mapped identifiers，passed
   - 分支覆盖率：TOTAL 93.6%（threshold 85.0%，baseline 80.9%），各模块均通过 `check_coverage.py`
 - 手工验收（Chrome 1440×900 与 500×900；条件允许补 Safari）：
   1. 横向滚动明细表：日期 / Agent / 模型 / 项目保持可见；Token / Credits / Est 分组表头清晰；合计行按单位 / 厂商分列，不出现跨单位合计。
@@ -154,12 +154,12 @@ Owner：wayne
 - 未决：17 张 KPI 卡的最终分组与主卡选择（建议总 Token 为主卡，额度改为“余额 + 进度”复合卡）；评审时可调整，但不改变“只有一个主卡”的 AC。
 - 未决：表格在 500px 下是否值得保留 21 列，还是提供“精简列”预设；本 CHG 先做冻结 + 隐藏全空列，不做手动列显隐（P2）。
 - 未决：活动表分页大小（建议 30 / 50 / 100）；实现时与主表保持一致。
-- DoR：用户已于 2026-11-16 审核通过范围；实现时把 R27–R38、R40 写入 REQ §5 并补 `tests/ac_map.json`；REQ-0001 §3.6 的“页首显示 Trae 状态”需改为“仅选中 Trae 时显示”，默认范围需改为近 7 天（CHG-0004 R39），chip 口径需与 CHG-0004 R25 同步。
+- DoR：用户已于 2026-11-16 审核通过范围；实现时把 R27–R38、R40 写入 REQ §5 并补 `tests/ac_map.json`；usage-ledger.md §3.6 的“页首显示 Trae 状态”需改为“仅选中 Trae 时显示”，默认范围需改为近 7 天（CHG-0004 R39），chip 口径需与 CHG-0004 R25 同步。
 - 实施拆分建议：可按 5a（表格 / KPI / 覆盖说明 / Top 8 / 控件）与 5b（粘性筛选 / 图表触控 / 活动表 / 术语 / 状态 / 聚焦）两个 PR 提交；验收与回滚仍以本 CHG 为单位。若评审要求独立回滚，再拆为两份 CHG。
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) §3.6、R15。
+- 功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md) §3.6、R15。
 - 同批正确性修复：[CHG-0004](CHG-0004-html-report-empty-state-and-filters.md)。
 - 实测报告：`usage html` 生成于 `2026-11-15T08:00:38+08:00`；payload 统计与视口测量见 §2。
 - commit：`ebc48fe`（实现 + 测试）；`sit` / `main` 尚未合并，合并 `main` 需用户明确同意。

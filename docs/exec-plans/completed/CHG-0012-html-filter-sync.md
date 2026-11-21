@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[CHG-0008 口径说明改为问号帮助层](CHG-0008-coverage-help-popover.md)、[REQ-0001 R30 / R38](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[CHG-0008 口径说明改为问号帮助层](CHG-0008-coverage-help-popover.md)、[usage-ledger.md R30 / R38](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡：REQ-0001 R30（页脚区分库内 / 本页）、R38（聚焦有数据区间）。
+- 对应功能卡：usage-ledger.md R30（页脚区分库内 / 本页）、R38（聚焦有数据区间）。
 - 触发原因：2026-11-16 code review 发现两处更新路径不一致。
 - 证据：
   1. `renderFooter()` 只在初始化时调用一次；`renderAll()` 调用 `renderReport()`，不刷新页脚。
@@ -56,7 +56,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：REQ-0001 R30 / R38。
+- 功能卡：usage-ledger.md R30 / R38。
 - commit：`3a121d0`（实现 + 测试）。
 - 浏览器证据：`/tmp/review-fix-report.html`、`/tmp/review-fix-1440.png`。
 

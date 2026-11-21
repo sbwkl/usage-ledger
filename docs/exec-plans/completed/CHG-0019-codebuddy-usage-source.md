@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `usage doctor` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
 关联：探针脚本 [scripts/probe_codebuddy.py](../../../scripts/probe_codebuddy.py)
 
 > ID 说明：CHG-0017 / R47（MiniMax Code）、CHG-0018 / R48（CodeArts）已占用，
@@ -19,7 +19,7 @@ token 记录，归入 token 真值轨。额度字段 `credit` 实测恒为 0，�
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答"每个平台、每个模型的用量"）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答"每个平台、每个模型的用量"）。
 - 触发原因：用户 2026-11-20 要求接入腾讯 CodeBuddy 的用量统计。
 - 证据：全部来自本机实测，可用 `python3 scripts/probe_codebuddy.py` 复现（只读、不联网）。
 
@@ -89,7 +89,7 @@ CodeBuddy 的 token 消耗在 `doctor` / 报表 / HTML 中完全缺失，用户�
 ## 3. 行为 / AC delta
 
 - 新增：**R49**（见下）。
-- 修改：**R1** 源清单增至 11 个，增加 `codebuddy`；REQ-0001 §4 覆盖指标同步。
+- 修改：**R1** 源清单增至 11 个，增加 `codebuddy`；usage-ledger.md §4 覆盖指标同步。
 - 删除：无。
 
 **R49**：When CodeBuddy CN logs are present under either
@@ -133,7 +133,7 @@ offline with no network calls, and expose the rows under the single source `code
 - `src/usage_ledger/html_report.py`：`AGENT_KINDS` 增加 `codebuddy`，补颜色 / 顺序 / 显示名。
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.10.0`。
 - `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约 / 去重键 / 源详解、
-  `REQ-0001` §3.2 / §4 / §5.4 / §8、`docs/design-docs/index.md` 可用 ID 行。
+  `usage-ledger.md` §3.2 / §4 / §5.4 / §8、`docs/design-docs/index.md` 可用 ID 行。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
   `tests/ac_map.json` 增加 R49 映射；新增探针 `scripts/probe_codebuddy.py`。
 
@@ -216,7 +216,7 @@ offline with no network calls, and expose the rows under the single source `code
 | 状态 | 操作人 | 证据 / 链接 |
 |---|---|---|
 | 提议 | wayne | 本 CHG + 只读探针实测（2026-11-20） |
-| 就绪 | wayne | REQ-0001 R49 + 正常 / 异常 / 边界 AC 已登记；探针证据已附 |
+| 就绪 | wayne | usage-ledger.md R49 + 正常 / 异常 / 边界 AC 已登记；探针证据已附 |
 | 开发中 | wayne | TDD：先写 13 个新增测试（红灯），再实现 `scan_codebuddy` 与四处注册（绿灯） |
 | 已验证 | wayne | 340 tests / 0 skip；覆盖率 92.8%；AC map 49/154；真实日志 117 记录 / 16,034,512 tokens，读写一致、doctor / html 均正常 |
 | 评审修复 | wayne | PR #12 review #1：genie 目录名 padding 还原 + 探针同修 + 2 例回归；#2：三处文档数字校准 |

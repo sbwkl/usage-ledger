@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`src/usage_ledger/pricing.py`、`src/usage_ledger/html_report.py`、`README.md`、`ARCHITECTURE.md`
-功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)（无 AC 变更）
+功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md)（无 AC 变更）
 
 ## 问题
 
@@ -21,7 +21,7 @@ Owner：wayne
 - `html_report.py` 死三元简化为 `bucket.label = bucket.start.slice(5)`；行为不变，由既有 Node 图表测试覆盖。
 - 修正 `README.md` 两处过期引用；同步「下一批可用 ID」为 `CHG-0015`（README 与 docs/design-docs/index.md）。
 - 修正 ARCHITECTURE §3 两处行数并补 `qoder_models.py` 行；§9 测试表补 `tests/test_pricing.py`。
-- 登记本 CHG 到 REQ-0001 §8 变更索引与 docs/design-docs/index.md 索引。
+- 登记本 CHG 到 usage-ledger.md §8 变更索引与 docs/design-docs/index.md 索引。
 - 把审计新发现登记到 ARCHITECTURE §11 P2-10 ~ P2-15（只登记，不修复；修复各自需独立 CHG）。
 
 不改动任何运行时行为、数据口径或 AC；不触碰 ARCHITECTURE §11 的 P0/P1/P2（各自需独立 CHG）。
@@ -34,7 +34,7 @@ Owner：wayne
 - `python3 -m unittest discover -s tests -t .`：284 tests，0 failures / 0 errors / 0 skips（基线 282 + 新增 2）。
 - `uv run --with coverage python -m coverage run --branch --source=src/usage_ledger -m unittest discover -s tests -t .` + `uv run --with coverage python -m coverage json -o coverage.json` + `python3 scripts/check_coverage.py coverage.json`：TOTAL 93.4%（阈值 85%，基线 80.9%，与修复前持平）；store 96.7% / collectors 95.3% / cli 93.6% / scheduler 98.2%，全部 ok。
 - `python3 scripts/check_test_policy.py`：284 tests / 0 skip，1.689s（预算 5s），通过。
-- `python3 scripts/check_ac_map.py`：REQ-0001 45 criteria / 98 mapped identifiers，通过（无 AC 变更）。
+- `python3 scripts/check_ac_map.py`：usage-ledger.md 45 criteria / 98 mapped identifiers，通过（无 AC 变更）。
 - HTML 死三元简化由既有 Node 图表行为测试覆盖（0 skip 即全部执行）。
 
 ## 回滚

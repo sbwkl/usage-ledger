@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0007 Trae CN credits 展示结构对齐 Qoder](CHG-0007-trae-report-parity.md)、[REQ-0001 R42](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0007 Trae CN credits 展示结构对齐 Qoder](CHG-0007-trae-report-parity.md)、[usage-ledger.md R42](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡：REQ-0001 R42（Trae 不提供的字段显示 `—`；两家 credits 不合并）。
+- 对应功能卡：usage-ledger.md R42（Trae 不提供的字段显示 `—`；两家 credits 不合并）。
 - 触发原因：2026-11-16 code review 发现合计行按单位过滤，未按来源过滤。
 - 证据：`tableTotals.valuesFor()` 只检查 `column.unit`；合计渲染只比较 `column.unit !== total.unit`，来源专用列在对方合计行以 0 渲染。
 - 不做的后果：`0` 会被误读为“真实为零”，与“不适用显示 —”的口径冲突。
@@ -54,7 +54,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：REQ-0001 R42。
+- 功能卡：usage-ledger.md R42。
 - commit：`3a121d0`（实现 + 测试）。
 - 浏览器证据：`/tmp/review-fix-totals-1440.png`。
 

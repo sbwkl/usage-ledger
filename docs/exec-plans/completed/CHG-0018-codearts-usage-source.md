@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `usage doctor` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
 关联：探针脚本 [scripts/probe_codearts.py](../../../scripts/probe_codearts.py)
 
 > ID 说明：CHG-0017 / R47 已由 CHG-0017（MiniMax Code，已合入 main）占用，
@@ -21,7 +21,7 @@ adapter，只新增路径与注册，不新增解析逻辑。额度（credits）
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答"每个平台、每个模型的用量"）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答"每个平台、每个模型的用量"）。
 - 触发原因：用户 2026-11-20 要求给 usage-ledger 接入 CodeArts（码道）的用量统计。
 - 证据：以下全部来自本机实测，可用 `python3 scripts/probe_codearts.py` 复现（只读，不联网）。
 
@@ -144,7 +144,7 @@ single source `codearts`.
 - `src/usage_ledger/__init__.py` + `pyproject.toml`：版本号 → `0.9.0`
   （`0.8.0` 已被已合入 main 的 CHG-0017（minimax）占用；main 上 `pyproject=0.8.0` 与
   `__init__` 的历史漂移随本次一并对齐到 0.9.0）。
-- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约、`REQ-0001` §3.2 与
+- `README.md` 覆盖能力表与状态行、`ARCHITECTURE.md` 数据源契约、`usage-ledger.md` §3.2 与
   §5.4、`docs/design-docs/index.md` 可用 ID 行。
 - 测试：`tests/test_collectors.py` / `tests/test_cli.py` / `tests/test_html.py` 新增用例，
   `tests/ac_map.json` 增加 R48 映射；新增探针 `scripts/probe_codearts.py`。
@@ -218,7 +218,7 @@ python3 scripts/probe_codearts.py
 | CodeArts 升级换用新版 `session_message` schema | 采集不到新消息 | adapter 已兼容新版 schema（opencode 同款），升级后无需改代码；跟踪项记录在 ARCHITECTURE 已知问题 |
 | `tokens.total` 与互斥字段口径不同 | 若误读 total 会重复计 cache | 明确不读 total（§2.3），沿用 opencode 口径 |
 | 模型名 `glm-5.3-flash` 无价格条目 | `cost_equiv_usd` 为 unknown | 与 Antigravity 同类问题；本次不建别名表，`cost_source` 记 `unknown` |
-| 与 CHG-0017（minimax）的合并 | **实际发生 12 个文件冲突**（README、ARCHITECTURE、REQ-0001、pyproject、`__init__`、cli、collectors、html_report、ac_map、test_cli、test_collectors、docs/README），本 CHG 初版"纯追加行，机械合并即可"的判断不成立 | 已在特性分支 merge main（`07224fd`）逐一取并集解决（源注册 / KNOWN_ORDER / R47+R48 / 测试类共存 / 版本 0.9.0），并按 post-minimax 世界重算全部计数后重跑四门禁 |
+| 与 CHG-0017（minimax）的合并 | **实际发生 12 个文件冲突**（README、ARCHITECTURE、usage-ledger.md、pyproject、`__init__`、cli、collectors、html_report、ac_map、test_cli、test_collectors、docs/README），本 CHG 初版"纯追加行，机械合并即可"的判断不成立 | 已在特性分支 merge main（`07224fd`）逐一取并集解决（源注册 / KNOWN_ORDER / R47+R48 / 测试类共存 / 版本 0.9.0），并按 post-minimax 世界重算全部计数后重跑四门禁 |
 
 ## 8. 关联与证据
 

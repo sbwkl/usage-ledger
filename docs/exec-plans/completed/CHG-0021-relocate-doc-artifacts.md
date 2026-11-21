@@ -6,7 +6,7 @@
 | 状态 | 已验证 |
 | Owner | wayne |
 | 所属模块 / 入口 | `AGENTS.md`、`docs/`、`tests/test_docs_structure.py`、`tests/ac_map.json` |
-| 关联 | [REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) |
+| 关联 | [usage-ledger.md](../../product-specs/usage-ledger.md) |
 
 ## 1. 摘要
 
@@ -29,7 +29,7 @@
 - 环境：macOS，Python 3.12，基线 `f800a9a`。
 - 结构测试：9 passed；Markdown 本地链接 0 missing。
 - 全量快速套件：344 tests / 1 pre-existing failure / 0 skip；失败仍是 `test_report_auto_syncs_new_codearts_messages`（`130 != 230`），已在干净基线复现，非本变更引入。
-- 静态检查：`compileall` 通过；`check_ac_map.py` 通过（路径已切到 `docs/product-specs/REQ-0001-usage-ledger.md`）。
+- 静态检查：`compileall` 通过；`check_ac_map.py` 通过（路径已切到 `docs/product-specs/usage-ledger.md`）。
 
 ## 5. 回滚
 

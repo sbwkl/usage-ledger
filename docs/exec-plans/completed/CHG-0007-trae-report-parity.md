@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[REQ-0001 R42 / R43](../../product-specs/REQ-0001-usage-ledger.md)、[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[usage-ledger.md R42 / R43](../../product-specs/usage-ledger.md)、[CHG-0006 Qoder turn credits](CHG-0006-qoder-turn-credits.md)、[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答用量问题）、R15（分轨边界）、R29（KPI 分组）、R32（图表控件）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答用量问题）、R15（分轨边界）、R29（KPI 分组）、R32（图表控件）。
 - 触发原因：用户 2026-11-16 反馈“Trae CN 的报告展示结构与其他 Agent 有大量不同，这是不对的，他的报告格式应该和 Qoder 相同”。
 - 证据（均来自 `/tmp/usage-report-sit.html`，2026-11-16 生成，1440 × 2200 视口）：
   1. Qoder 选中：KPI 为“最新额度余额 / 区间 billable credits / 免费 credits / 区间日均”，只有一个 credits KPI 组、一个 credits 图表；明细只有 credits 列。
@@ -24,7 +24,7 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
 ## 3. 行为 / AC delta
 
 - 新增：R42（credits KPI / 图表 / 明细表的跨 Agent 结构统一）、R43（估算统一开关与默认隐藏）。
-- 修改：REQ-0001 §3.6 的 KPI / 图表 / 明细表描述；原“Trae credits 显示区间 credits / 会话数 / 覆盖天数 / 模型数”改为统一四卡。
+- 修改：usage-ledger.md §3.6 的 KPI / 图表 / 明细表描述；原“Trae credits 显示区间 credits / 会话数 / 覆盖天数 / 模型数”改为统一四卡。
 - 预期行为：
   - Qoder 与 Trae 都按以下顺序显示四张卡，且只有第一张是主卡：
     1. `区间 credits`：Qoder 为 billable credits，Trae 为会话级 credits；副文案分别给出请求数 / 会话数与真值口径。
@@ -75,7 +75,7 @@ Trae CN 选中后的 KPI 名称、估算分组、图表和明细表与 Qoder 差
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) R15、R29、R32、R42、R43。
+- 功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md) R15、R29、R32、R42、R43。
 - 截图：`/tmp/report-qoder.png`、`/tmp/report-trae.png`（2026-11-16，1440px）。
 - commit：`735d00a`（实现 + 测试 + 文档）。
 - 日志 / 截图 / 测试报告：`/tmp/chg7-report.html`、`/tmp/chg7-qoder.png`、`/tmp/chg7-trae.png`、`/tmp/chg7-qoder-500.png`、`/tmp/chg7-trae-500.png`。

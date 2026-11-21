@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 R30 / R44](../../product-specs/REQ-0001-usage-ledger.md)
+功能卡：[usage-ledger.md 本地 AI 编码工具用量台账](../../product-specs/usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[usage-ledger.md R30 / R44](../../product-specs/usage-ledger.md)
 
 ## 1. 摘要
 
@@ -13,7 +13,7 @@ Owner：wayne
 
 ## 2. 变更理由与证据
 
-- 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答用量问题）、R15（口径边界可见）。
+- 对应功能卡的问题/目标：usage-ledger.md G1（在一个视图里回答用量问题）、R15（口径边界可见）。
 - 触发原因：用户 2026-11-16 反馈“解释类型的文本不要单独作为一块放置在报告中，使用形似问号的 icon，点击后展开解释文本”。
 - 证据：
   1. 当前 `coverage-block` 是一张独立 `details.card`，位于筛选区与报告之间；即使折叠也占一行，展开后包含 10+ 段说明。
@@ -62,7 +62,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) R30 / R44。
+- 功能卡：[usage-ledger.md](../../product-specs/usage-ledger.md) R30 / R44。
 - commit：`7ff22fb`（实现 + 测试 + 文档）。
 - 截图 / 测试报告：`/tmp/chg8-report.html`、`/tmp/chg8-1440.png`、`/tmp/chg8-500.png`。
 
