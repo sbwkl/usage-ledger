@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage report` / `usage html` / `usage doctor` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：探针脚本 [scripts/probe_minimax.py](../../scripts/probe_minimax.py)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：探针脚本 [scripts/probe_minimax.py](../../../scripts/probe_minimax.py)
 
 ## 1. 摘要
 
@@ -199,7 +199,7 @@ python3 scripts/probe_minimax.py
 
 ## 8. 关联与证据
 
-- 探针脚本：[scripts/probe_minimax.py](../../scripts/probe_minimax.py)
+- 探针脚本：[scripts/probe_minimax.py](../../../scripts/probe_minimax.py)
 - 探针输出（本机，2026-11-20，冻结快照）：1 个会话文件；assistant 83 条，全部带 `usage`；
   `totalTokens == input + output + cacheRead` 成立 83/83；重复 `(session, message_id)` 0 处；
   汇总 input 168,684 / output 50,748 / cache_read 9,849,472 / cache_write 0；

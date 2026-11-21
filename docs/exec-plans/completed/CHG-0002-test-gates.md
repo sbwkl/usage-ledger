@@ -4,10 +4,10 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`tests/`、`scripts/`、`.github/workflows/`、`pyproject.toml`
-功能卡：[REQ-0002 测试体系完善](../requirements/REQ-0002-testing.md)
-关联：[REQ-0001](../requirements/REQ-0001-usage-ledger.md)、[ARCHITECTURE.md §9/§11](../../ARCHITECTURE.md)
+功能卡：[REQ-0002 测试体系完善](../../product-specs/REQ-0002-testing.md)
+关联：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)、[ARCHITECTURE.md §9/§11](../../../ARCHITECTURE.md)
 
-> 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../README.md#开发约定)；本文中的 `AGENTS.md` 均为当时的历史记录。
+> 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../../README.md#开发约定)；本文中的 `AGENTS.md` 均为当时的历史记录。
 
 ## 1. 摘要
 

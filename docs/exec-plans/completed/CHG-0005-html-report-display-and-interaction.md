@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[CHG-0004 HTML 报表空状态与筛选联动修复](CHG-0004-html-report-empty-state-and-filters.md)、[REQ-0001 §3.6](../requirements/REQ-0001-usage-ledger.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[CHG-0004 HTML 报表空状态与筛选联动修复](CHG-0004-html-report-empty-state-and-filters.md)、[REQ-0001 §3.6](../../product-specs/REQ-0001-usage-ledger.md)
 
 ## 1. 摘要
 
@@ -16,23 +16,23 @@ Owner：wayne
 - 对应功能卡的问题/目标：REQ-0001 G1（在一个视图里回答用量问题并明确标注口径）、R15（HTML 边界标注）。
 - 触发原因：2026-11-16 对 2026-11-15 生成的报告做 1440px / 500px 实际使用；以下问题均为主观可用性缺陷，不影响数据正确性，但直接影响“能否读出来”。
 - 证据：
-  1. **宽表**：明细表 21 列、`scrollWidth` 1828px；1440px 下容器 1236px（约 592px 默认不可见），500px 下容器 436px（约 4.2 屏）。横向滚动后日期 / Agent / 模型 / 项目全部消失；没有冻结列、列分组表头或合计行；同时有 50 行分页与 `max-height:660px` 的纵向内滚动（[html_report.py:237](../../src/usage_ledger/html_report.py#L237)、[html_report.py:2335](../../src/usage_ledger/html_report.py#L2335)）。
+  1. **宽表**：明细表 21 列、`scrollWidth` 1828px；1440px 下容器 1236px（约 592px 默认不可见），500px 下容器 436px（约 4.2 屏）。横向滚动后日期 / Agent / 模型 / 项目全部消失；没有冻结列、列分组表头或合计行；同时有 50 行分页与 `max-height:660px` 的纵向内滚动（[html_report.py:237](../../../src/usage_ledger/html_report.py#L237)、[html_report.py:2335](../../../src/usage_ledger/html_report.py#L2335)）。
   2. **图表密度**：当前默认全量 168 天（v0.6.0）；Qoder credits 从 09-16 开始、Trae credits 从 11-02 开始、Trae est 从 11-07 开始；三张图的缺失提示分别为 87 / 130 / 163 天。图表卡在 1440px 高 1295px、500px 高 1435px，三张图纵向堆叠，大量空区间占据首屏。
-  3. **KPI 布局**：17 张卡在 1440px 排成 `7/1/4/5` 行（“轮次”孤行），500px 排成 `3/3/2/3/1/3/2`（“区间日均”孤行）；总 Token 与额度卡都用了 `primary`；出现重复的“精确 Credits”分组标题；500px 下额度值 `2,520 credits` 的 `clientWidth 119 / scrollWidth 122`，被省略号截断（[html_report.py:158](../../src/usage_ledger/html_report.py#L158)、[html_report.py:277](../../src/usage_ledger/html_report.py#L277)）。
-  4. **覆盖说明与页脚**：覆盖说明 1440px 高 78px、500px 高 153px，是一段分号连接的长文本；页脚 500px 高 417px、8 段，和覆盖说明 / 状态条重复。阴影开关关闭时仍列“Qoder 影子估算 09-16~11-13”；未选 Trae 时仍显示 Trae 状态；页脚“308 行 token 聚合”是库内全部 token 行（含本页未展示的 109 行 Qoder 历史 token），而表格是 199 token + 122 credits + 8 Trae est = 329 行；页脚“108 行估算聚合”也包含默认不显示的 Qoder 影子行（[html_report.py:1161](../../src/usage_ledger/html_report.py#L1161)、[html_report.py:2703](../../src/usage_ledger/html_report.py#L2703)、[html_report.py:2775](../../src/usage_ledger/html_report.py#L2775)）。
-  5. **Top 8 编码**：条形长度按当前第一名归一化，百分比按总量计算；模型第一的条形是满格，标签却是 `31.1%`（[html_report.py:2066](../../src/usage_ledger/html_report.py#L2066)、[html_report.py:2054](../../src/usage_ledger/html_report.py#L2054)）。
-  6. **控件作用域**：“Token 指标”和“影子：Qoder 估算 token”都放在图表卡头部；前者只控制 Token 面板，后者控制 Credits 面板里的影子线；下面的“估算”面板只属于 Trae；右侧影子轴没有轴标题（[html_report.py:331](../../src/usage_ledger/html_report.py#L331)）。
+  3. **KPI 布局**：17 张卡在 1440px 排成 `7/1/4/5` 行（“轮次”孤行），500px 排成 `3/3/2/3/1/3/2`（“区间日均”孤行）；总 Token 与额度卡都用了 `primary`；出现重复的“精确 Credits”分组标题；500px 下额度值 `2,520 credits` 的 `clientWidth 119 / scrollWidth 122`，被省略号截断（[html_report.py:158](../../../src/usage_ledger/html_report.py#L158)、[html_report.py:277](../../../src/usage_ledger/html_report.py#L277)）。
+  4. **覆盖说明与页脚**：覆盖说明 1440px 高 78px、500px 高 153px，是一段分号连接的长文本；页脚 500px 高 417px、8 段，和覆盖说明 / 状态条重复。阴影开关关闭时仍列“Qoder 影子估算 09-16~11-13”；未选 Trae 时仍显示 Trae 状态；页脚“308 行 token 聚合”是库内全部 token 行（含本页未展示的 109 行 Qoder 历史 token），而表格是 199 token + 122 credits + 8 Trae est = 329 行；页脚“108 行估算聚合”也包含默认不显示的 Qoder 影子行（[html_report.py:1161](../../../src/usage_ledger/html_report.py#L1161)、[html_report.py:2703](../../../src/usage_ledger/html_report.py#L2703)、[html_report.py:2775](../../../src/usage_ledger/html_report.py#L2775)）。
+  5. **Top 8 编码**：条形长度按当前第一名归一化，百分比按总量计算；模型第一的条形是满格，标签却是 `31.1%`（[html_report.py:2066](../../../src/usage_ledger/html_report.py#L2066)、[html_report.py:2054](../../../src/usage_ledger/html_report.py#L2054)）。
+  6. **控件作用域**：“Token 指标”和“影子：Qoder 估算 token”都放在图表卡头部；前者只控制 Token 面板，后者控制 Credits 面板里的影子线；下面的“估算”面板只属于 Trae；右侧影子轴没有轴标题（[html_report.py:331](../../../src/usage_ledger/html_report.py#L331)）。
   7. **导航**：页面内容 1440px 约 3.9k 高、500px 约 5.3k 高；筛选器只在最顶部，没有粘性筛选或回到顶部。
-  8. **触控 / 键盘**：图表 `hit` 只监听 `mouseenter / mousemove / mouseleave`，触屏点击不会固定 tooltip；SVG 数据点不可聚焦；Agent chip 与分页按钮的点击区域偏小；零值单元格对比度偏低。tooltip 边缘夹紧用固定 `half=110`，而 CSS 最大宽度是 290px（[html_report.py:1750](../../src/usage_ledger/html_report.py#L1750)、[html_report.py:212](../../src/usage_ledger/html_report.py#L212)）。
-  9. **活动表**：144 行、9 列、`min-width:900px`，500px 下同样横向滚动；没有分页，还嵌在可折叠块里形成第二层滚动；折叠时仍会在每次 `renderAll()` 重绘（[html_report.py:2655](../../src/usage_ledger/html_report.py#L2655)）。
+  8. **触控 / 键盘**：图表 `hit` 只监听 `mouseenter / mousemove / mouseleave`，触屏点击不会固定 tooltip；SVG 数据点不可聚焦；Agent chip 与分页按钮的点击区域偏小；零值单元格对比度偏低。tooltip 边缘夹紧用固定 `half=110`，而 CSS 最大宽度是 290px（[html_report.py:1750](../../../src/usage_ledger/html_report.py#L1750)、[html_report.py:212](../../../src/usage_ledger/html_report.py#L212)）。
+  9. **活动表**：144 行、9 列、`min-width:900px`，500px 下同样横向滚动；没有分页，还嵌在可折叠块里形成第二层滚动；折叠时仍会在每次 `renderAll()` 重绘（[html_report.py:2655](../../../src/usage_ledger/html_report.py#L2655)）。
   10. **术语 / 格式**：`trae-cn` / `Trae CN`、`est` / `估算`、`turns` / `轮次`、`Tokens 合计` / `总 Token`、`used` / `已用` 混用；`fmtCredits` 与 `fmtQuota` 的小数位不一致。
   11. **状态**：只有主题写入 `localStorage`；日期、Agent、模型、项目、搜索、排序、页码刷新后全部丢失，也无法把“近 30 天 + qoder + 某模型”的视图分享出去。
-- 用户补充需求（2026-11-16）：切换 Agent 时，“模型 - 项目 - 搜索”这一行的控制宽度和位置要保持稳定，不能随选项集合变化而伸缩。代码路径：`.filter-line` 是 `flex-wrap`（[html_report.py:132](../../src/usage_ledger/html_report.py#L132)），`select` 只有 `max-width:230px`、没有固定宽度（[html_report.py:134](../../src/usage_ledger/html_report.py#L134)）；`applyAgentSelection()` 清空模型 / 项目并调用 `rebuildDimensionSelects()`（[html_report.py:915](../../src/usage_ledger/html_report.py#L915)、[html_report.py:991](../../src/usage_ledger/html_report.py#L991)），选项变化会改变 select 的固有宽度，搜索框没有宽度约束，整行可能重新换行。
+- 用户补充需求（2026-11-16）：切换 Agent 时，“模型 - 项目 - 搜索”这一行的控制宽度和位置要保持稳定，不能随选项集合变化而伸缩。代码路径：`.filter-line` 是 `flex-wrap`（[html_report.py:132](../../../src/usage_ledger/html_report.py#L132)），`select` 只有 `max-width:230px`、没有固定宽度（[html_report.py:134](../../../src/usage_ledger/html_report.py#L134)）；`applyAgentSelection()` 清空模型 / 项目并调用 `rebuildDimensionSelects()`（[html_report.py:915](../../../src/usage_ledger/html_report.py#L915)、[html_report.py:991](../../../src/usage_ledger/html_report.py#L991)），选项变化会改变 select 的固有宽度，搜索框没有宽度约束，整行可能重新换行。
 - 不做的后果：报表能算但读不动；宽表让人只看到前几列，图表空区间稀释有效信息，页脚数字对不上会削弱信任；手机 / 触控与键盘用户基本无法使用图表。
 
 ## 3. 行为 / AC delta
 
-> R27–R38 与 R40 已写入 [REQ-0001 §5.7](../requirements/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到表内测试类；本节保留为本次 AC delta 记录。R35 依赖 CHG-0004 R23（活动表排序）；R30 的 chip 口径依赖 CHG-0004 R25；R40 的筛选行布局与 CHG-0004 R24 的选项重建共用同一套状态。
+> R27–R38 与 R40 已写入 [REQ-0001 §5.7](../../product-specs/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到表内测试类；本节保留为本次 AC delta 记录。R35 依赖 CHG-0004 R23（活动表排序）；R30 的 chip 口径依赖 CHG-0004 R25；R40 的筛选行布局与 CHG-0004 R24 的选项重建共用同一套状态。
 
 ### 3.1 明细表
 
@@ -159,7 +159,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) §3.6、R15。
+- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) §3.6、R15。
 - 同批正确性修复：[CHG-0004](CHG-0004-html-report-empty-state-and-filters.md)。
 - 实测报告：`usage html` 生成于 `2026-11-15T08:00:38+08:00`；payload 统计与视口测量见 §2。
 - commit：`ebc48fe`（实现 + 测试）；`sit` / `main` 尚未合并，合并 `main` 需用户明确同意。

@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage credits` / `usage html` / `src/usage_ledger/collectors.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[REQ-0001 R9 / R41](../requirements/REQ-0001-usage-ledger.md)、[CHG-0007 Trae CN 展示结构对齐](CHG-0007-trae-report-parity.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[REQ-0001 R9 / R41](../../product-specs/REQ-0001-usage-ledger.md)、[CHG-0007 Trae CN 展示结构对齐](CHG-0007-trae-report-parity.md)
 
 ## 1. 摘要
 
@@ -75,7 +75,7 @@ Qoder 新桌面端从 2026-11-13 晚间起不再把逐请求 `usage.credits` 写
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) R9、R41。
+- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) R9、R41。
 - 实测报告：`/tmp/usage-report-sit.html`（2026-11-16 生成）。
 - commit：`735d00a`（实现 + 测试 + 文档）。
 - 日志 / 截图 / 测试报告：`/tmp/usage-ledger-chg6.db`、`/tmp/chg6-qoder.html`、`/tmp/coverage-run.log`。

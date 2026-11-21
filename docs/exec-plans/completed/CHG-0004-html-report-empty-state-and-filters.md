@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互优化](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 §3.6](../requirements/REQ-0001-usage-ledger.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互优化](CHG-0005-html-report-display-and-interaction.md)、[REQ-0001 §3.6](../../product-specs/REQ-0001-usage-ledger.md)
 
 ## 1. 摘要
 
@@ -17,19 +17,19 @@ Owner：wayne
 - 触发原因：2026-11-16 对 2026-11-15 生成的报告做 1440px / 500px 实际使用，以下问题均可复现。
 - 证据（报告：范围 `2026-06-01 ~ 2026-11-15`，generated `2026-11-15T08:00:38+08:00`；308 token 行、122 credit 行、8 Trae est 行、144 activity 行 / 84 活跃日、200 Trae 会话）：
 
-1. **空区间误导**：点击“今日”（2026-11-16）后 17 张 KPI 全 0、三张图空白、主表与活动表 0 行；Trae KPI 显示“未同步”，同屏状态条仍写“已刷新 · 200 会话”，额度卡仍显示 `2,520 credits`。根因是预设用浏览器 `TODAY` 而非 `DATA_UNTIL`（[html_report.py:602](../../src/usage_ledger/html_report.py#L602)、[html_report.py:1026](../../src/usage_ledger/html_report.py#L1026)）；Trae KPI 在 `!rows.length` 时直接走“未同步”（[html_report.py:1366](../../src/usage_ledger/html_report.py#L1366)）。
-2. **活动图时间轴压缩**：144 行活动只覆盖 84 个活跃日，`2026-07-09 → 2026-08-22` 的 44 天空档在图上表现为相邻柱；token / credits 图按完整日期枚举，同一日期在两张图上的横坐标不一致。根因是活动图只取 `byDay.keys()`（[html_report.py:2485](../../src/usage_ledger/html_report.py#L2485)）。
-3. **活动表假排序**：9 个表头是 `<button class="th-btn">`，没有监听器、没有 `aria-sort`；点击日期、工具调用、运行时长均不改变行序（[html_report.py:2655](../../src/usage_ledger/html_report.py#L2655)）。
-4. **维度筛选不联动**：把范围收窄到 15 天（103 行）后，模型下拉仍有 38 项、项目下拉仍有 40 项，包含大量 0 行选项；选中后得到空表且不会回退。日期变化只 `renderAll()`，不重建下拉（[html_report.py:1041](../../src/usage_ledger/html_report.py#L1041)）；`dimensionRows()` 只按 Agent 取数（[html_report.py:836](../../src/usage_ledger/html_report.py#L836)）。
-5. **chip 与 KPI 口径不一致**：近 7 天 KPI 总 Token 为 `142.83M`，但顶部 chip 仍显示全时段 `claude 382.39M`、`codex 752.94M`；chip 用全量 `navTotal()`（[html_report.py:855](../../src/usage_ledger/html_report.py#L855)），且没有“全部时间”标签。
-6. **“全选”语义不完整**：“全选”清空模型 / 项目但保留搜索；“重置筛选”清空全部，两个动作边界不一致（[html_report.py:915](../../src/usage_ledger/html_report.py#L915)、[html_report.py:1105](../../src/usage_ledger/html_report.py#L1105)）。
+1. **空区间误导**：点击“今日”（2026-11-16）后 17 张 KPI 全 0、三张图空白、主表与活动表 0 行；Trae KPI 显示“未同步”，同屏状态条仍写“已刷新 · 200 会话”，额度卡仍显示 `2,520 credits`。根因是预设用浏览器 `TODAY` 而非 `DATA_UNTIL`（[html_report.py:602](../../../src/usage_ledger/html_report.py#L602)、[html_report.py:1026](../../../src/usage_ledger/html_report.py#L1026)）；Trae KPI 在 `!rows.length` 时直接走“未同步”（[html_report.py:1366](../../../src/usage_ledger/html_report.py#L1366)）。
+2. **活动图时间轴压缩**：144 行活动只覆盖 84 个活跃日，`2026-07-09 → 2026-08-22` 的 44 天空档在图上表现为相邻柱；token / credits 图按完整日期枚举，同一日期在两张图上的横坐标不一致。根因是活动图只取 `byDay.keys()`（[html_report.py:2485](../../../src/usage_ledger/html_report.py#L2485)）。
+3. **活动表假排序**：9 个表头是 `<button class="th-btn">`，没有监听器、没有 `aria-sort`；点击日期、工具调用、运行时长均不改变行序（[html_report.py:2655](../../../src/usage_ledger/html_report.py#L2655)）。
+4. **维度筛选不联动**：把范围收窄到 15 天（103 行）后，模型下拉仍有 38 项、项目下拉仍有 40 项，包含大量 0 行选项；选中后得到空表且不会回退。日期变化只 `renderAll()`，不重建下拉（[html_report.py:1041](../../../src/usage_ledger/html_report.py#L1041)）；`dimensionRows()` 只按 Agent 取数（[html_report.py:836](../../../src/usage_ledger/html_report.py#L836)）。
+5. **chip 与 KPI 口径不一致**：近 7 天 KPI 总 Token 为 `142.83M`，但顶部 chip 仍显示全时段 `claude 382.39M`、`codex 752.94M`；chip 用全量 `navTotal()`（[html_report.py:855](../../../src/usage_ledger/html_report.py#L855)），且没有“全部时间”标签。
+6. **“全选”语义不完整**：“全选”清空模型 / 项目但保留搜索；“重置筛选”清空全部，两个动作边界不一致（[html_report.py:915](../../../src/usage_ledger/html_report.py#L915)、[html_report.py:1105](../../../src/usage_ledger/html_report.py#L1105)）。
 
 - 不做的后果：快照报告在生成次日进入“全 0 但仍有数字”的矛盾状态；活动图与 token 图无法按日期对齐；用户会误以为活动表可排序、chip 数字是当前区间；窄化筛选后得到空表却不知道原因。
 - 用户补充需求（2026-11-16）：默认时间范围改为近 7 天，不再默认全量；这是对 REQ-0001 §3.6 “默认取全部数据覆盖”的 AC 变更，实现时需同步 §3.6 与 §5。近 7 天按 `DATA_UNTIL` 倒推 6 天（含端点），保留“全部”预设。
 
 ## 3. 行为 / AC delta
 
-> R19–R26 与 R39 已写入 [REQ-0001 §5.6](../requirements/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到 `HtmlDateRangeTest` / `HtmlEmptyStateTest` / `HtmlActivityTest` / `HtmlFilterLinkageTest`；本节保留为本次 AC delta 记录。
+> R19–R26 与 R39 已写入 [REQ-0001 §5.6](../../product-specs/REQ-0001-usage-ledger.md)，并在 `tests/ac_map.json` 映射到 `HtmlDateRangeTest` / `HtmlEmptyStateTest` / `HtmlActivityTest` / `HtmlFilterLinkageTest`；本节保留为本次 AC delta 记录。
 
 - **R19**：When the report is opened after the data-until date, the system shall anchor the “最新 / 7 / 30 / 90 天” presets and the date pickers to `DATA_UNTIL`, display “数据截至 YYYY-MM-DD”, and reject or clamp dates after `DATA_UNTIL`; the preset previously labeled “今日” shall be labeled “最新”.
 - **R20**：While Trae CN is selected and the current range has no Trae credit rows but cached credit data exists outside the range, the system shall show “当前区间无 Trae credits” instead of “未同步”; it shall show “未同步” only when no credit cache exists, and “刷新失败（使用缓存）” only when refresh failed and cache is being used.
@@ -103,7 +103,7 @@ Owner：wayne
 
 ## 8. 关联与证据
 
-- 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md) §3.6、R8、R15。
+- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) §3.6、R8、R15。
 - 同批展示优化：[CHG-0005](CHG-0005-html-report-display-and-interaction.md)。
 - 实测报告：`usage html` 生成于 `2026-11-15T08:00:38+08:00`；payload 统计与视口测量见 §2。
 - commit：`530d311`（实现 + 测试）；`sit` / `main` 尚未合并，合并 `main` 需用户明确同意。

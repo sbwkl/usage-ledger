@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`src/usage_ledger/collectors.py`、`src/usage_ledger/trae_auth.py`、`scripts/probe.py`、`tests/test_collectors.py`、`tests/test_trae_credits.py`、`README.md`、`ARCHITECTURE.md`
-功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md)（无 AC 变更）
-关联：CHG-0014（同主题前序清理）、[ARCHITECTURE.md](../../ARCHITECTURE.md) §11 P2-9
+功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)（无 AC 变更）
+关联：CHG-0014（同主题前序清理）、[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11 P2-9
 
 ## 1. 摘要
 

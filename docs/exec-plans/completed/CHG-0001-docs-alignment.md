@@ -7,12 +7,12 @@
 | 状态 | 已验证 |
 | Owner | wayne |
 | 所属模块 / 入口 | `docs/`、`README.md`、`AGENTS.md` |
-| 功能卡 | [REQ-0001](../requirements/REQ-0001-usage-ledger.md) |
-| 关联 | [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../ARCHITECTURE.md) §11、commit `02e8473`（评审修订见后续 CHG-0001 提交） |
+| 功能卡 | [REQ-0001](../../product-specs/REQ-0001-usage-ledger.md) |
+| 关联 | [ADR-0001](../../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/ADR-0002-pull-collection-no-daemon.md)、[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11、commit `02e8473`（评审修订见后续 CHG-0001 提交） |
 
 > 说明：本变更已通过 [PR #2](https://github.com/sbwkl/usage-ledger/pull/2) 合并 `main`（`5b5f987`，2026-11-15）。文档变更没有部署产物，状态保持“已验证”，不标“已发布”。
 
-> 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../README.md#开发约定)；本文保留当时的历史描述与模块范围。
+> 2026-11-16 后续：项目级 `AGENTS.md` 已合并到 [README.md](../../../README.md#开发约定)；本文保留当时的历史描述与模块范围。
 
 ## 摘要
 
@@ -22,10 +22,10 @@
 
 ## 1. 变更理由与证据
 
-- 工作区规范要求固定目录 `docs/requirements/`、`docs/changes/`、`docs/rfcs/`、`docs/adr/`；当前 `docs/` 下没有这些目录，也没有功能卡 / 变更文档。
-- [DESIGN.md](../design-docs/DESIGN.md) 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy、zstd 等未实现；直接把它当需求事实源会持续误导。
-- [README.md](../../README.md) 的覆盖表把 WorkBuddy 标为已支持，但 `collectors.py` 实际只有 7 个源，README「下一步」也写明需要先安装 WorkBuddy 采集样本。
-- [ARCHITECTURE.md](../../ARCHITECTURE.md) §0 把“设计文档与实现漂移”列为需要审核的现状问题。
+- 工作区规范要求固定目录 `docs/product-specs/`、`docs/exec-plans/completed/`、`docs/design-docs/rfcs/`、`docs/design-docs/`；当前 `docs/` 下没有这些目录，也没有功能卡 / 变更文档。
+- [DESIGN.md](../../design-docs/DESIGN.md) 仍是 v0.4「待审核」方案稿，其中 `NullStore`、计价、预算告警、WorkBuddy、zstd 等未实现；直接把它当需求事实源会持续误导。
+- [README.md](../../../README.md) 的覆盖表把 WorkBuddy 标为已支持，但 `collectors.py` 实际只有 7 个源，README「下一步」也写明需要先安装 WorkBuddy 采集样本。
+- [ARCHITECTURE.md](../../../ARCHITECTURE.md) §0 把“设计文档与实现漂移”列为需要审核的现状问题。
 
 ---
 
@@ -33,11 +33,11 @@
 
 - **运行时代码与 CLI 行为：无变化。** 本变更只整理文档结构、补当前需求事实源，并修正文档漂移。
 - 新增文档工件：
-  - [REQ-0001](../requirements/REQ-0001-usage-ledger.md)：当前功能卡，含问题 / 证据、目标 / 非目标、As-Built 功能说明（数据源契约 / CLI 命令 / 报表字段 / 存储 / HTML / 调度 / 隐私）、成功指标、R1–R18 EARS 验收、风险与变更索引。
+  - [REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)：当前功能卡，含问题 / 证据、目标 / 非目标、As-Built 功能说明（数据源契约 / CLI 命令 / 报表字段 / 存储 / HTML / 调度 / 隐私）、成功指标、R1–R18 EARS 验收、风险与变更索引。
   - [CHG-0001](./CHG-0001-docs-alignment.md)：本变更记录。
-  - [ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)：两项已做出的架构决策。
-  - [docs/design-docs/index.md](../../README.md)：文档索引与阅读顺序。
-  - 项目级 [开发约定](../../README.md#开发约定)（原 `AGENTS.md`）：把规范落到本项目的文档路径、测试命令、分支流程与下一批 ID。
+  - [ADR-0001](../../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/ADR-0002-pull-collection-no-daemon.md)：两项已做出的架构决策。
+  - [docs/design-docs/index.md](../../../README.md)：文档索引与阅读顺序。
+  - 项目级 [开发约定](../../../README.md#开发约定)（原 `AGENTS.md`）：把规范落到本项目的文档路径、测试命令、分支流程与下一批 ID。
 - 文档修正：
   - README 将 WorkBuddy 改为“未接入（缺样本）”，把“零 UI”改为“零常驻 UI（HTML 为单文件静态报表）”，并修正 `NullStore` 已实现的误导性表述。
   - DESIGN 标注为历史设计稿，指向 REQ-0001 与 ARCHITECTURE。
@@ -51,12 +51,12 @@
 
 ### 影响范围
 
-- 仅文档：`docs/requirements/`、`docs/changes/`、`docs/adr/`、`docs/rfcs/`、`docs/design-docs/index.md`、`README.md`、`AGENTS.md`，以及 DESIGN / ARCHITECTURE / QODER-DESIGN 的说明性修订。
+- 仅文档：`docs/product-specs/`、`docs/exec-plans/completed/`、`docs/design-docs/`、`docs/design-docs/rfcs/`、`docs/design-docs/index.md`、`README.md`、`AGENTS.md`，以及 DESIGN / ARCHITECTURE / QODER-DESIGN 的说明性修订。
 - 不影响已安装的 `usage` / `usage-ledger` 命令、数据库 schema、采集逻辑或 HTML 报表。
 
 ### 非目标
 
-- 不修复 [ARCHITECTURE.md](../../ARCHITECTURE.md) §11 的 P0-1 / P1-1 / P1-2 / P1-3 / P2 问题。
+- 不修复 [ARCHITECTURE.md](../../../ARCHITECTURE.md) §11 的 P0-1 / P1-1 / P1-2 / P1-3 / P2 问题。
 - 不补写 v0.6.0 之前的历史 CHG；历史以 git log、设计文档和 REQ-0001 的测试基线为证据。
 - 不搬移现有设计文档；它们继续作为 `docs/` 根目录下的支撑文档。
 - 不实现 WorkBuddy、计价、预算告警、`NullStore`、zstd、daemon 或路径哈希。
@@ -68,7 +68,7 @@
 | 检查 | 命令 / 方法 | 结果 |
 |---|---|---|
 | 回归测试 | `python3 -m unittest discover -s tests -t .` | **159 tests OK**（2026-11-15） |
-| 目录结构 | 检查 `docs/requirements/`、`docs/changes/`、`docs/adr/`、`docs/rfcs/` 均存在 | 通过 |
+| 目录结构 | 检查 `docs/product-specs/`、`docs/exec-plans/completed/`、`docs/design-docs/`、`docs/design-docs/rfcs/` 均存在 | 通过 |
 | 文档链接 | 逐项检查新增 / 修改文档中的相对链接目标存在 | 通过 |
 | 文档首部 | REQ / CHG / ADR 均含 ID、类型、状态、Owner、关联 | 通过 |
 | 功能描述 | REQ-0001 §3 的源路径 / 命令 / 字段 / 表结构与 v0.6.0 源码逐项核对 | 通过 |
@@ -87,10 +87,10 @@
 
 ## 6. 关联
 
-- 功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md)
-- 决策：[ADR-0001](../adr/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../adr/ADR-0002-pull-collection-no-daemon.md)
-- 现状问题：[ARCHITECTURE.md](../../ARCHITECTURE.md) §11
-- 使用说明：[README.md](../../README.md)
+- 功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)
+- 决策：[ADR-0001](../../design-docs/ADR-0001-source-of-truth-db-as-archive.md)、[ADR-0002](../../design-docs/ADR-0002-pull-collection-no-daemon.md)
+- 现状问题：[ARCHITECTURE.md](../../../ARCHITECTURE.md) §11
+- 使用说明：[README.md](../../../README.md)
 - 分支：`feat/req-docs`（从 main 切出）
 
 ---

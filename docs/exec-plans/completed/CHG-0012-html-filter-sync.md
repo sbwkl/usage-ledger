@@ -4,8 +4,8 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`usage html` / `src/usage_ledger/html_report.py`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
-关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[CHG-0008 口径说明改为问号帮助层](CHG-0008-coverage-help-popover.md)、[REQ-0001 R30 / R38](../requirements/REQ-0001-usage-ledger.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
+关联：[CHG-0005 HTML 报表展示与交互](CHG-0005-html-report-display-and-interaction.md)、[CHG-0008 口径说明改为问号帮助层](CHG-0008-coverage-help-popover.md)、[REQ-0001 R30 / R38](../../product-specs/REQ-0001-usage-ledger.md)
 
 ## 1. 摘要
 

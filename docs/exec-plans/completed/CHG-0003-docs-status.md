@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`docs/`
-功能卡：[REQ-0001 本地 AI 编码工具用量台账](../requirements/REQ-0001-usage-ledger.md)
+功能卡：[REQ-0001 本地 AI 编码工具用量台账](../../product-specs/REQ-0001-usage-ledger.md)
 关联：[CHG-0001 需求 / 变更文档体系对齐](CHG-0001-docs-alignment.md)、[PR #2](https://github.com/sbwkl/usage-ledger/pull/2)
 
 ## 1. 摘要
@@ -27,7 +27,7 @@ PR #2 已将 CHG-0001 合并到 `main`，但 CHG-0001 与 REQ-0001 仍写着“�
 
 ## 4. 影响范围与非目标
 
-- 受影响：`docs/changes/CHG-0001-docs-alignment.md`、`docs/requirements/REQ-0001-usage-ledger.md`、本文件。
+- 受影响：`docs/exec-plans/completed/CHG-0001-docs-alignment.md`、`docs/product-specs/REQ-0001-usage-ledger.md`、本文件。
 - 非目标：不修改 CHG-0001 的其他内容；不新建 REQ；不改运行时代码、测试或 CI。
 - 回滚：还原上述文档修改并删除本文件；无数据或配置影响。
 
@@ -36,8 +36,8 @@ PR #2 已将 CHG-0001 合并到 `main`，但 CHG-0001 与 REQ-0001 仍写着“�
 ```bash
 gh pr view 2 --repo sbwkl/usage-ledger --json state,mergedAt,mergeCommit
 git log --oneline -1 5b5f987
-grep -R "尚未合并 main" docs/changes/CHG-0001-docs-alignment.md \
-  docs/requirements/REQ-0001-usage-ledger.md
+grep -R "尚未合并 main" docs/exec-plans/completed/CHG-0001-docs-alignment.md \
+  docs/product-specs/REQ-0001-usage-ledger.md
 ```
 
 - 预期：PR #2 为 `MERGED`；`5b5f987` 存在；`grep` 无输出。

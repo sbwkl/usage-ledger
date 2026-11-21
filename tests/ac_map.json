@@ -1,6 +1,6 @@
 {
   "REQ-0001": {
-    "path": "docs/requirements/REQ-0001-usage-ledger.md",
+    "path": "docs/product-specs/REQ-0001-usage-ledger.md",
     "criteria": {
       "R1": [
         "tests.test_cli.CliConsistencyTest.test_report_grouping_and_filtering"

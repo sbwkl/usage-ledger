@@ -4,7 +4,7 @@
 状态：已验证
 Owner：wayne
 所属模块/入口：`src/usage_ledger/pricing.py`、`src/usage_ledger/html_report.py`、`README.md`、`ARCHITECTURE.md`
-功能卡：[REQ-0001](../requirements/REQ-0001-usage-ledger.md)（无 AC 变更）
+功能卡：[REQ-0001](../../product-specs/REQ-0001-usage-ledger.md)（无 AC 变更）
 
 ## 问题
 
