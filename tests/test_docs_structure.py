@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWED_DOCS_DIRS = {"design-docs", "exec-plans", "generated", "product-specs", "references"}
+ALLOWED_DOCS_DIRS = {"agents", "design-docs", "exec-plans", "generated", "product-specs", "references"}
 
 
 class DocsStructureTest(unittest.TestCase):

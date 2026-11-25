@@ -107,3 +107,17 @@ uv tool install --force --no-cache .
 # 本机数据快照复现
 python3 scripts/probe.py
 ```
+
+## Agent skills
+
+### Issue tracker
+
+本仓库的 issue 与 spec 存放在 GitHub Issues（`sbwkl/usage-ledger`），统一用 `gh` CLI 操作。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用默认五个规范角色标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+single-context：根目录 `GLOSSARY.md` + `docs/design-docs/adr/`（本仓库 ADR 实际位置）；文件尚不存在时静默继续。详见 `docs/agents/domain.md`。
